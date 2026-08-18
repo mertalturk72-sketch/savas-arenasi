@@ -28,7 +28,7 @@ export class ClientGame {
 
     this.el = {
       hpFill: $('hpFill'), hpText: $('hpText'),
-      ammo: $('ammoText'), mag: $('magText'), weapon: $('weaponName'),
+      ammo: $('ammoText'), weapon: $('weaponName'),
       reloadBar: $('reloadBar'), reloadFill: $('reloadFill'),
       matchInfo: $('matchInfo'), killfeed: $('killfeed'),
       netInfo: $('netInfo'), centerMsg: $('centerMsg'),
@@ -555,13 +555,13 @@ export class ClientGame {
     this.el.hpText.textContent = you.hp;
     this.el.hpText.style.color = ratio > 0.5 ? '#e6edf4' : ratio > 0.25 ? '#ffb84d' : '#ff5f5f';
 
+    // Cephane "şarjördeki / yedek" biçiminde: 30 / 60
     this.el.ammo.textContent = you.am;
     this.el.ammo.classList.toggle('low', you.am <= Math.max(1, you.mg * 0.2));
-    this.el.mag.textContent = you.mg;
     if (this.el.reserve) {
-      const dry = (you.ar ?? 0) === 0;
-      this.el.reserve.textContent = dry && you.am === 0 ? 'CEPHANE BİTTİ' : `yedek ${you.ar ?? 0}`;
-      this.el.reserve.classList.toggle('empty', dry);
+      const reserve = you.ar ?? 0;
+      this.el.reserve.textContent = reserve;
+      this.el.reserve.classList.toggle('empty', reserve === 0);
     }
     this.el.weapon.textContent = (WEAPONS[this.weapon] || WEAPONS.rifle).name;
 
@@ -636,7 +636,7 @@ export class ClientGame {
         <td class="num">${r.k}</td>
         <td class="num">${r.d}</td>
         <td class="num">${r.dm}</td>
-        <td class="num">${r.a ? '<span style="color:#4fd18b">ayakta</span>' : '<span style="color:#8b98a7">yerde</span>'}</td>
+        <td class="num">${r.a ? '<span style="color:#4fd18b">yaşıyor</span>' : '<span style="color:#8b98a7">yerde</span>'}</td>
       </tr>`;
     }
     html += '</table>';

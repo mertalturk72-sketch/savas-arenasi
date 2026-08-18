@@ -242,7 +242,7 @@ export function getCharacterSprites(o) {
  * @param {number} x sol üst köşe (karakter kutusunun)
  * @param {number} y sol üst köşe
  * @param {number} scale karakterin çizim ölçeği (1 = 32x36 piksel)
- * @param {string} wepId 'rifle' | 'shotgun' | 'sniper' | 'lmg'
+ * @param {string} wepId 'rifle' | 'shotgun' | 'sniper'
  * @param {string} skin el rengi
  */
 export function drawWeaponOnPreview(ctx, x, y, scale, wepId, skin) {

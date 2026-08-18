@@ -49,7 +49,10 @@ console.log('Nişancı durumu:', st);
 if (st.weapon !== 'sniper') errors.push(`Silah keskin tüfek değil: ${st.weapon}`);
 if (st.mag !== 5) errors.push(`Şarjör 5 olmalıydı, ${st.mag}`);
 if (!st.reserve || st.reserve !== st.maxReserve) errors.push('Yedek cephane dolu başlamadı');
-if (!/yedek/.test(st.reserveText || '')) errors.push(`Yedek göstergesi yok: "${st.reserveText}"`);
+// Cephane artık "şarjör / yedek" biçiminde: iki taraf da düz sayı olmalı.
+if (!/^\d+$/.test((st.reserveText || '').trim())) {
+  errors.push(`Yedek göstergesi sayı değil: "${st.reserveText}"`);
+}
 
 // Nişan çizgisinin duvarda kesildiğini doğrula
 const laser = await page.evaluate(async () => {
@@ -68,7 +71,7 @@ console.log('Nişan ışını:', laser);
 if (laser.blocked === null) errors.push('Işın hiçbir duvarda kesilmiyor');
 else if (laser.blocked > 1700) errors.push('Işın menzili aşıyor');
 
-// Cephaneyi tüket: yedek bitince "CEPHANE BİTTİ" görünmeli
+// Cephaneyi tüket: yedek bitince gösterge 0 olup kırmızıya dönmeli
 const dry = await page.evaluate(() => {
   const hub = window.__net.impl.hub;
   const sim = [...hub.lobbies.values()][0].game;
@@ -78,8 +81,11 @@ const dry = await page.evaluate(() => {
 });
 await page.waitForTimeout(600);
 const reserveText = await page.textContent('#reserveText');
-console.log('Cephane bitince gösterge:', JSON.stringify(reserveText.trim()), dry);
-if (!/BİTTİ/i.test(reserveText)) errors.push(`Cephane bitti uyarısı yok: "${reserveText}"`);
+const reserveEmpty = await page.evaluate(() =>
+  document.getElementById('reserveText').classList.contains('empty'));
+console.log('Cephane bitince gösterge:', JSON.stringify(reserveText.trim()), '· kırmızı:', reserveEmpty, dry);
+if (reserveText.trim() !== '0') errors.push(`Yedek bitince 0 yazmalı: "${reserveText}"`);
+if (!reserveEmpty) errors.push('Yedek bitince gösterge kırmızıya dönmedi');
 
 // Ekran görüntüsü için açık bir yöne nişan al (çizgi tam görünsün)
 const shot = await page.evaluate(async () => {

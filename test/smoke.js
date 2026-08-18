@@ -7,7 +7,7 @@ import { Game } from '../shared/sim/game.js';
 import { createMap, analyzeWalkable } from '../shared/sim/map.js';
 import { buildObstacleIndex, moveCircle, circleHitsRect, lineBlocked } from '../shared/physics.js';
 import {
-  MAX_PLAYERS, TICK_MS, CLASS_IDS, PLAYER_RADIUS, WEAPONS, MATCH_MS,
+  MAX_PLAYERS, TICK_MS, CLASS_IDS, CLASSES, PLAYER_RADIUS, WEAPONS, MATCH_MS,
   BUSH_REVEAL_DIST, MAPS, SPAWN_EDGE_INSET,
 } from '../shared/constants.js';
 
@@ -283,7 +283,7 @@ test('can 2 saniyede 1 dolar', () => {
 });
 
 test('can üst sınırı aşmaz', () => {
-  const g = new Game({ modeId: 'ffa', players: [{ id: 1, name: 'A', bot: false, cls: 'agir' }] });
+  const g = new Game({ modeId: 'ffa', players: [{ id: 1, name: 'A', bot: false, cls: 'nisanci' }] });
   const p = g.players.get(1);
   p.hp = p.maxHp - 1;
   for (let i = 0; i < 300; i++) g.regenerate(TICK_MS / 1000);
@@ -339,6 +339,36 @@ test('doğuşta cephane tazelenir', () => {
   g.respawn(p);
   assert.equal(p.ammo, WEAPONS.sniper.mag);
   assert.equal(p.reserve, WEAPONS.sniper.reserve);
+});
+
+console.log('\n— Sınıflar ve cephane —');
+test('Ağır Piyade kaldırıldı, 3 sınıf kaldı', () => {
+  assert.deepEqual(CLASS_IDS, ['komando', 'akinci', 'nisanci']);
+  assert.equal(CLASSES.agir, undefined);
+  assert.equal(WEAPONS.lmg, undefined);
+  // Hiçbir sınıf artık var olmayan bir silaha işaret etmesin
+  for (const id of CLASS_IDS) {
+    assert.ok(WEAPONS[CLASSES[id].weapon], `${id} sınıfının silahı yok: ${CLASSES[id].weapon}`);
+  }
+});
+
+test('cephane değerleri: komando 30/60, akıncı 5/15, nişancı 5/15', () => {
+  const beklenen = { komando: [30, 60], akinci: [5, 15], nisanci: [5, 15] };
+  for (const [cls, [mag, reserve]] of Object.entries(beklenen)) {
+    const w = WEAPONS[CLASSES[cls].weapon];
+    assert.equal(w.mag, mag, `${cls} şarjörü ${w.mag}, ${mag} olmalı`);
+    assert.equal(w.reserve, reserve, `${cls} yedeği ${w.reserve}, ${reserve} olmalı`);
+  }
+});
+
+test('oyuncu doğduğunda bu değerlerle başlar', () => {
+  for (const cls of CLASS_IDS) {
+    const g = new Game({ modeId: 'ffa', players: [{ id: 1, name: 'A', bot: false, cls }] });
+    const p = g.players.get(1);
+    const w = WEAPONS[CLASSES[cls].weapon];
+    assert.equal(p.ammo, w.mag, `${cls} şarjörü yanlış doldu`);
+    assert.equal(p.reserve, w.reserve, `${cls} yedeği yanlış doldu`);
+  }
 });
 
 console.log('\n— Harita çeşitliliği —');

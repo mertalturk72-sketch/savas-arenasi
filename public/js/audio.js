@@ -55,7 +55,6 @@ export function sfxShot(weapon, pan = 0, dist = 0) {
 
   const cfg = {
     rifle: { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 },
-    lmg: { dur: 0.11, f0: 700, f1: 110, gain: 0.5, lp: 2200 },
     shotgun: { dur: 0.26, f0: 500, f1: 60, gain: 0.9, lp: 1500 },
     sniper: { dur: 0.34, f0: 1400, f1: 90, gain: 1.0, lp: 3400 },
   }[weapon] || { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 };

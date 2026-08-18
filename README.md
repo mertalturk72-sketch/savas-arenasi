@@ -262,12 +262,14 @@ Tek başınaysan HAZIRIM demen yeterli; botlarla hemen başlar.
 
 ### Sınıflar
 
-| Sınıf | Can | Hız | Silah | Özet |
-|---|---|---|---|---|
-| Komando | 100 | 218 | Tüfek | Dengeli, her duruma uyar |
-| Akıncı | 78 | 282 | Pompalı | Çok hızlı, yakın dövüş |
-| Keskin Nişancı | 88 | 176 | Keskin tüfek | Tek atışta 82 hasar, uzun menzil |
-| Ağır Piyade | 165 | 158 | Makineli | Yürüyen tank, bastırma ateşi |
+| Sınıf | Can | Hız | Silah | Cephane | Özet |
+|---|---|---|---|---|---|
+| Komando | 100 | 218 | Tüfek | 30 / 60 | Dengeli, her duruma uyar |
+| Akıncı | 78 | 282 | Pompalı | 5 / 15 | Çok hızlı, yakın dövüş |
+| Keskin Nişancı | 88 | 176 | Keskin tüfek | 5 / 15 | Tek atışta 82 hasar, uzun menzil |
+
+Cephane ekranda **şarjördeki / yedek** biçiminde yazar (`30 / 60`). Yedek bitince
+sayı kırmızıya döner. Haritadaki kutular yedeğin yarısını doldurur.
 
 Sınıfı maç sırasında da değiştirebilirsin; bir sonraki doğuşta geçerli olur.
 

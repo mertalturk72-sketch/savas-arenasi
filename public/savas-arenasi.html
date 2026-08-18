@@ -359,8 +359,9 @@ body.touch #canvas { cursor: none; }
 .ammo-wrap { margin-top: 8px; display: flex; align-items: baseline; gap: 4px; text-shadow: 0 2px 6px #000; }
 .ammo { font-size: 30px; font-weight: 700; }
 .ammo.low { color: var(--red); }
-.ammo-sep, .mag { font-size: 17px; color: var(--muted); }
-.reserve { margin-left: 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
+/* Cephane: "şarjördeki / yedek" — 30 / 60 */
+.ammo-sep { font-size: 17px; color: var(--muted); margin: 0 2px; }
+.reserve { font-size: 17px; color: var(--muted); font-weight: 600; }
 .reserve.empty { color: #ff7a6b; }
 .weapon-name { margin-left: 12px; font-size: 14px; color: var(--accent2); text-transform: uppercase; letter-spacing: .08em; }
 .reload-bar { width: 240px; height: 5px; background: #23303d; border-radius: 3px; margin-top: 7px; overflow: hidden; }
@@ -563,9 +564,8 @@ body.touch .hp-bar { width: 150px; height: 14px; }
 body.touch .hp-text { font-size: 19px; min-width: 40px; }
 body.touch .ammo-wrap { justify-content: center; margin-top: 4px; }
 body.touch .ammo { font-size: 21px; }
-body.touch .ammo-sep, body.touch .mag { font-size: 13px; }
+body.touch .ammo-sep, body.touch .reserve { font-size: 13px; }
 body.touch .weapon-name { font-size: 11px; margin-left: 8px; }
-body.touch .reserve { font-size: 11px; margin-left: 7px; }
 body.touch .reload-bar { width: 150px; margin: 5px auto 0; }
 body.touch .minimap { width: 128px; height: 96px; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }
 body.touch .settings-btn {
@@ -862,8 +862,7 @@ body:not(.touch) .touch-ui { display: none !important; }
         <div id="hpText" class="hp-text">100</div>
       </div>
       <div class="ammo-wrap">
-        <span id="ammoText" class="ammo">30</span><span class="ammo-sep">/</span><span id="magText" class="mag">30</span>
-        <span id="reserveText" class="reserve">yedek 90</span>
+        <span id="ammoText" class="ammo">30</span><span class="ammo-sep">/</span><span id="reserveText" class="reserve">60</span>
         <span id="weaponName" class="weapon-name">Tüfek</span>
       </div>
       <div id="reloadBar" class="reload-bar hidden"><div id="reloadFill"></div></div>
@@ -2073,15 +2072,6 @@ const CLASSES = {
     weapon: 'sniper',
     color: '#c39bff',
   },
-  agir: {
-    id: 'agir',
-    name: 'Ağır Piyade',
-    desc: 'Yürüyen tank. Makineli ile bastırma ateşi.',
-    speed: 158,
-    hp: 165,
-    weapon: 'lmg',
-    color: '#ff9f6e',
-  },
 };
 const CLASS_IDS = Object.keys(CLASSES);
 const DEFAULT_CLASS = 'komando';
@@ -2121,23 +2111,18 @@ const WEAPONS = {
   rifle: {
     id: 'rifle', name: 'Tüfek',
     dmg: 15, fireMs: 115, speed: 950, spread: 0.045, pellets: 1,
-    mag: 30, reserve: 90, reloadMs: 1700, range: 950, bulletR: 4, auto: true,
+    mag: 30, reserve: 60, reloadMs: 1700, range: 950, bulletR: 4, auto: true,
   },
   shotgun: {
     id: 'shotgun', name: 'Pompalı',
     dmg: 12, fireMs: 720, speed: 800, spread: 0.155, pellets: 7,
-    mag: 6, reserve: 30, reloadMs: 2200, range: 430, bulletR: 3, auto: false,
+    mag: 5, reserve: 15, reloadMs: 2200, range: 430, bulletR: 3, auto: false,
   },
   sniper: {
     id: 'sniper', name: 'Keskin Tüfek',
     dmg: 82, fireMs: 1250, speed: 1900, spread: 0.004, pellets: 1,
-    mag: 5, reserve: 25, reloadMs: 2500, range: 1700, bulletR: 3, auto: false,
+    mag: 5, reserve: 15, reloadMs: 2500, range: 1700, bulletR: 3, auto: false,
     laser: true,                      // nereye ateş edeceğini gösteren çizgi
-  },
-  lmg: {
-    id: 'lmg', name: 'Makineli',
-    dmg: 11, fireMs: 88, speed: 880, spread: 0.085, pellets: 1,
-    mag: 60, reserve: 180, reloadMs: 3300, range: 820, bulletR: 4, auto: true,
   },
 };
 const WEAPON_IDS = Object.keys(WEAPONS);
@@ -2476,7 +2461,7 @@ function getCharacterSprites(o) {
  * @param {number} x sol üst köşe (karakter kutusunun)
  * @param {number} y sol üst köşe
  * @param {number} scale karakterin çizim ölçeği (1 = 32x36 piksel)
- * @param {string} wepId 'rifle' | 'shotgun' | 'sniper' | 'lmg'
+ * @param {string} wepId 'rifle' | 'shotgun' | 'sniper'
  * @param {string} skin el rengi
  */
 function drawWeaponOnPreview(ctx, x, y, scale, wepId, skin) {
@@ -5393,7 +5378,7 @@ class ClientGame {
 
     this.el = {
       hpFill: $('hpFill'), hpText: $('hpText'),
-      ammo: $('ammoText'), mag: $('magText'), weapon: $('weaponName'),
+      ammo: $('ammoText'), weapon: $('weaponName'),
       reloadBar: $('reloadBar'), reloadFill: $('reloadFill'),
       matchInfo: $('matchInfo'), killfeed: $('killfeed'),
       netInfo: $('netInfo'), centerMsg: $('centerMsg'),
@@ -5920,13 +5905,13 @@ class ClientGame {
     this.el.hpText.textContent = you.hp;
     this.el.hpText.style.color = ratio > 0.5 ? '#e6edf4' : ratio > 0.25 ? '#ffb84d' : '#ff5f5f';
 
+    // Cephane "şarjördeki / yedek" biçiminde: 30 / 60
     this.el.ammo.textContent = you.am;
     this.el.ammo.classList.toggle('low', you.am <= Math.max(1, you.mg * 0.2));
-    this.el.mag.textContent = you.mg;
     if (this.el.reserve) {
-      const dry = (you.ar ?? 0) === 0;
-      this.el.reserve.textContent = dry && you.am === 0 ? 'CEPHANE BİTTİ' : `yedek ${you.ar ?? 0}`;
-      this.el.reserve.classList.toggle('empty', dry);
+      const reserve = you.ar ?? 0;
+      this.el.reserve.textContent = reserve;
+      this.el.reserve.classList.toggle('empty', reserve === 0);
     }
     this.el.weapon.textContent = (WEAPONS[this.weapon] || WEAPONS.rifle).name;
 
@@ -6001,7 +5986,7 @@ class ClientGame {
         <td class="num">${r.k}</td>
         <td class="num">${r.d}</td>
         <td class="num">${r.dm}</td>
-        <td class="num">${r.a ? '<span style="color:#4fd18b">ayakta</span>' : '<span style="color:#8b98a7">yerde</span>'}</td>
+        <td class="num">${r.a ? '<span style="color:#4fd18b">yaşıyor</span>' : '<span style="color:#8b98a7">yerde</span>'}</td>
       </tr>`;
     }
     html += '</table>';
@@ -6800,7 +6785,6 @@ function sfxShot(weapon, pan = 0, dist = 0) {
 
   const cfg = {
     rifle: { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 },
-    lmg: { dur: 0.11, f0: 700, f1: 110, gain: 0.5, lp: 2200 },
     shotgun: { dur: 0.26, f0: 500, f1: 60, gain: 0.9, lp: 1500 },
     sniper: { dur: 0.34, f0: 1400, f1: 90, gain: 1.0, lp: 3400 },
   }[weapon] || { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 };

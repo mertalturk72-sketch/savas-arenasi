@@ -7,6 +7,9 @@
 //  - "MAÇTAN ÇIK" ana menüye döndürüyor
 //  - Ses ayarı kaydediliyor
 //  - Oyuncular haritanın kenarında değil, iç tarafta doğuyor
+//  - Cephane "30 / 60" biçiminde yazıyor ("yedek 90" değil)
+//  - Skor tablosunda "ayakta" yerine "yaşıyor" yazıyor
+//  - Sınıf listesinde Ağır Piyade yok
 //
 // Çalıştır:  node test/browser-settings.mjs      (sunucu gerekmez, çevrimdışı)
 
@@ -38,6 +41,15 @@ async function startMatch(page, { mode = 0, bots = 6 } = {}) {
   }, bots);
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 6000 });
+
+  const classes = await page.evaluate(() =>
+    [...document.querySelectorAll('#classPicker .class-card .cc-name')].map((e) => e.textContent.trim()));
+  if (classes.length) {
+    console.log('sınıflar:', classes.join(' · '));
+    if (classes.some((c) => /ağır|agir/i.test(c))) errors.push('Ağır Piyade hâlâ listede');
+    if (classes.length !== 3) errors.push(`3 sınıf bekleniyordu, ${classes.length} bulundu`);
+  }
+
   await page.click('#btnReady');
   await page.waitForSelector('#screenGame.active', { timeout: 25000 });
   await page.waitForTimeout(1200);
@@ -120,7 +132,35 @@ async function startMatch(page, { mode = 0, bots = 6 } = {}) {
 
   await page.screenshot({ path: `${OUT}/settings-panel.png` });
 
-  // Çıkış → ana menü
+  // --- Cephane biçimi: "30 / 60" ---
+  await page.click('#setResume');
+  await page.waitForSelector('#settingsOverlay', { state: 'hidden', timeout: 3000 });
+  const ammo = await page.evaluate(() => ({
+    cur: (document.getElementById('ammoText').textContent || '').trim(),
+    res: (document.getElementById('reserveText').textContent || '').trim(),
+    magEl: !!document.getElementById('magText'),
+    hepsi: (document.querySelector('.ammo-wrap').textContent || '').replace(/\s+/g, ' ').trim(),
+  }));
+  console.log('cephane satırı:', JSON.stringify(ammo.hepsi));
+  if (ammo.magEl) errors.push('eski şarjör kapasitesi alanı hâlâ duruyor');
+  if (/yedek/i.test(ammo.hepsi)) errors.push('"yedek" yazısı hâlâ görünüyor');
+  if (!/^\d+$/.test(ammo.res)) errors.push(`yedek sayı olmalı, "${ammo.res}" bulundu`);
+  if (ammo.res !== '60') errors.push(`komando yedeği 60 olmalı, ${ammo.res} bulundu`);
+  if (ammo.cur !== '30' && Number(ammo.cur) > 30) errors.push(`şarjör 30'u aşamaz: ${ammo.cur}`);
+
+  // --- Skor tablosu: "yaşıyor" ---
+  await page.keyboard.down('Tab');
+  await page.waitForTimeout(400);
+  const sb = await page.evaluate(() => (document.getElementById('scoreboard').textContent || ''));
+  await page.keyboard.up('Tab');
+  console.log('skor tablosu "yaşıyor" içeriyor:', /yaşıyor/.test(sb) ? '✓' : '✗',
+    '· "ayakta" içeriyor:', /ayakta/i.test(sb) ? 'EVET ✗' : 'hayır ✓');
+  if (!/yaşıyor/.test(sb)) errors.push('skor tablosunda "yaşıyor" yazmıyor');
+  if (/ayakta/i.test(sb)) errors.push('skor tablosunda hâlâ "ayakta" yazıyor');
+
+  // Çıkış → ana menü (panel yukarıda kapatılmıştı, tekrar aç)
+  await page.click('#btnSettings');
+  await page.waitForSelector('#settingsOverlay:not(.hidden)', { timeout: 3000 });
   await page.click('#setLeave');
   await page.waitForSelector('#screenMenu.active', { timeout: 8000 });
   const closed = await page.evaluate(() => ({

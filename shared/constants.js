@@ -136,15 +136,6 @@ export const CLASSES = {
     weapon: 'sniper',
     color: '#c39bff',
   },
-  agir: {
-    id: 'agir',
-    name: 'Ağır Piyade',
-    desc: 'Yürüyen tank. Makineli ile bastırma ateşi.',
-    speed: 158,
-    hp: 165,
-    weapon: 'lmg',
-    color: '#ff9f6e',
-  },
 };
 export const CLASS_IDS = Object.keys(CLASSES);
 export const DEFAULT_CLASS = 'komando';
@@ -184,23 +175,18 @@ export const WEAPONS = {
   rifle: {
     id: 'rifle', name: 'Tüfek',
     dmg: 15, fireMs: 115, speed: 950, spread: 0.045, pellets: 1,
-    mag: 30, reserve: 90, reloadMs: 1700, range: 950, bulletR: 4, auto: true,
+    mag: 30, reserve: 60, reloadMs: 1700, range: 950, bulletR: 4, auto: true,
   },
   shotgun: {
     id: 'shotgun', name: 'Pompalı',
     dmg: 12, fireMs: 720, speed: 800, spread: 0.155, pellets: 7,
-    mag: 6, reserve: 30, reloadMs: 2200, range: 430, bulletR: 3, auto: false,
+    mag: 5, reserve: 15, reloadMs: 2200, range: 430, bulletR: 3, auto: false,
   },
   sniper: {
     id: 'sniper', name: 'Keskin Tüfek',
     dmg: 82, fireMs: 1250, speed: 1900, spread: 0.004, pellets: 1,
-    mag: 5, reserve: 25, reloadMs: 2500, range: 1700, bulletR: 3, auto: false,
+    mag: 5, reserve: 15, reloadMs: 2500, range: 1700, bulletR: 3, auto: false,
     laser: true,                      // nereye ateş edeceğini gösteren çizgi
-  },
-  lmg: {
-    id: 'lmg', name: 'Makineli',
-    dmg: 11, fireMs: 88, speed: 880, spread: 0.085, pellets: 1,
-    mag: 60, reserve: 180, reloadMs: 3300, range: 820, bulletR: 4, auto: true,
   },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);
