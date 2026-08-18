@@ -859,6 +859,9 @@ initPwa();
 show('menu');
 startup();
 
+// Açılış bekçisine "her şey yüklendi" işareti (bkz. index.html).
+window.__bootOk = true;
+
 function startup() {
   const params = new URLSearchParams(location.search);
 

@@ -637,8 +637,34 @@ body:not(.touch) .touch-ui { display: none !important; }
 ::-webkit-scrollbar-thumb:hover { background: #3a4b5c; }
 
 </style>
+
+<!-- Ücretsiz bulut sunucu 15 dk boştaysa uykuya geçer. Uyanma anına denk gelen
+     ilk istek yarım dönebilir (CSS ya da JS gelmez) ve sayfa biçimsiz/ölü
+     görünür. Aşağıdaki küçük stil, o durumda bile ekranın okunur kalmasını
+     sağlar; devamındaki betik durumu fark edip sayfayı kendiliğinden tazeler. -->
+<style id="bootStyle">
+  html, body { background: #0a0e13; color: #dfe7ef; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #bootMsg { position: fixed; inset: 0; z-index: 9999; background: #0a0e13;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 24px; }
+  #bootMsg.show { display: flex; }
+  #bootMsg h1 { font-size: 21px; letter-spacing: .05em; font-weight: 700; }
+  #bootMsg p { color: #8b98a7; font-size: 14px; max-width: 430px; line-height: 1.55; }
+  #bootMsg button { background: #ff8a3d; color: #16100a; font-weight: 700;
+    border: none; border-radius: 9px; padding: 12px 22px; font-size: 15px; cursor: pointer; }
+  .boot-spin { width: 38px; height: 38px; border: 3px solid #26323f; border-top-color: #ff8a3d;
+    border-radius: 50%; animation: bootSpin .9s linear infinite; }
+  @keyframes bootSpin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body>
+
+<div id="bootMsg">
+  <div class="boot-spin"></div>
+  <h1>Sunucu uyanıyor…</h1>
+  <p id="bootText">Ücretsiz sunucu bir süre boş kalınca uykuya geçiyor. Birkaç saniye sürer, sayfa kendiliğinden tazelenecek.</p>
+  <button id="bootRetry" style="display:none">Yeniden dene</button>
+</div>
 
 <!-- ================= BAĞLANTI DURUMU ================= -->
 <div id="connBar" class="conn-bar hidden"><span id="connText">Bağlanıyor…</span></div>
@@ -916,6 +942,61 @@ body:not(.touch) .touch-ui { display: none !important; }
 
 <div id="toast" class="toast hidden"></div>
 
+<script>
+// --- Açılış bekçisi -------------------------------------------------------
+// Sayfa gerçekten ayağa kalktı mı diye bakar. Kalkmadıysa (uykudaki sunucudan
+// yarım gelen CSS/JS yüzünden) sayfayı en fazla 3 kez kendiliğinden tazeler,
+// olmazsa kullanıcıya anlaşılır bir mesaj ve düğme gösterir. Dosyadan açılan
+// tek dosyalık sürümde ağ yok, bu yüzden hiç çalışmaz.
+(function () {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+
+  var KEY = 'sa_boot_retry';
+  var tries = 0;
+  try { tries = Number(sessionStorage.getItem(KEY) || 0); } catch (e) { /* yok say */ }
+
+  // style.css yüklendiyse .hidden kuralı yürürlüktedir — en ucuz sınama bu.
+  function stylesLoaded() {
+    var probe = document.createElement('div');
+    probe.className = 'hidden';
+    document.body.appendChild(probe);
+    var ok = getComputedStyle(probe).display === 'none';
+    probe.parentNode.removeChild(probe);
+    return ok;
+  }
+
+  function giveUp() {
+    document.getElementById('bootText').textContent =
+      'Sunucuya ulaşılamadı. Birkaç saniye sonra "Yeniden dene" düğmesine bas — '
+      + 'ücretsiz sunucu uyanırken bu olabiliyor.';
+    var b = document.getElementById('bootRetry');
+    b.style.display = '';
+    b.onclick = function () {
+      try { sessionStorage.removeItem(KEY); } catch (e) { /* yok say */ }
+      location.reload();
+    };
+    document.getElementById('bootMsg').classList.add('show');
+  }
+
+  // Sağlıklı olduğunu anlar anlamaz bırak; beklemeyi sadece bozuk durumda yap.
+  window.addEventListener('load', function () {
+    var deadline = Date.now() + 5000;
+    var timer = setInterval(function () {
+      if (stylesLoaded() && window.__bootOk === true) {
+        clearInterval(timer);
+        try { sessionStorage.removeItem(KEY); } catch (e) { /* yok say */ }
+        return;
+      }
+      if (Date.now() < deadline) return;
+      clearInterval(timer);
+      if (tries >= 3) { giveUp(); return; }
+      try { sessionStorage.setItem(KEY, String(tries + 1)); } catch (e) { /* yok say */ }
+      document.getElementById('bootMsg').classList.add('show');
+      setTimeout(function () { location.reload(); }, 1200);
+    }, 350);
+  });
+})();
+</script>
 <script>
 (function () {
   'use strict';
@@ -1794,6 +1875,9 @@ initSettings();
 initPwa();
 show('menu');
 startup();
+
+// Açılış bekçisine "her şey yüklendi" işareti (bkz. index.html).
+window.__bootOk = true;
 
 function startup() {
   const params = new URLSearchParams(location.search);

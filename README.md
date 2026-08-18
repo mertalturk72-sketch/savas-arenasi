@@ -198,6 +198,14 @@ sunucuyu ücretsiz bir buluta koymak. Depo zaten hazır (`render.yaml`).
 giren oyuncu ~1 dakika bekler, sonra herkese açık ve hızlıdır. Bölge Frankfurt
 seçili — Türkiye'ye en yakın olanı.
 
+Uyanma anına denk gelen ilk istek yarım dönebilir: HTML gelir ama `style.css`
+yerine sunucunun hata sayfası gelir ve oyun biçimsiz bir metin yığını gibi
+görünür. Oyun bunu kendi kendine yakalıyor: `index.html` içindeki küçük açılış
+bekçisi sayfanın gerçekten ayağa kalkıp kalkmadığını denetler, kalkmadıysa
+"Sunucu uyanıyor…" perdesini gösterip sayfayı en fazla 3 kez tazeler, olmazsa
+"Yeniden dene" düğmesi sunar. `npm run test:browser` bu senaryoyu 503 döndüren
+sahte bir sunucuyla sınıyor.
+
 ### Geçici alternatif: tünel
 
 PC'n açıkken hızlıca dışarı açmak istersen:
@@ -408,7 +416,8 @@ ağ tamamen kapalıyken tam maç oynatması ve **hiçbir dış istek yapmaması*
 güvensiz (`http://`) kaynakta uyarının çıkıp `localhost`'ta çıkmaması,
 davet linkiyle tek tıkla aynı lobiye girilmesi, ayarlar panelinin açılıp
 kapanması ve açıkken girdileri kilitlemesi, oyuncuların haritanın kenarında
-doğmaması.
+doğmaması, uykudan uyanan sunucuda sayfanın kendini toparlaması ve sonsuz
+tazeleme döngüsüne girmemesi.
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 ayrı senaryoda sınanıyor: el
 sıkışma özeti, parçalı mesaj birleştirme, bayt bayt gelen çerçeveler, 16/64 bit
