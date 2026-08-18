@@ -1,0 +1,23 @@
+# Render.com için hazır yapılandırma (ücretsiz plan).
+# Depoyu Render'a bağlayınca bu dosyayı görüp sunucuyu kendiliğinden kurar.
+#
+# Ücretsiz planda servis 15 dakika boş kalınca uyur; ilk giren oyuncu
+# ~1 dakika bekler, sonra herkese açık ve hızlıdır.
+
+services:
+  - type: web
+    name: savas-arenasi
+    runtime: node
+    plan: free
+    region: frankfurt          # Türkiye'ye en yakın bölge
+    # Sunucunun hiçbir dış paketi yok (WebSocket dahil her şey depoda).
+    # Bu yüzden kurulacak bir şey de yok.
+    buildCommand: echo "bagimlilik yok"
+    startCommand: node server/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production

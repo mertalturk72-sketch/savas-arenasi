@@ -1,0 +1,34 @@
+{
+  "name": "savas-oyunu",
+  "version": "1.0.0",
+  "description": "Lobili, en fazla 20 kişilik 2D tepeden bakış çok oyunculu savaş oyunu. Çevrimdışı bot modu, PWA ve Android APK desteği.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node test/smoke.js && node test/ws-protocol.mjs",
+    "test:load": "node test/load.mjs",
+    "test:browser": "node test/browser.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-settings.mjs && node test/browser-bundle.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
+    "build:www": "node scripts/build-www.mjs",
+    "android:sync": "node scripts/build-www.mjs && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:open": "npm run android:sync && npx cap open android",
+    "test:offline": "node test/browser-offline.mjs",
+    "test:bundle": "node scripts/build-www.mjs && node test/browser-bundle.mjs",
+    "build:single": "node scripts/build-single.mjs",
+    "test:single": "node scripts/build-single.mjs && node test/browser-single.mjs",
+    "test:ws": "node test/ws-protocol.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "license": "MIT",
+  "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "ws": "^8.21.3"
+  }
+}
