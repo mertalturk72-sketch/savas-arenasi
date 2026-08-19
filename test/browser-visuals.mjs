@@ -13,6 +13,10 @@ if (!fs.existsSync(FILE)) {
 }
 const OUT = '/tmp/shots';
 fs.mkdirSync(OUT, { recursive: true });
+// Paketlenmiş sürüm açılışta sunucuya "yeni sürüm var mı" diye sorar.
+// Testte internet yok; bu isteğin başarısız olması beklenen bir durumdur.
+const SURUM_GURULTUSU = /surum\.json|ERR_TUNNEL|ERR_INTERNET|ERR_NAME_NOT_RESOLVED|Failed to load resource/i;
+
 const errors = [];
 
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
@@ -23,7 +27,11 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(`sayfa hatası: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(`konsol: ${m.text()}`); });
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  if (SURUM_GURULTUSU.test(m.text())) return;
+  errors.push(`konsol: ${m.text()}`);
+});
 
 await page.goto('file://' + FILE);
 await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
@@ -86,9 +94,11 @@ if (!frames) {
 }
 
 // Oyuncuyu etrafı açık bir noktaya taşı ve yürüyebileceği bir yön seç.
+// Bunu birden çok kez çağırıyoruz: oyuncu yürüdükçe konumu değişiyor ve
+// bir sonraki ölçümden önce yine açık bir yön gerekiyor.
 // Harita her maçta yeniden üretildiği için körlemesine "sağa yürü" demek
 // bazen duvara toslamak demekti; test o yüzden ara sıra düşüyordu.
-const walkDir = await page.evaluate(() => {
+const acikYon = () => page.evaluate(() => {
   const hub = window.__net.impl.hub;
   const sim = [...hub.lobbies.values()][0].game;
   const me = sim.players.get(window.__net.impl.client.id);
@@ -115,6 +125,7 @@ const walkDir = await page.evaluate(() => {
   for (const d of DIRS) if (clear(me.x, me.y, d.dx, d.dy, 260)) return d.key;
   return 'd';
 });
+const walkDir = await acikYon();
 console.log('yürüme yönü:', walkDir);
 
 // ===== 2) Adım izi (toz) =================================================
@@ -137,6 +148,11 @@ console.log('yürüme yönü:', walkDir);
 {
   // Yürüyüş fazı kesirli ilerlemeli (kareden kareye zıplamamalı) ve
   // durup kalkarken gövde salınımı yavaşça sönmeli/açılmalı.
+  // ÖNEMLİ: faz yalnızca YÜRÜRKEN ilerler. Dururken sabit kalır ve tam sayıya
+  // denk gelirse test haksız yere "geçiş sert" der. O yüzden ölçüm boyunca
+  // tuşu basılı tutuyoruz.
+  const yon2 = await acikYon();
+  await page.keyboard.down(yon2);
   const phases = await page.evaluate(async () => {
     const out = [];
     const g = window.__game;
@@ -147,6 +163,9 @@ console.log('yürüme yönü:', walkDir);
     }
     return out;
   });
+  await page.keyboard.up(yon2);
+  const ilerledi = phases[phases.length - 1] > phases[0];
+  if (!ilerledi) errors.push(`yürürken faz ilerlemedi: ${phases[0]} → ${phases[phases.length - 1]}`);
   const fractional = phases.some((v) => Math.abs(v - Math.round(v)) > 0.05);
   console.log('yürüyüş fazı kesirli:', fractional ? '✓' : '✗', phases.slice(0, 4).map((v) => v.toFixed(2)).join(' '));
   if (!fractional) errors.push('yürüyüş fazı tam sayı adımlarla ilerliyor — geçiş sert');
@@ -249,8 +268,9 @@ console.log('yürüme yönü:', walkDir);
     c.width = Math.ceil(o.w + 40); c.height = Math.ceil(o.h + 40);
     const cx = c.getContext('2d');
     cx.translate(20 - o.x, 20 - o.y);
-    g.renderer.drawObstacles(cx, { obstacles: [o] },
-      { x0: o.x - 50, y0: o.y - 50, x1: o.x + o.w + 50, y1: o.y + o.h + 50 });
+    g.renderer.paintObstacles(cx, { obstacles: [o] },
+      { x0: o.x - 50, y0: o.y - 50, x1: o.x + o.w + 50, y1: o.y + o.h + 50 },
+      g.day || { shadowX: 0.5, shadowY: 0.9, shadowAlpha: 0.4, elev: 0.6 });
     const d = cx.getImageData(0, 0, c.width, c.height).data;
     const tones = new Set();
     for (let i = 0; i < d.length; i += 4) {

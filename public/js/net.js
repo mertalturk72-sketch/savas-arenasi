@@ -78,6 +78,10 @@ class WsTransport {
   resolveUrl() {
     let u = (this.url || '').trim();
     if (!u) {
+      // Sayfanın kendi sunucusu. file:// gibi sunucusuz bir yerden açıldıysa
+      // location.host BOŞTUR; böyle bir adrese bağlanmak imkânsızdır, o yüzden
+      // burada açıkça hata veriyoruz (sessizce sonsuz denemek yerine).
+      if (!location.host) throw new Error('Sunucu adresi yok');
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       return `${proto}//${location.host}`;
     }
@@ -92,7 +96,12 @@ class WsTransport {
   start() {
     this.stopped = false;
     let target;
-    try { target = this.resolveUrl(); } catch { this.net.emit('_error', { message: 'Adres anlaşılamadı' }); return; }
+    try {
+      target = this.resolveUrl();
+    } catch (e) {
+      this.net.emit('_error', { message: e.message || 'Adres anlaşılamadı' });
+      return;
+    }
 
     try {
       this.ws = new WebSocket(target);

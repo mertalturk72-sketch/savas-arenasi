@@ -9,7 +9,7 @@
     "dev": "node --watch server/index.js",
     "test": "node test/smoke.js && node test/ws-protocol.mjs",
     "test:load": "node test/load.mjs",
-    "test:browser": "node test/browser.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-daynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
+    "test:browser": "node test/browser.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-apkupdate.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-daynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
     "build:www": "node scripts/build-www.mjs",
     "android:sync": "node scripts/build-www.mjs && npx cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",

@@ -2,8 +2,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { contentStamp as buildStamp } from './stamp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -28,30 +28,19 @@ const MIME = {
 // Yalnızca bu klasörler dışarıya açık.
 const ALLOWED = ['public', 'shared'];
 
-// --- Service worker sürüm damgası ---------------------------------------
-// Oyun dosyalarından bir özet çıkarıp sw.js'e gömüyoruz. Böylece kodda bir
-// şey değişince telefondaki kurulu uygulama eski sürümde takılı kalmaz;
-// yeni service worker kendiliğinden devreye girer.
-function hashTree(dir, hash) {
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return hash; }
-  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) hashTree(full, hash);
-    else if (e.name !== 'sw.js') {
-      try { hash.update(e.name).update(fs.readFileSync(full)); } catch { /* atla */ }
-    }
-  }
-  return hash;
+// Damga hesabı server/stamp.js'de — sunucu, www paketi ve tek dosya sürümü
+// aynı işlevi kullanıyor ki üçü de aynı sonucu versin.
+let stampCache = null;
+export function contentStamp() {
+  if (!stampCache) stampCache = buildStamp(ROOT);
+  return stampCache;
 }
 
 let swCache = null;
 function buildServiceWorker() {
   if (swCache) return swCache;
-  const stamp = hashTree(path.join(ROOT, 'shared'),
-    hashTree(path.join(ROOT, 'public'), crypto.createHash('sha256'))).digest('hex').slice(0, 12);
   const src = fs.readFileSync(path.join(ROOT, 'public', 'sw.js'), 'utf-8');
-  swCache = src.replace(/const VERSION = '[^']*';/, `const VERSION = '${stamp}';`);
+  swCache = src.replace(/const VERSION = '[^']*';/, `const VERSION = '${contentStamp()}';`);
   return swCache;
 }
 
@@ -64,6 +53,21 @@ export function serveStatic(req, res) {
   }
 
   if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
+
+  // Sürüm bilgisi: paketlenmiş uygulama (APK / tek dosya) bunu okuyup
+  // kendi damgasıyla karşılaştırır. Başka kaynaklardan da okunabilmesi
+  // gerektiği için CORS açık — içinde sadece bir sürüm dizesi var.
+  if (urlPath === '/surum.json') {
+    const body = JSON.stringify({ surum: contentStamp(), oyun: 'savas-arenasi' });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': Buffer.byteLength(body),
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(body);
+    return true;
+  }
 
   // Service worker'ı sürüm damgasıyla üretip veriyoruz
   if (urlPath === '/sw.js') {

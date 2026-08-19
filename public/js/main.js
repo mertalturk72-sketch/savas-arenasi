@@ -2,6 +2,7 @@
 
 import {
   MODES, CLASSES, TEAMS, MAX_PLAYERS, WEAPONS, MAX_NAME_LEN, CHARACTERS,
+  UPDATE_SERVER,
 } from '/shared/constants.js';
 import { getCharacterSprites, drawWeaponOnPreview } from './sprites.js';
 import * as spritesModule from './sprites.js';
@@ -82,7 +83,20 @@ async function useLocal(save = true) {
   await net.connectLocal();
 }
 
-function useOnline(url, save = true) {
+// Boş sunucu adresi "bu sayfanın sunucusu" demektir. Ama paketlenmiş sürümde
+// (tek dosya / APK) sayfanın bir sunucusu YOKTUR — o durumda boş adres,
+// bağlanılamayan boş bir adrese dönüşüyordu ve ekranda "adresine
+// ulaşılamıyor — 3. deneme" gibi adresi olmayan bir mesaj çıkıyordu.
+// Paketlenmiş sürümde boş adres artık bulut sunucuya çözülüyor.
+function resolveServerUrl(url) {
+  const u = (url || '').trim();
+  if (u) return u;
+  const servedFromServer = location.protocol === 'http:' || location.protocol === 'https:';
+  return servedFromServer ? '' : UPDATE_SERVER;
+}
+
+function useOnline(rawUrl, save = true) {
+  const url = resolveServerUrl(rawUrl);
   state.netMode = 'online';
   // Adresi HEMEN kaydetmiyoruz: çalışmayan bir adres kaydedilirse tarayıcıda
   // kalıcı olarak takılı kalır ve kullanıcı bir daha hiçbir sunucuya
@@ -463,8 +477,17 @@ net.on('_close', () => {
 
 // Hangi adrese bağlanmaya çalışıyoruz? Boşsa sayfanın kendi sunucusu.
 function currentTarget() {
-  return net.url || location.host;
+  return net.url || location.host || UPDATE_SERVER;
 }
+
+// Bağlantı hiç kurulamayacak durumda (mesela adres yok): kullanıcıyı sonsuz
+// "deneniyor" ekranında bırakmayalım, sebebini söyleyip çevrimdışına dönelim.
+net.on('_error', (d) => {
+  if (state.netMode !== 'online') return;
+  toast(`Bağlanılamadı: ${d.message}. Çevrimdışı moda geçiliyor.`);
+  cancelAutoFallback();
+  useLocal(false);
+});
 
 net.on('_retry', (d) => {
   if (state.netMode !== 'online') return;
@@ -634,6 +657,10 @@ function initUi() {
   // Bağlantı modu sekmeleri
   $('tabLocal').onclick = () => { sfx.unlockAudio(); sfx.sfxUi(); cancelAutoFallback(); useLocal(); };
   $('tabOnline').onclick = () => {
+    // Paketlenmiş sürümde "boş = bu sayfanın sunucusu" diye bir şey yok;
+    // kutuyu bulut sunucuyla dolduruyoruz ki kullanıcı nereye bağlandığını görsün.
+    const packaged = location.protocol !== 'http:' && location.protocol !== 'https:';
+    if (packaged && !$('serverInput').value.trim()) $('serverInput').value = UPDATE_SERVER;
     sfx.unlockAudio(); sfx.sfxUi(); cancelAutoFallback();
     useOnline($('serverInput').value.trim());
   };
@@ -851,6 +878,75 @@ function showInsecureWarning() {
 // ama sunucuya yeni sürüm yüklenince tarayıcı bir süre eski kopyayı
 // göstermeye devam edebiliyor — "neden değişmedi?" sorusunun sebebi bu.
 // Bu düğme kayıtlı kopyayı ve tüm önbellekleri silip sayfayı sıfırdan yükler.
+// ============================================================ paket güncelleme
+//
+// Paketlenmiş sürüm (APK ya da tek dosya) oyunun tamamını içinde taşır; bu
+// yüzden internetsiz çalışır ama kendiliğinden yenilenmez. Burada açılışta
+// sunucudaki sürüm damgasına bakıp yeni sürüm çıkmışsa kullanıcıya haber
+// veriyoruz. "GÜNCELLE" denince uygulama sunucudaki güncel sürüme geçiyor ve
+// bu tercih hatırlanıyor — bir daha APK kurmak gerekmiyor.
+//
+// İnternet yoksa hiçbir şey olmaz: oyun içindeki kopyayla sessizce açılır.
+const UPDATE_PREF_KEY = 'sa_online_surum';
+const UPDATE_SKIP_KEY = 'sa_surum_atla';
+
+function isPackaged() {
+  return typeof window.__BUILD__ === 'string' && window.__BUILD__.length > 0;
+}
+
+function serverBase() {
+  // Kullanıcı kendi sunucusunu yazdıysa ona bak, yoksa varsayılana.
+  const custom = store('sa_server');
+  try { return custom ? normalizeHttp(custom) : UPDATE_SERVER; } catch { return UPDATE_SERVER; }
+}
+
+function showBuildInfo() {
+  const el = $('buildInfo');
+  if (!el) return;
+  if (!isPackaged()) return;
+  el.classList.remove('hidden');
+  el.textContent = `sürüm ${window.__BUILD__}`;
+}
+
+async function checkForUpdate() {
+  if (!isPackaged()) return;                 // sunucudan açıldıysa zaten günceldir
+  if (navigator.onLine === false) return;    // internet yok, sessizce geç
+
+  const base = serverBase();
+  let uzak;
+  try {
+    const res = await fetch(`${base}/surum.json`, { cache: 'no-store' });
+    if (!res.ok) return;
+    uzak = await res.json();
+  } catch { return; }                        // sunucuya ulaşılamadı: sorun değil
+
+  if (!uzak || typeof uzak.surum !== 'string') return;
+  if (uzak.surum === window.__BUILD__) return;              // zaten güncel
+  if (store(UPDATE_SKIP_KEY) === uzak.surum) return;        // bu sürümü atladı
+
+  const bar = $('updateBar');
+  $('updateText').textContent = `Yeni sürüm hazır (${uzak.surum.slice(0, 6)})`;
+  bar.classList.remove('hidden');
+  $('btnGetUpdate').onclick = () => {
+    store(UPDATE_PREF_KEY, '1');
+    location.href = base + '/';
+  };
+  $('btnSkipUpdate').onclick = () => {
+    store(UPDATE_SKIP_KEY, uzak.surum);
+    bar.classList.add('hidden');
+  };
+}
+
+// Daha önce "GÜNCELLE" dendiyse ve internet varsa, uygulama açılışta doğrudan
+// sunucudaki güncel sürüme gider. İnternet yoksa içindeki kopyayla açılır.
+function preferOnlineIfChosen() {
+  if (!isPackaged()) return false;
+  if (store(UPDATE_PREF_KEY) !== '1') return false;
+  if (navigator.onLine === false) return false;
+  location.replace(serverBase() + '/');
+  return true;
+}
+
 function showUpdateButton() {
   const btn = $('btnUpdate');
   const note = $('downloadNote');
@@ -912,7 +1008,9 @@ function initPwa() {
   }
   showInsecureWarning();
   showUpdateButton();
+  showBuildInfo();
   cleanUpdateStamp();
+  checkForUpdate();
 
   // "Ana ekrana ekle" istemi: tarayıcı izin verdiğinde butonu göster.
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -961,11 +1059,15 @@ window.__render = renderModule;
 window.__net = net;
 window.__state = state;
 
-initUi();
-initSettings();
-initPwa();
-show('menu');
-startup();
+// Daha önce "GÜNCELLE" denmişse ve internet varsa doğrudan güncel sürüme git.
+// Bu, oyunun geri kalanını kurmadan önce olmalı — boşuna iş yapmayalım.
+if (!preferOnlineIfChosen()) {
+  initUi();
+  initSettings();
+  initPwa();
+  show('menu');
+  startup();
+}
 
 // Açılış bekçisine "her şey yüklendi" işareti (bkz. index.html).
 window.__bootOk = true;

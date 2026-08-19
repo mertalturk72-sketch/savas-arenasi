@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { contentStamp } from '../server/stamp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -149,6 +150,10 @@ if (fs.existsSync(grassPath)) {
   grassDataUrl = `data:image/jpeg;base64,${fs.readFileSync(grassPath).toString('base64')}`;
 }
 
+// --- Bu paketin içerik damgası --------------------------------------------
+// Sunucunun /surum.json için kullandığı işlevin AYNISI (server/stamp.js).
+const buildStamp = contentStamp(ROOT);
+
 // --- HTML'i hazırla -------------------------------------------------------
 let html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf-8');
 const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf-8');
@@ -178,6 +183,8 @@ const registry = `<script>
   // Paketlenmiş sürüm: içinde sunucu yok, doğrudan çevrimdışı başlar.
   window.__SINGLE_FILE__ = true;
   window.__BUNDLED__ = true;
+  // Bu paketin içerik damgası: sunucudaki sürümle karşılaştırmak için.
+  window.__BUILD__ = ${JSON.stringify(buildStamp)};
   // Zemin dokusu dosyadan okunamaz (dış istek yok), gömülü hâlini veriyoruz.
   window.__GRASS_URL = ${JSON.stringify(grassDataUrl)};
 ${[...modules.entries()].map(([id, code]) => `

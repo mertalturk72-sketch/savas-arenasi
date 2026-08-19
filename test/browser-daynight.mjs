@@ -22,6 +22,10 @@ if (!fs.existsSync(FILE)) {
 const URL_ = 'file://' + FILE;
 const OUT = '/tmp/shots';
 fs.mkdirSync(OUT, { recursive: true });
+// Paketlenmiş sürüm açılışta sunucuya "yeni sürüm var mı" diye sorar.
+// Testte internet yok; bu isteğin başarısız olması beklenen bir durumdur.
+const SURUM_GURULTUSU = /surum\.json|ERR_TUNNEL|ERR_INTERNET|ERR_NAME_NOT_RESOLVED|Failed to load resource/i;
+
 const errors = [];
 
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
@@ -32,7 +36,11 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext({ viewport: { width: 960, height: 600 } });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(`sayfa hatası: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(`konsol: ${m.text()}`); });
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  if (SURUM_GURULTUSU.test(m.text())) return;
+  errors.push(`konsol: ${m.text()}`);
+});
 
 await page.goto(URL_);
 await page.waitForSelector('#screenMenu.active', { timeout: 10000 });

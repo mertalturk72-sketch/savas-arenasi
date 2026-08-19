@@ -1,0 +1,11 @@
+{
+  "appId": "com.nuri.savasarenasi",
+  "appName": "Savaş Arenası",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

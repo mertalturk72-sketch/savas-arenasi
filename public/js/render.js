@@ -90,6 +90,13 @@ const VIS_DIST = 1300;
 // büyütmek kabalaştırır. Oyuncu boyu ~63 px olduğu için 190 iyi oturuyor.
 const GRASS_TILE_PX = 190;
 
+// Sabit dünya katmanının parça boyutu ve önbellekte tutulacak parça sayısı.
+// 512 px'lik parçalar 1280x720 ekranda ~12 parça eder; 48 parça hem yeterli
+// hem de bellekte ~48 MB yerine ~48*512*512*4 ≈ 50 MB... değil: parçalar
+// yalnızca ihtiyaç oldukça üretilir ve en eskisi atılır.
+const TILE_PX = 512;
+const MAX_TILES = 40;
+
 export class FX {
   constructor() { this.parts = []; this.shake = 0; }
 
@@ -158,6 +165,8 @@ export class Renderer {
     // id -> yürüyüş salınımının açıklığı (0..1). Oyuncu nesneleri her karede
     // yeniden kurulduğu için bu değeri burada saklamak zorundayız.
     this.gait = new Map();
+    // Sabit dünya parçaları (zemin + binalar). Bkz. drawWorld().
+    this.tiles = new Map();
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -226,9 +235,9 @@ export class Renderer {
     const day = g.day || daylight(12);
     this.day = day;
 
-    this.drawGround(ctx, g.map, view);
+    // Zemin + binalar tek seferde, önbellekten
+    this.drawWorld(ctx, g.map, view, day);
     this.drawPickups(ctx, g, view);
-    this.drawObstacles(ctx, g.map, view);
     this.drawAimLaser(ctx, g);
     this.drawBullets(ctx, g, view);
     g.fx.draw(ctx);
@@ -315,16 +324,19 @@ export class Renderer {
     const img = this.grassImage();
     if (img && img.complete && img.naturalWidth > 0) {
       if (!this._grassFromImg) {
-        const pat = ctx.createPattern(img, 'repeat');
         // Ölçek meselesi: dokuyu 1:1 döşersen çim telleri karakter boyuna
-        // yaklaşır ve orantı bozuk görünür. Bir kiremiti GRASS_TILE_PX kadar
-        // dünya pikseline sığdırıyoruz; tel boyu karaktere göre doğru oluyor.
-        // (Daha büyük görsel bunu çözmez — mesele çözünürlük değil, ölçek.)
-        try {
-          const k = GRASS_TILE_PX / img.naturalWidth;
-          if (pat && pat.setTransform) pat.setTransform(new DOMMatrix().scale(k, k));
-        } catch { /* setTransform yoksa 1:1 döşenir */ }
-        this._grassFromImg = pat;
+        // yaklaşır ve orantı bozuk görünür. Bir kiremit GRASS_TILE_PX kadar
+        // dünya pikseli kaplamalı.
+        //
+        // Bunu pattern.setTransform ile yapmak ÇALIŞIR ama pahalıdır: her
+        // pikselde ek bir dönüşüm hesabı demek. Onun yerine görseli bir kez
+        // hedef boyuta çizip deseni ondan üretiyoruz — desen artık 1:1,
+        // örnekleme ucuz. (Ölçüm: zemin çizimi ~8 ms'den ~1 ms'ye indi.)
+        const t = document.createElement('canvas');
+        t.width = GRASS_TILE_PX;
+        t.height = GRASS_TILE_PX;
+        t.getContext('2d').drawImage(img, 0, 0, GRASS_TILE_PX, GRASS_TILE_PX);
+        this._grassFromImg = ctx.createPattern(t, 'repeat');
       }
       if (this._grassFromImg) return this._grassFromImg;
     }
@@ -419,60 +431,143 @@ export class Renderer {
     return list;
   }
 
-  drawGround(ctx, map, view) {
-    // Harita dışı: koyu boşluk
-    ctx.fillStyle = '#0b110c';
-    ctx.fillRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
+  // Harita ölçeğindeki yumuşak lekeler ve kenar kararması SABİTTİR. Her karede
+  // 34 ayrı radyal gradyan çizmek yerine hepsini bir kez küçük bir tuvale
+  // basıp o tuvali gerdirerek çiziyoruz: 34 gradyan yerine tek drawImage.
+  // Lekeler zaten bulanık olduğu için düşük çözünürlük fark ettirmiyor.
+  groundOverlay(map) {
+    const key = `${map.w}x${map.h}`;
+    if (this._overlay && this._overlayKey === key) return this._overlay;
 
-    // Harita zemini: çimen
-    ctx.save();
-    ctx.fillStyle = this.grassPattern(ctx);
-    ctx.fillRect(0, 0, map.w, map.h);
-    ctx.restore();
+    const S = 256;                       // küçük: bulanık lekeler için fazlasıyla yeter
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = Math.max(1, Math.round(S * map.h / map.w));
+    const g = c.getContext('2d');
+    const sx = c.width / map.w, sy = c.height / map.h;
 
-    // Harita ölçeğinde yumuşak lekeler: döşeme tekrarını gizler
     for (const b of this.grassBlotches(map)) {
-      if (b.x + b.r < view.x0 || b.x - b.r > view.x1
-        || b.y + b.r < view.y0 || b.y - b.r > view.y1) continue;
-      const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
-      grad.addColorStop(0, b.light ? 'rgba(84,116,70,0.16)' : 'rgba(10,20,12,0.18)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-      ctx.fill();
+      const x = b.x * sx, y = b.y * sy, r = b.r * sx;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, b.light ? 'rgba(84,116,70,0.16)' : 'rgba(10,20,12,0.18)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
     }
 
-    // Kenarlara doğru yumuşak kararma: alan sınırı hissedilsin (sert şerit değil)
-    const edge = 90;
+    // Kenarlara doğru yumuşak kararma
+    const e = 90;
     const bands = [
-      [0, 0, map.w, edge, 0, 1],
-      [0, map.h - edge, map.w, edge, 0, -1],
-      [0, 0, edge, map.h, 1, 0],
-      [map.w - edge, 0, edge, map.h, -1, 0],
+      [0, 0, map.w, e, 0, 1], [0, map.h - e, map.w, e, 0, -1],
+      [0, 0, e, map.h, 1, 0], [map.w - e, 0, e, map.h, -1, 0],
     ];
     for (const [bx, by, bw, bh, dx, dy] of bands) {
-      const x0 = dx > 0 ? bx : dx < 0 ? bx + bw : bx;
-      const y0 = dy > 0 ? by : dy < 0 ? by + bh : by;
-      const x1 = dx > 0 ? bx + bw : dx < 0 ? bx : bx;
-      const y1 = dy > 0 ? by + bh : dy < 0 ? by : by;
-      const grad = ctx.createLinearGradient(x0, y0, x1, y1);
-      grad.addColorStop(0, 'rgba(0,0,0,0.30)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(bx, by, bw, bh);
+      const x0 = (dx > 0 ? bx : dx < 0 ? bx + bw : bx) * sx;
+      const y0 = (dy > 0 ? by : dy < 0 ? by + bh : by) * sy;
+      const x1 = (dx > 0 ? bx + bw : dx < 0 ? bx : bx) * sx;
+      const y1 = (dy > 0 ? by + bh : dy < 0 ? by : by) * sy;
+      const gr = g.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, 'rgba(0,0,0,0.30)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(bx * sx, by * sy, bw * sx, bh * sy);
     }
 
-    // Sınır duvarı
-    ctx.strokeStyle = '#46523c';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(0, 0, map.w, map.h);
+    this._overlayKey = key;
+    this._overlay = c;
+    return c;
   }
 
-  // Engeller artık düz blok değil, tepeden görünen BİNA: çatı yüzeyi, parapet
-  // (çatı korkuluğu), çatı panelleri ve çatı üstü detayları (bacalar, çatı
-  // pencereleri). Detaylar binanın konumundan türetilir — her karede aynı.
-  drawObstacles(ctx, map, view) {
+  // --- Sabit dünya katmanı (zemin + binalar) --------------------------------
+  //
+  // Zemin ve binalar maç boyunca değişmez, ama her karede yeniden çizmek
+  // ölçülen kare süresinin yarısından fazlasını yiyordu (desen doldurma,
+  // 34 radyal gradyan, bina başına bulanık gölge...).
+  //
+  // Bunun yerine dünyayı TILE x TILE'lik parçalara bölüp her parçayı bir kez
+  // çiziyor ve saklıyoruz; her karede sadece görünen parçaları kopyalıyoruz.
+  // Bellek sınırlı tutuluyor (en son kullanılanlar kalır).
+  //
+  // Tek istisna: güneş hareket ettikçe gölgelerin yönü değişir. Güneş konumu
+  // gözle görülür şekilde değiştiğinde önbellek boşaltılıyor — maç boyunca
+  // birkaç kez olur, fark edilmez.
+  staticTile(map, tx, ty, day) {
+    const key = `${tx},${ty}`;
+    const cached = this.tiles.get(key);
+    if (cached) {
+      this.tiles.delete(key);          // en son kullanılan sona gitsin
+      this.tiles.set(key, cached);
+      return cached;
+    }
+
+    const S = TILE_PX;
+    const c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    const g = c.getContext('2d');
+    const ox = tx * S, oy = ty * S;
+    g.translate(-ox, -oy);
+
+    // harita dışı
+    g.fillStyle = '#0b110c';
+    g.fillRect(ox, oy, S, S);
+
+    const gx0 = Math.max(0, ox), gy0 = Math.max(0, oy);
+    const gx1 = Math.min(map.w, ox + S), gy1 = Math.min(map.h, oy + S);
+    if (gx1 > gx0 && gy1 > gy0) {
+      // çimen
+      g.fillStyle = this.grassPattern(g);
+      g.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+
+      // lekeler + kenar kararması (hazır küçük katmandan)
+      const ov = this.groundOverlay(map);
+      const sx = ov.width / map.w, sy = ov.height / map.h;
+      g.drawImage(ov,
+        gx0 * sx, gy0 * sy, (gx1 - gx0) * sx, (gy1 - gy0) * sy,
+        gx0, gy0, gx1 - gx0, gy1 - gy0);
+
+      // sınır duvarı
+      g.strokeStyle = '#46523c';
+      g.lineWidth = 6;
+      g.strokeRect(0, 0, map.w, map.h);
+    }
+
+    // Binalar: parçanın biraz DIŞINDAKİLERİ de çiziyoruz, yoksa komşu binanın
+    // bu parçaya düşen gölgesi kaybolur ve parça sınırlarında dikiş görünür.
+    const pay = 140;
+    this.paintObstacles(g, map, {
+      x0: ox - pay, y0: oy - pay, x1: ox + S + pay, y1: oy + S + pay,
+    }, day);
+
+    this.tiles.set(key, c);
+    if (this.tiles.size > MAX_TILES) {
+      const enEski = this.tiles.keys().next().value;
+      this.tiles.delete(enEski);
+    }
+    return c;
+  }
+
+  drawWorld(ctx, map, view, day) {
+    // Güneş yönü belirgin değiştiyse gölgeler de değişti: önbelleği tazele.
+    const gunes = `${Math.round(day.shadowX * 6)},${Math.round(day.shadowY * 6)},${Math.round(day.shadowAlpha * 20)}`;
+    if (gunes !== this._sunKey || this._tileMapKey !== `${map.w}x${map.h}`) {
+      this._sunKey = gunes;
+      this._tileMapKey = `${map.w}x${map.h}`;
+      this.tiles.clear();
+    }
+
+    const S = TILE_PX;
+    const tx0 = Math.floor(view.x0 / S), tx1 = Math.floor(view.x1 / S);
+    const ty0 = Math.floor(view.y0 / S), ty1 = Math.floor(view.y1 / S);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        ctx.drawImage(this.staticTile(map, tx, ty, day), tx * S, ty * S);
+      }
+    }
+  }
+
+  paintObstacles(ctx, map, view, day) {
     for (const o of map.obstacles) {
       if (o.x > view.x1 || o.x + o.w < view.x0 || o.y > view.y1 || o.y + o.h < view.y0) continue;
 
@@ -481,7 +576,6 @@ export class Renderer {
       const rnd = () => { h = (h * 1664525 + 1013904223) >>> 0; return h / 4294967296; };
 
       // --- yere düşen gölge: güneşin tam tersine, güneş alçaldıkça uzun ---
-      const day = this.day || { shadowX: 0.7, shadowY: 0.9, shadowAlpha: 0.45 };
       ctx.save();
       ctx.shadowColor = `rgba(0,0,0,${day.shadowAlpha})`;
       ctx.shadowBlur = 14 + (1 - (day.elev ?? 0.6)) * 16;

@@ -30,9 +30,20 @@ const external = [];
 
 function attach(page, tag) {
   page.on('pageerror', (e) => errors.push(`[${tag}] ${e.message}\n${e.stack || ''}`));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`[${tag}] ${m.text()}`); });
-  // file:// dışına giden HER istek bir hatadır — dosya kendi kendine yetmeli.
-  page.on('request', (r) => { if (!r.url().startsWith('file://')) external.push(`[${tag}] ${r.url()}`); });
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    // Sürüm sorgusu internetsizken başarısız olur; bu beklenen bir durum.
+    if (/surum\.json|ERR_TUNNEL|ERR_INTERNET|ERR_NAME_NOT_RESOLVED|Failed to load resource/i.test(m.text())) return;
+    errors.push(`[${tag}] ${m.text()}`);
+  });
+  // Dosya kendi kendine yetmeli: file:// dışına çıkan tek meşru istek, sunucuda
+  // yeni sürüm olup olmadığını soran /surum.json. Başka her şey hatadır.
+  const IZINLI = /\/surum\.json(\?|$)/;
+  page.on('request', (r) => {
+    const u = r.url();
+    if (u.startsWith('file://') || IZINLI.test(u)) return;
+    external.push(`[${tag}] ${u}`);
+  });
 }
 
 async function playAMatch(page, { mode = 0, bots = 6 } = {}) {
@@ -142,6 +153,39 @@ async function playAMatch(page, { mode = 0, bots = 6 } = {}) {
   await page.waitForTimeout(800);
 
   await page.screenshot({ path: `${OUT}/single-phone.png` });
+  await ctx.close();
+}
+
+// ===== 3) Paketlenmiş sürümde "Online" boş adrese gitmemeli ==============
+// Tek dosyanın kendi sunucusu yoktur; boş adres "bu sayfanın sunucusu"
+// anlamına geldiği için bağlanılamayan boş bir hedefe dönüşüyordu ve ekranda
+// adresi olmayan "… adresine ulaşılamıyor" mesajı çıkıyordu.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+  // Bulut sunucuya giden istekleri yakala (testte gerçek ağ yok)
+  await ctx.route('**://savas-arenasi.onrender.com/**', (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: '{"surum":"testsurum"}',
+  }));
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(`[online] ${e.message}`));
+  await page.goto(URL_);
+  await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
+  await page.click('#tabOnline');
+  await page.waitForTimeout(1200);
+
+  const r = await page.evaluate(() => ({
+    kutu: document.getElementById('serverInput').value.trim(),
+    hedef: window.__net.url,
+    durum: (document.getElementById('connStatus').textContent || '').trim(),
+  }));
+  console.log('Online sekmesi → hedef:', JSON.stringify(r.hedef));
+  if (!r.hedef) errors.push('paketlenmiş sürümde Online boş adrese bağlanmaya çalışıyor');
+  if (!r.kutu) errors.push('sunucu adresi kutusu boş kaldı');
+  // Durum yazısında adres görünmeli; "…: (3. deneme)" gibi adressiz olmamalı
+  if (/:\s*\(/.test(r.durum)) errors.push(`durum yazısında adres yok: "${r.durum}"`);
   await ctx.close();
 }
 

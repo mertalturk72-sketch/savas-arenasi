@@ -9,8 +9,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { contentStamp } from '../server/stamp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -47,23 +47,24 @@ copyDir(path.join(ROOT, 'shared'), path.join(WWW, 'shared'));
 // başlasın diye index.html'e bir işaret koyuyoruz.
 const indexPath = path.join(WWW, 'index.html');
 let html = fs.readFileSync(indexPath, 'utf-8');
+// __BUILD__: bu paketin içerik damgası. Uygulama açılışta sunucudaki
+// /surum.json ile karşılaştırıp "yeni sürüm var mı" diye bakar.
+// (Damga aşağıda hesaplanıyor; buraya yer tutucu koyup sonra dolduruyoruz.)
 html = html.replace(
   '<script type="module" src="/js/main.js"></script>',
-  '<script>window.__BUNDLED__ = true;</script>\n<script type="module" src="/js/main.js"></script>',
+  '<script>window.__BUNDLED__ = true; window.__BUILD__ = "__STAMP__";</script>\n<script type="module" src="/js/main.js"></script>',
 );
 fs.writeFileSync(indexPath, html);
 
-// Service worker sürümünü içerik özetinden üret: dosyalardan biri değiştiyse
-// damga değişir, telefondaki eski önbellek otomatik atılır.
-function hashDir(dir, hash) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) hashDir(full, hash);
-    else if (e.name !== 'sw.js') hash.update(e.name).update(fs.readFileSync(full));
-  }
-  return hash;
-}
-const stamp = hashDir(WWW, crypto.createHash('sha256')).digest('hex').slice(0, 12);
+// Damga: sunucununkiyle BİREBİR aynı yöntem (server/stamp.js). Farklı olsaydı
+// APK sunucuda hep "yeni sürüm var" sanırdı.
+const stamp = contentStamp(ROOT);
+
+// Damgayı index.html'e ve ayrı bir dosyaya yaz.
+fs.writeFileSync(indexPath, fs.readFileSync(indexPath, 'utf-8').replace('__STAMP__', stamp));
+fs.writeFileSync(path.join(WWW, 'surum.json'),
+  JSON.stringify({ surum: stamp, oyun: 'savas-arenasi' }));
+
 const swPath = path.join(WWW, 'sw.js');
 const sw = fs.readFileSync(swPath, 'utf-8').replace(/const VERSION = '[^']*';/, `const VERSION = '${stamp}';`);
 fs.writeFileSync(swPath, sw);

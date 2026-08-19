@@ -121,6 +121,26 @@ saati 6 saat ilerler — öğlen başlayıp akşamüstü bitirebilirsin.
 Ayarlar `shared/constants.js` içinde: `DAY_HOURS_PER_MATCH`, `SUNRISE_HOUR`,
 `SUNSET_HOUR`.
 
+### Hız: sabit dünya katmanı
+
+Zemin ve binalar maç boyunca değişmez, ama her karede yeniden çizmek kare
+süresinin yarısından fazlasını yiyordu (desen doldurma + 34 radyal gradyan +
+bina başına bulanık gölge). Ölçüm yapıp üç şeyi düzelttik:
+
+1. **Desen önceden ölçekleniyor.** `pattern.setTransform` her pikselde ek
+   dönüşüm demek; onun yerine doku bir kez hedef boyuta çizilip desen ondan
+   üretiliyor.
+2. **Harita ölçekli lekeler pişiriliyor.** 34 radyal gradyan yerine küçük bir
+   tuvale bir kez basılıp tek `drawImage` ile geriliyor.
+3. **Dünya parçalara bölünüp önbelleğe alınıyor.** 512 px'lik parçalar bir kez
+   çizilip saklanıyor; her karede sadece görünenler kopyalanıyor. Parçalar
+   komşularının gölgelerini de içerecek şekilde biraz taşırılarak çiziliyor,
+   yoksa sınırlarda dikiş görünürdü. Güneş gözle görülür şekilde hareket
+   ettiğinde önbellek tazeleniyor (maç boyunca birkaç kez).
+
+Ölçülen kare süresi: **27,6 ms → ~11 ms**. Zemin+bina katmanı 16,1 ms'den
+3,8 ms'ye indi.
+
 ### Görünüm
 
 * **Zemin çimen.** Gerçek bir çim fotoğrafı döşeniyor (`public/textures/grass.jpg`).
@@ -142,6 +162,39 @@ Ayarlar `shared/constants.js` içinde: `DAY_HOURS_PER_MATCH`, `SUNRISE_HOUR`,
   uygulanıyor; hareket başlayıp bitince de yumuşakça açılıp sönüyor. Bu yüzden
   kareden kareye atlama görünmüyor.
 * **Adım izi.** Ayağın yere bastığı karelerde küçük bir toz bulutu çıkıyor.
+
+## APK: bir kere kur, güncellemeyi uygulamanın içinden al
+
+APK oyunun tamamını içinde taşır, yani **internetsiz çalışır**. Ama içindeki
+kopya kendiliğinden yenilenmez — o yüzden şöyle kuruldu:
+
+1. Açılışta internet varsa uygulama sunucudaki `/surum.json` adresine bakar.
+2. Sunucudaki damga uygulamanınkinden farklıysa üstte yeşil bir çubuk çıkar:
+   **"Yeni sürüm hazır — GÜNCELLE / Şimdi değil"**.
+3. **GÜNCELLE** denince uygulama sunucudaki güncel sürüme geçer ve bu tercihi
+   hatırlar; sonraki açılışlarda doğrudan oraya gider. **Yeniden APK kurmak
+   gerekmez.**
+4. **İnternet yoksa hiçbir şey olmaz** — uygulama içindeki kopyayla açılır.
+5. "Şimdi değil" denen sürüm bir daha sorulmaz.
+
+Sürüm damgası `public/` ve `shared/` altındaki dosyaların içeriğinden üretilir
+(`server/stamp.js`). Sunucu, `www/` paketi ve tek dosyalık sürüm **aynı işlevi**
+kullanır — farklı olsalardı uygulama sunucuda hep "yeni sürüm var" sanırdı.
+Menünün altında uygulamanın kendi damgası yazar, hangi sürümde olduğunu
+görebilirsin.
+
+Kendi sunucun varsa `shared/constants.js` → `UPDATE_SERVER` adresini değiştir.
+
+### APK nasıl derlenir
+
+`android/` klasörünün depoda olmasına gerek yok (90 dosya, GitHub'ın 100 dosya
+sınırını tek başına dolduruyordu). GitHub Actions iş akışı projeyi
+`capacitor.config.json`'dan kendisi üretiyor:
+
+1. Depoda **Actions** sekmesi → **Android APK derle** → **Run workflow**.
+2. Birkaç dakika sonra sayfanın altındaki **Artifacts** bölümünden
+   `savas-arenasi-apk` dosyasını indir.
+3. İçinden çıkan `.apk`'yı telefona at ve kur.
 
 ### Güncelle düğmesi
 
@@ -469,7 +522,9 @@ service worker ile internetsiz açılış, telefon boyutunda dokunmatik kumanda,
 paketlenmiş sürümün sunucusuz çalışması, tek dosyalık sürümün `file://` üzerinden
 ağ tamamen kapalıyken tam maç oynatması ve **hiçbir dış istek yapmaması**,
 güvensiz (`http://`) kaynakta uyarının çıkıp `localhost`'ta çıkmaması,
-davet linkiyle tek tıkla aynı lobiye girilmesi, ayarlar panelinin açılıp
+davet linkiyle tek tıkla aynı lobiye girilmesi, paketlenmiş sürümün sunucuda
+yeni sürüm çıkınca haber vermesi / internetsizken sessiz kalması / "şimdi değil"
+denen sürümü bir daha sormaması / GÜNCELLE sonrası tercihi hatırlaması, ayarlar panelinin açılıp
 kapanması ve açıkken girdileri kilitlemesi, oyuncuların haritanın kenarında
 doğmaması, uykudan uyanan sunucuda sayfanın kendini toparlaması ve sonsuz
 tazeleme döngüsüne girmemesi, uyuyan sunucuya sabırla bağlanılması (3 saniyede

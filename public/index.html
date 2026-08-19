@@ -45,6 +45,13 @@
   <button id="bootRetry" style="display:none">Yeniden dene</button>
 </div>
 
+<!-- Paketlenmiş sürümde (APK / tek dosya) sunucuda yeni sürüm çıkınca -->
+<div id="updateBar" class="update-bar hidden">
+  <span id="updateText">Yeni sürüm var</span>
+  <button id="btnGetUpdate">GÜNCELLE</button>
+  <button id="btnSkipUpdate" class="skip">Şimdi değil</button>
+</div>
+
 <!-- ================= BAĞLANTI DURUMU ================= -->
 <div id="connBar" class="conn-bar hidden"><span id="connText">Bağlanıyor…</span></div>
 
@@ -144,6 +151,8 @@
       Oyun eski sürümde takılı kaldıysa <b>Güncelle</b>'ye bas: kayıtlı kopya
       silinir ve sunucudaki en yeni sürüm baştan indirilir.
     </p>
+
+    <div id="buildInfo" class="build-info hidden"></div>
 
     <footer class="hint">
       <b>Bilgisayar:</b> WASD hareket · Fare nişan · Sol tık ateş · R şarjör · Tab skor · Enter sohbet<br>

@@ -31,6 +31,10 @@ const browser = await chromium.launch({
   executablePath: fs.existsSync(CHROME) ? CHROME : undefined,
   args: ['--no-sandbox', '--use-gl=swiftshader'],
 });
+// Paketlenmiş sürüm açılışta sunucuya "yeni sürüm var mı" diye sorar.
+// Testte internet yok; bu isteğin başarısız olması beklenen bir durumdur.
+const SURUM_GURULTUSU = /surum\.json|ERR_TUNNEL|ERR_INTERNET|ERR_NAME_NOT_RESOLVED|Failed to load resource/i;
+
 const errors = [];
 
 async function startMatch(page, { mode = 0, bots = 0 } = {}) {
@@ -60,7 +64,9 @@ async function startMatch(page, { mode = 0, bots = 0 } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`[masaüstü] ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`[masaüstü] ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() !== 'error') return;
+    if (SURUM_GURULTUSU.test(m.text())) return;
+    errors.push(`[masaüstü] ${m.text()}`); });
 
   await page.goto(URL_);
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });

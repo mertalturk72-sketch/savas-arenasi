@@ -107,6 +107,14 @@ export const PICKUP_RADIUS = 18;
 export const AMMO_PACK_RESPAWN_MS = 16000;
 export const AMMO_PACK_FRACTION = 0.5;   // yedek kapasitesinin yarısını doldurur
 
+// --- Güncelleme -----------------------------------------------------------
+// Paketlenmiş sürüm (APK / tek dosya) açılışta buradaki adresten sürüm
+// bilgisini okur. Sunucuda daha yeni bir sürüm varsa kullanıcıya "Güncelle"
+// çıkarır; bastığında uygulama sunucudaki güncel sürüme geçer ve bunu
+// hatırlar. İnternet yoksa içindeki kopyayla sessizce açılmaya devam eder.
+// Kendi sunucun varsa burayı değiştir.
+export const UPDATE_SERVER = 'https://savas-arenasi.onrender.com';
+
 // --- Gündüz / gece --------------------------------------------------------
 // Her maç günün rastgele bir saatinde başlar ve maç boyunca saat ilerler.
 // DAY_MINUTES_PER_MATCH: 5 dakikalık maçta oyun saatinin kaç saat ilerleyeceği.
