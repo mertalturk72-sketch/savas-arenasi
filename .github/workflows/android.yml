@@ -1,0 +1,64 @@
+# Android APK'yı GitHub'ın bilgisayarlarında ücretsiz derler.
+#
+# Kullanımı: Actions sekmesi -> "Android APK derle" -> "Run workflow".
+# Bitince sayfanın altındaki Artifacts bölümünden APK'yı indir.
+#
+# android/ klasörü depoda yok; Capacitor onu capacitor.config.json'dan
+# burada kendisi üretiyor.
+
+name: Android APK derle
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Web dosyalarını topla
+        run: node scripts/build-www.mjs
+
+      - name: Java kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android projesini üret
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+
+      - name: APK derle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: APK'yı hazırla
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/savas-arenasi.apk
+          ls -lh out
+
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: savas-arenasi-apk
+          path: out/savas-arenasi.apk
+          retention-days: 30
+
