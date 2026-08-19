@@ -180,6 +180,8 @@ button.ghost.tiny { padding: 3px 8px; font-size: 11px; }
 .conn-status.ok { color: #7ee9a6; }
 .conn-status.bad { color: #ff9b9b; }
 
+#btnPlayOffline { margin-top: 9px; }
+
 .insecure-warn {
   margin-top: 10px; padding: 10px 12px; border-radius: 10px;
   background: rgba(255, 176, 64, .10); border: 1px solid rgba(255, 176, 64, .35);

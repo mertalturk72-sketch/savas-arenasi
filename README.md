@@ -104,6 +104,45 @@ olman** gerekir (bölüm 4'teki bulut sunucu ya da tünel adresi). `http://192.1
 adresinde tarayıcı önbelleği kurmaz; orada PWA kurulumu da çevrimdışı çalışmaz.
 Sunucusuz ve HTTPS'siz çevrimdışı oyun için **bölüm 0'daki tek dosyayı** kullan.
 
+### Gündüz ve gece
+
+Her maç **günün rastgele bir saatinde** başlar ve 5 dakikalık maç boyunca oyun
+saati 6 saat ilerler — öğlen başlayıp akşamüstü bitirebilirsin.
+
+* Güneş doğuda doğar, tepeden geçer, batıda batar.
+* **Gölgeler güneşin tam tersine düşer** ve güneş alçaldıkça uzar: şafakta ve
+  gün batımında upuzun, öğlen neredeyse yok. Hem binalar hem karakterler için.
+* Işık düz boya değil **çarpma (multiply)** ile uygulanır. Düz boya sürmek her
+  şeyi soluklaştırıp çimeni griye çeviriyordu; çarpma gerçek ışık gibi davranıp
+  renkleri korur.
+* Gece oyunun oynanabilir kalması için karakterin çevresinde yumuşak bir
+  aydınlık halka vardır.
+
+Ayarlar `shared/constants.js` içinde: `DAY_HOURS_PER_MATCH`, `SUNRISE_HOUR`,
+`SUNSET_HOUR`.
+
+### Görünüm
+
+* **Zemin çimen.** Gerçek bir çim fotoğrafı döşeniyor (`public/textures/grass.jpg`).
+  Fotoğrafı hazırlayan betik (`npm run texture -- <görsel...>`) önce dokunun
+  zaten dikişsiz olup olmadığını **ölçüyor**; dikiş yoksa hiç harmanlamıyor —
+  körlemesine harmanlamak sağlam bir dokuyu bulanık bir bantla bozar. Birden
+  fazla görsel verip `--mix` denirse görseller 4×4 hücreye bölünüp rastgele
+  çevrilerek karıştırılıyor (tekrar periyodu 4 kat uzar).
+  Bir kiremit dünyada `GRASS_TILE_PX` kadar yer kaplar: bu ölçek, çim
+  tellerinin karaktere göre doğru boyutta görünmesini sağlar (daha büyük görsel
+  bunu çözmez — mesele çözünürlük değil ölçek). Görsel yüklenmezse kodla
+  üretilen yedek çimen devreye girer.
+* **Duvarlar bina.** Engeller tepeden görünen binalar olarak çiziliyor: çatı
+  yüzeyi, parapet (üst-solu aydınlık, alt-sağı karanlık), çatı panelleri ve
+  büyük binalarda çatı pencereleri / havalandırmalar. Detaylar binanın
+  konumundan türetiliyor, yani her karede aynı.
+* **Yürüyüş animasyonu.** Yön başına 8 kare. Kareler ayrık ama gövdenin inip
+  kalkması ve hafif yana salınımı sürekli bir sinüs olarak çizim sırasında
+  uygulanıyor; hareket başlayıp bitince de yumuşakça açılıp sönüyor. Bu yüzden
+  kareden kareye atlama görünmüyor.
+* **Adım izi.** Ayağın yere bastığı karelerde küçük bir toz bulutu çıkıyor.
+
 ### Oyun içi ayarlar
 
 Maç sırasında sağ üstteki **⚙** düğmesi (klavyede **Esc**) ayarları açar:
@@ -419,7 +458,10 @@ güvensiz (`http://`) kaynakta uyarının çıkıp `localhost`'ta çıkmaması,
 davet linkiyle tek tıkla aynı lobiye girilmesi, ayarlar panelinin açılıp
 kapanması ve açıkken girdileri kilitlemesi, oyuncuların haritanın kenarında
 doğmaması, uykudan uyanan sunucuda sayfanın kendini toparlaması ve sonsuz
-tazeleme döngüsüne girmemesi.
+tazeleme döngüsüne girmemesi, uyuyan sunucuya sabırla bağlanılması (3 saniyede
+pes edip çevrimdışına düşmemesi), yürüyüş döngüsündeki 8 karenin hepsinin ayrı
+olması, salınımın yumuşakça açılıp sönmesi, adım tozunun oluşup sönmesi,
+zeminin çimen olması ve duvarların düz blok değil bina gibi çizilmesi.
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 ayrı senaryoda sınanıyor: el
 sıkışma özeti, parçalı mesaj birleştirme, bayt bayt gelen çerçeveler, 16/64 bit

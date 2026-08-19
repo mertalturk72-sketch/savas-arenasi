@@ -141,6 +141,14 @@ function collect(id) {
 }
 collect(ENTRY);
 
+// --- Zemin dokusunu data URL olarak göm -----------------------------------
+// Tek dosya HİÇBİR dış istek yapmamalı; görsel de içeride olmak zorunda.
+let grassDataUrl = '';
+const grassPath = path.join(ROOT, 'public', 'textures', 'grass.jpg');
+if (fs.existsSync(grassPath)) {
+  grassDataUrl = `data:image/jpeg;base64,${fs.readFileSync(grassPath).toString('base64')}`;
+}
+
 // --- HTML'i hazırla -------------------------------------------------------
 let html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf-8');
 const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf-8');
@@ -170,6 +178,8 @@ const registry = `<script>
   // Paketlenmiş sürüm: içinde sunucu yok, doğrudan çevrimdışı başlar.
   window.__SINGLE_FILE__ = true;
   window.__BUNDLED__ = true;
+  // Zemin dokusu dosyadan okunamaz (dış istek yok), gömülü hâlini veriyoruz.
+  window.__GRASS_URL = ${JSON.stringify(grassDataUrl)};
 ${[...modules.entries()].map(([id, code]) => `
   __defs[${JSON.stringify(id)}] = function (__exp, __req) {
 ${code}

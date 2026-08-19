@@ -6,14 +6,15 @@
 
 import {
   INTERP_DELAY_MS, INPUT_RATE, MAX_INPUT_DT_MS, CLASSES, WEAPONS, MODES, TEAMS,
-  PLAYER_RADIUS, IN_FIRE, CLASS_IDS, WEAPON_IDS,
+  PLAYER_RADIUS, IN_FIRE, CLASS_IDS, WEAPON_IDS, MATCH_MS,
 } from '/shared/constants.js';
 import {
   C, PS_FIELDS, BS_FIELDS, SC_FIELDS,
   F_ALIVE, F_PROTECTED, F_MUZZLE, F_HIDDEN,
 } from '/shared/protocol.js';
 import { buildObstacleIndex, applyMovement, angleLerp } from '/shared/physics.js';
-import { Renderer, FX } from './render.js';
+import { Renderer, FX, daylight, matchHour } from './render.js';
+import { WALK_FRAMES } from './sprites.js';
 import * as sfx from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -92,6 +93,8 @@ export class ClientGame {
     this.teams = this.mode.teams;
     this.myId = payload.youId;
     this.pickups = payload.pickups.map((k) => ({ ...k }));
+    // Maçın başladığı oyun saati (sunucu belirler). Işık ve gölgeler buradan.
+    this.startHour = typeof payload.startHour === 'number' ? payload.startHour : 12;
 
     for (const p of payload.players) {
       this.roster.set(p.id, { name: p.name, team: p.team, cls: p.cls, bot: p.bot, char: p.char });
@@ -468,16 +471,40 @@ export class ClientGame {
       }
     }
 
+    // Günün saati: maçın başladığı saatten itibaren ilerler. Sunucu sadece
+    // başlangıç saatini gönderiyor; geri kalanını iki taraf da aynı formülle
+    // hesapladığı için ekstra ağ trafiği yok.
+    {
+      const total = (this.mode?.timeLimitMs || MATCH_MS) / 1000;
+      const left = this.scores ? Math.max(0, this.scores.left | 0) : total;
+      const elapsedMs = Math.max(0, (total - left) * 1000);
+      this.day = daylight(matchHour(this.startHour ?? 12, elapsedMs, total * 1000));
+    }
+
     // Yürüyüş animasyonu: kat edilen mesafeye göre adım karesi ilerler.
     for (const e of out) {
       let a = this.anim.get(e.id);
       if (!a) { a = { x: e.x, y: e.y, phase: 0, moving: false }; this.anim.set(e.id, a); }
       const d = Math.hypot(e.x - a.x, e.y - a.y);
       a.x = e.x; a.y = e.y;
-      if (d > 0.35) { a.phase += d / 13; a.moving = true; a.idle = 0; }
+      // Kare, kat edilen mesafeyle ilerler: hızlı koşan hızlı adımlar.
+      if (d > 0.35) { a.phase += d / 7; a.moving = true; a.idle = 0; }
       else { a.idle = (a.idle || 0) + 1; if (a.idle > 6) a.moving = false; }
       e.moving = a.moving && e.alive;
-      e.walkFrame = Math.floor(a.phase) % 3;
+      const frame = Math.floor(a.phase) % WALK_FRAMES;
+      e.walkFrame = frame;
+      // Kesirli faz: çizim tarafı bunu sürekli bir eğriye çevirip gövdeyi
+      // yumuşakça indirip kaldırıyor. Kare sayısından bağımsız akıcılık.
+      e.walkPhase = a.phase;
+
+      // Ayak yere bastığı karelerde (temas: 1 ve 4) küçük bir toz bulutu.
+      if (e.moving && frame !== a.lastFrame && (frame === 2 || frame === 6)) {
+        this.fx.spawn(e.x, e.y + 6, {
+          count: 3, speed: 26, life: 0.34, size: 2.2, drag: 6,
+          color: 'rgba(126,150,104,0.50)',
+        });
+      }
+      a.lastFrame = frame;
     }
     if (this.anim.size > 64) {
       const live = new Set(out.map((e) => e.id));

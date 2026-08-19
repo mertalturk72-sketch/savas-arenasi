@@ -107,6 +107,15 @@ export const PICKUP_RADIUS = 18;
 export const AMMO_PACK_RESPAWN_MS = 16000;
 export const AMMO_PACK_FRACTION = 0.5;   // yedek kapasitesinin yarısını doldurur
 
+// --- Gündüz / gece --------------------------------------------------------
+// Her maç günün rastgele bir saatinde başlar ve maç boyunca saat ilerler.
+// DAY_MINUTES_PER_MATCH: 5 dakikalık maçta oyun saatinin kaç saat ilerleyeceği.
+// Işık, güneşin yüksekliğinden; gölgelerin yönü ve boyu güneşin konumundan
+// hesaplanır (bkz. public/js/render.js → daylight()).
+export const DAY_HOURS_PER_MATCH = 6;
+export const SUNRISE_HOUR = 6;
+export const SUNSET_HOUR = 20;
+
 // --- Sınıflar -------------------------------------------------------------
 export const CLASSES = {
   komando: {

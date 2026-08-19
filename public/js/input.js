@@ -126,10 +126,59 @@ export class Input {
       btnScore.addEventListener('touchcancel', hide, { passive: false });
     }
 
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      this.touch.active = true;
-      document.body.classList.add('touch');
-      document.getElementById('touchUI')?.classList.remove('hidden');
+    // --- Dokunmatik mi, fare/klavye mi? --------------------------------------
+    //
+    // Eski hâli "cihazda dokunmatik VAR mı" diye soruyordu. Dokunmatik ekranlı
+    // Windows dizüstülerinde bu her zaman doğru çıkıyor ve masaüstünde oyun
+    // telefon arayüzüne (sanal çubuklar) düşüyordu — babanın bilgisayarında
+    // olan buydu.
+    //
+    // Doğru soru: "şu an hangi girdiyi KULLANIYOR?" Cihazda gerçek bir fare
+    // varsa (pointer: fine) masaüstü arayüzüyle başlıyoruz; sonra kullanıcı
+    // hangi girdiyi kullanırsa arayüz ona geçiyor.
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const hasMouse = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+    this.setTouchMode(hasTouch && !hasMouse);
+
+    // Dokunma olunca dokunmatik arayüze geç
+    const toTouch = () => { this.lastTouchAt = performance.now(); this.setTouchMode(true); };
+    window.addEventListener('touchstart', toTouch, { passive: true });
+    window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') toTouch(); }, { passive: true });
+
+    // Fare/klavye kullanılınca masaüstü arayüzüne dön.
+    // Telefonlarda dokunma sonrası sahte fare olayları üretilir; dokunmadan
+    // hemen sonra gelen fare olaylarını yok sayıyoruz.
+    const toDesktop = () => {
+      if (performance.now() - (this.lastTouchAt || 0) < 800) return;
+      // Telefonlar dokunmadan sonra SAHTE fare olayları üretir. Cihazda
+      // gerçekten ince bir işaretçi (fare/kalem) yoksa bu olaylara bakıp
+      // masaüstü arayüzüne geçmek yanlış olur — telefonda kumanda kaybolurdu.
+      const fine = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+      if (!fine) return;
+      this.setTouchMode(false);
+    };
+    window.addEventListener('mousemove', (e) => { if (e.movementX || e.movementY) toDesktop(); }, { passive: true });
+    window.addEventListener('mousedown', toDesktop, { passive: true });
+    window.addEventListener('keydown', toDesktop, { passive: true });
+  }
+
+  /** Dokunmatik arayüzü açar/kapatır ve yarım kalmış girdileri temizler. */
+  setTouchMode(on) {
+    on = !!on;
+    if (this.touch.active === on && this._touchModeSet) return;
+    this._touchModeSet = true;
+    this.touch.active = on;
+    document.body.classList.toggle('touch', on);
+    document.getElementById('touchUI')?.classList.toggle('hidden', !on);
+    if (!on) {
+      for (const slot of [this.touch.move, this.touch.aim]) {
+        slot.id = null; slot.dx = 0; slot.dy = 0;
+        if ('firing' in slot) { slot.firing = false; slot.aiming = false; }
+      }
+      for (const id of ['stickMove', 'stickAim']) {
+        const knob = document.getElementById(id)?.querySelector('.knob');
+        if (knob) knob.style.transform = '';
+      }
     }
   }
 

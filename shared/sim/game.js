@@ -29,6 +29,13 @@ export class Game {
     this.pickups = built.pickups;
     this.bushes = built.map.bushes || [];
 
+    // Maçın başladığı oyun saati. Her maç günün rastgele bir saatinde geçer:
+    // biri şafakta, biri öğlen, biri gece yarısı. Sunucu belirler, istemciye
+    // maç başında bir kez gider; sonrasında ikisi de aynı formülle ilerletir.
+    this.startHour = typeof opts.startHour === 'number'
+      ? opts.startHour
+      : Math.random() * 24;
+
     this.time = 0;              // maç başından beri geçen ms (tick tabanlı)
     this.over = false;
     this.winner = null;
@@ -716,6 +723,7 @@ export class Game {
         id: q.id, name: q.name, team: q.team, cls: q.cls, char: q.char, bot: q.bot,
       })),
       pickups: this.pickups.map((k) => ({ id: k.id, x: k.x, y: k.y, kind: k.kind, active: k.active })),
+      startHour: this.startHour,
     };
   }
 }

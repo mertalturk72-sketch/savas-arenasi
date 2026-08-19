@@ -4,10 +4,12 @@ import {
   MODES, CLASSES, TEAMS, MAX_PLAYERS, WEAPONS, MAX_NAME_LEN, CHARACTERS,
 } from '/shared/constants.js';
 import { getCharacterSprites, drawWeaponOnPreview } from './sprites.js';
+import * as spritesModule from './sprites.js';
 import { C, S } from '/shared/protocol.js';
 import { Net } from './net.js';
 import { Input } from './input.js';
 import { ClientGame, esc } from './game.js';
+import * as renderModule from './render.js';
 import * as sfx from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -88,8 +90,9 @@ function useOnline(url, save = true) {
   $('serverRow').classList.remove('hidden');
   $('browsePanel').classList.remove('hidden');
   $('offlinePanel').classList.add('hidden');
-  setConnStatus('Bağlanılıyor…');
+  setConnStatus('Sunucuya bağlanılıyor…');
   state.lobby = null;
+  wakeServer(url);
   net.connectRemote(url);
 }
 
@@ -403,9 +406,29 @@ function showPostScoreboard(sb, leftMs) {
 }
 
 // ============================================================ ağ olayları
+// Ücretsiz bulut sunucu (Render) 15 dk boştaysa uyur; uyanması 1 dakikayı
+// bulabilir. Mobil veride WebSocket el sıkışması da yavaştır. Eskiden 3 saniye
+// sonra çevrimdışına düşüyorduk — telefondan sunucuya hiç bağlanamamanın
+// sebebi buydu. Artık sabırla bekliyoruz ve çevrimdışına geçmeyi kullanıcıya
+// bırakıyoruz; kendiliğinden geçiş yalnızca çok uzun süre sonra oluyor.
+const CONNECT_PATIENCE_MS = 45000;
+
 let autoFallbackTimer = null;
 function cancelAutoFallback() {
   if (autoFallbackTimer) { clearTimeout(autoFallbackTimer); autoFallbackTimer = null; }
+  const b = $('btnPlayOffline');
+  if (b) b.classList.add('hidden');
+}
+
+// Uyuyan servisi WebSocket değil, sıradan bir HTTP isteği uyandırır.
+// Bağlanmadan önce /health'e dokunuyoruz ki sunucu ayağa kalkmaya başlasın.
+function wakeServer(url) {
+  let base;
+  try {
+    base = url ? normalizeHttp(url) : location.origin;
+  } catch { return; }
+  if (!/^https?:\/\//.test(base)) return;
+  fetch(`${base}/health`, { cache: 'no-store' }).catch(() => { /* uyanıyor olabilir */ });
 }
 
 net.on('_open', () => {
@@ -432,9 +455,15 @@ net.on('_close', () => {
 
 net.on('_retry', (d) => {
   if (state.netMode !== 'online') return;
+  // Her denemede sunucuyu HTTP ile de dürtüyoruz: uykudaysa uyanma yolu budur.
+  wakeServer(net.url);
   $('connBar').classList.remove('hidden');
-  $('connText').textContent = `Sunucuya ulaşılamıyor — ${Math.round(d.in / 1000)} sn sonra tekrar denenecek (${d.attempt}). Çevrimdışı oynayabilirsin.`;
-  setConnStatus('Sunucuya ulaşılamıyor.', 'bad');
+  $('connText').textContent = d.attempt <= 2
+    ? 'Sunucu uyanıyor, bağlanılıyor…'
+    : `Sunucu uyanıyor — ${d.attempt}. deneme. Ücretsiz sunucu ilk açılışta 1 dakikaya kadar sürebilir.`;
+  setConnStatus(`Sunucu uyanıyor… (${d.attempt}. deneme) Beklemek istemezsen çevrimdışı oynayabilirsin.`);
+  const b = $('btnPlayOffline');
+  if (b) b.classList.remove('hidden');
 });
 
 net.on(S.WELCOME, (m) => {
@@ -578,6 +607,13 @@ function initUi() {
     useOnline($('serverInput').value.trim());
   };
   $('btnConnect').onclick = () => { cancelAutoFallback(); useOnline($('serverInput').value.trim()); };
+
+  // Bağlantı beklenirken çıkan "beklemeden çevrimdışı oyna" düğmesi
+  $('btnPlayOffline').onclick = () => {
+    sfx.sfxUi();
+    cancelAutoFallback();
+    useLocal();
+  };
   $('serverInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); $('btnConnect').click(); }
   });
@@ -850,6 +886,8 @@ function initPwa() {
 
 // Hata ayıklama kolaylığı: konsoldan durum incelenebilsin.
 window.__game = game;
+window.__sprites = spritesModule;
+window.__render = renderModule;
 window.__net = net;
 window.__state = state;
 
@@ -910,5 +948,5 @@ function startup() {
     if (net.connected) return;
     toast('Sunucuya ulaşılamadı — çevrimdışı moda geçildi.');
     useLocal(false);
-  }, 3000);
+  }, CONNECT_PATIENCE_MS);
 }

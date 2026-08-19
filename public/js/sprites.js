@@ -10,6 +10,12 @@
 //
 // Karakter DÖNDÜRÜLMEZ; nişan yönünü elindeki silah gösterir.
 
+// Yön başına yürüyüş karesi sayısı. 3 → 8: adımlar arasındaki sıçrama kalmadı.
+// Ayrıca gövdenin inip kalkması artık kareye gömülü DEĞİL; çizim sırasında
+// sürekli bir sinüs olarak uygulanıyor (bkz. render.js), böylece geçişler
+// kare sayısından bağımsız olarak yumuşak.
+export const WALK_FRAMES = 8;
+
 export const SPRITE_W = 32;
 export const SPRITE_H = 36;
 
@@ -128,8 +134,19 @@ function drawFrame(o, dir, frame) {
   const boot = '#221a13';
   const side = dir === 'left' || dir === 'right';
 
-  const legShift = frame === 0 ? -1 : frame === 2 ? 1 : 0;
-  const armSwing = frame === 0 ? 1 : frame === 2 ? -1 : 0;
+  // 8 kareli yürüyüş döngüsü. Bacak açısı sinüs eğrisinden türetiliyor:
+  // uçlarda yavaşlayıp ortada hızlanıyor — gözün "yumuşak" dediği şey bu.
+  //   kare:  0   1   2   3   4   5   6   7
+  // LEG : hangi bacak önde (işaret) ve ne kadar açık (büyüklük)
+  // LIFT: arkadaki ayağın yerden kalkması — böylece "kalkıyor" ve "iniyor"
+  //       kareleri birbirinin aynısı olmuyor, döngü 8 ayrı poz üretiyor
+  const LEG = [1, 2, 3, 2, -1, -2, -3, -2][frame] || 0;
+  const ARM = [-1, -2, -3, -2, 1, 2, 3, 2][frame] || 0;
+  const LIFT = [0, 2, 1, 0, 0, 2, 1, 0][frame] || 0;
+  const BOB = 0;   // gövde inişi çizimde sürekli olarak uygulanıyor
+
+  const legShift = LEG;
+  const armSwing = ARM;
 
   const CX = 16;
   const bodyW = side ? 8 : 11;
@@ -138,16 +155,28 @@ function drawFrame(o, dir, frame) {
   // --- bacaklar + botlar ---------------------------------------------------
   const legY = 25;
   if (side) {
+    // öndeki bacak yere basar, arkadaki LIFT kadar kalkar
     rectPx(ctx, CX - 3 + legShift, legY, 3, 6, jacketDark);
-    rectPx(ctx, CX + 0 - legShift, legY, 3, 6, shade(jacket, -52));
+    rectPx(ctx, CX + 0 - legShift, legY - LIFT, 3, 6, shade(jacket, -52));
     rectPx(ctx, CX - 3 + legShift, legY + 6, 4, 3, boot);
-    rectPx(ctx, CX + 0 - legShift, legY + 6, 4, 3, shade(boot, -6));
+    rectPx(ctx, CX + 0 - legShift, legY + 6 - LIFT, 4, 3, shade(boot, -6));
   } else {
-    rectPx(ctx, CX - 4, legY + Math.max(0, legShift), 3, 6, jacketDark);
-    rectPx(ctx, CX + 1, legY + Math.max(0, -legShift), 3, 6, jacketDark);
-    rectPx(ctx, CX - 4, legY + 6 + Math.max(0, legShift), 3, 3, boot);
-    rectPx(ctx, CX + 1, legY + 6 + Math.max(0, -legShift), 3, 3, boot);
+    // Önden/arkadan bakışta adım, bacakların ileri geri kaymasıyla okunur.
+    // Geride kalan bacak LIFT kadar kalkar — "kalkıyor" ve "iniyor" kareleri
+    // böylece birbirinden ayrılıyor.
+    const l = Math.max(0, legShift), r = Math.max(0, -legShift);
+    const liftL = legShift < 0 ? LIFT : 0;      // sol bacak arkadaysa kalkar
+    const liftR = legShift < 0 ? 0 : LIFT;      // sağ bacak arkadaysa kalkar
+    rectPx(ctx, CX - 4, legY + l - liftL, 3, 6, jacketDark);
+    rectPx(ctx, CX + 1, legY + r - liftR, 3, 6, jacketDark);
+    rectPx(ctx, CX - 4, legY + 6 + l - liftL, 3, 3, boot);
+    rectPx(ctx, CX + 1, legY + 6 + r - liftR, 3, 3, boot);
   }
+
+  // Buradan sonrası gövde ve baş: adım çöküşünde hepsi birlikte 1 px iniyor.
+  // Bacaklar/botlar yukarıda çizildi, onlar yere basılı kalıyor.
+  ctx.save();
+  ctx.translate(0, BOB);
 
   // --- gövde ---------------------------------------------------------------
   rectPx(ctx, bodyX - 1, 16, bodyW + 2, 10, jacketDark);
@@ -213,6 +242,7 @@ function drawFrame(o, dir, frame) {
     }
   }
 
+  ctx.restore();
   return c;
 }
 
@@ -227,7 +257,8 @@ export function getCharacterSprites(o) {
 
   set = {};
   for (const dir of ['down', 'up', 'left', 'right']) {
-    set[dir] = [drawFrame(o, dir, 0), drawFrame(o, dir, 1), drawFrame(o, dir, 2)];
+    set[dir] = [];
+    for (let f = 0; f < WALK_FRAMES; f++) set[dir].push(drawFrame(o, dir, f));
   }
   cache.set(key, set);
   return set;

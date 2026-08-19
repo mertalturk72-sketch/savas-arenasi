@@ -72,17 +72,62 @@ if (fireBtn !== 0) errors.push('Ateş düğmesi hâlâ duruyor');
 
 await page.screenshot({ path: `${OUT}/40-bush-hidden.png` });
 
-// Çalı engel olmamalı: içinden yürüyerek çıkabilmeli
+// Çalı engel olmamalı: içinden yürüyerek çıkabilmeli.
+//
+// Dikkat: harita her maçta yeniden üretiliyor, bu yüzden çalının hemen yanında
+// bir duvar olabilir. Duvara çarpıp "çalı yolu kesiyor" demek yanlış olurdu —
+// önce oyuncunun gerçekten sığdığı bir çalı+yön çifti seçiyoruz, ölçümü ondan
+// sonra yapıyoruz. (Bu testin daha önce ara sıra düşmesinin sebebi buydu.)
 const walked = await page.evaluate(async () => {
   const hub = window.__net.impl.hub;
   const sim = [...hub.lobbies.values()][0].game;
   const me = sim.players.get(window.__net.impl.client.id);
-  const start = { x: me.x, y: me.y };
-  for (let i = 0; i < 90; i++) sim.applyInput(me, { s: i, d: 16, k: 8, a: 0 });
-  return Math.round(Math.hypot(me.x - start.x, me.y - start.y));
+  const R = 16;                       // oyuncu yarıçapı
+  const DIRS = [
+    { k: 8, dx: 1, dy: 0 },           // sağ
+    { k: 4, dx: -1, dy: 0 },          // sol
+    { k: 2, dx: 0, dy: 1 },           // aşağı
+    { k: 1, dx: 0, dy: -1 },          // yukarı
+  ];
+
+  // Oyuncu dairesi bu koridorda engele değiyor mu? (çalılar engel değildir)
+  const corridorClear = (x, y, dx, dy, len) => {
+    for (let t = 0; t <= len; t += 8) {
+      const px = x + dx * t, py = y + dy * t;
+      for (const o of sim.map.obstacles) {
+        const cx = Math.max(o.x, Math.min(px, o.x + o.w));
+        const cy = Math.max(o.y, Math.min(py, o.y + o.h));
+        if ((px - cx) ** 2 + (py - cy) ** 2 < (R + 2) ** 2) return false;
+      }
+      if (px < R || py < R || px > sim.map.w - R || py > sim.map.h - R) return false;
+    }
+    return true;
+  };
+
+  // Büyük çalılar arasında, içinden geçilebilecek bir yön bulunanı seç
+  for (const b of sim.bushes.filter((x) => x.r > 45)) {
+    for (const d of DIRS) {
+      // Çalının bir ucundan girip diğer ucundan çıkacak şekilde konumlan
+      const sx = b.x - d.dx * (b.r - 4);
+      const sy = b.y - d.dy * (b.r - 4);
+      if (!corridorClear(sx, sy, d.dx, d.dy, 200)) continue;
+
+      me.x = sx; me.y = sy;
+      sim.updateHidden();
+      const start = { x: me.x, y: me.y };
+      for (let i = 0; i < 90; i++) sim.applyInput(me, { s: i, d: 16, k: d.k, a: 0 });
+      return {
+        dist: Math.round(Math.hypot(me.x - start.x, me.y - start.y)),
+        wasInside: true,
+        bushR: Math.round(b.r),
+      };
+    }
+  }
+  return { dist: -1, wasInside: false, bushR: 0 };
 });
-console.log('Çalı içinden yürünen mesafe:', walked, 'px');
-if (walked < 120) errors.push(`Çalı yolu kesiyor (sadece ${walked} px ilerlendi)`);
+console.log('Çalı içinden yürünen mesafe:', walked.dist, 'px (çalı yarıçapı', walked.bushR + ')');
+if (!walked.wasInside) errors.push('Test için uygun (etrafı açık) çalı bulunamadı');
+else if (walked.dist < 120) errors.push(`Çalı yolu kesiyor (sadece ${walked.dist} px ilerlendi)`);
 
 await browser.close();
 

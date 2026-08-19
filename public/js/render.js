@@ -2,13 +2,94 @@
 
 import { PLAYER_RADIUS, CLASSES, TEAMS, WEAPONS } from '/shared/constants.js';
 import { lineBlocked, rayHitDistance } from '/shared/physics.js';
-import { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H } from './sprites.js';
+import { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H, WALK_FRAMES } from './sprites.js';
 import { CHARACTERS, DEFAULT_CHAR } from '/shared/constants.js';
+import { DAY_HOURS_PER_MATCH, SUNRISE_HOUR, SUNSET_HOUR } from '/shared/constants.js';
+
+/**
+ * Oyun saatinden ışık ve güneş konumu.
+ *
+ * Güneş doğuda (ekranda sağda) doğar, tepeden geçer, batıda batar. Gölgeler
+ * güneşin TAM TERSİNE düşer ve güneş alçaldıkça uzar — bu yüzden şafakta ve
+ * gün batımında upuzun, öğlen neredeyse yok.
+ *
+ * @param {number} hour 0..24 arası oyun saati
+ */
+export function daylight(hour) {
+  const h = ((hour % 24) + 24) % 24;
+  const dayLen = SUNSET_HOUR - SUNRISE_HOUR;
+  // Gündüz ilerlemesi 0..1 (0 = gün doğumu, 1 = gün batımı)
+  const t = (h - SUNRISE_HOUR) / dayLen;
+  const isDay = t >= 0 && t <= 1;
+
+  // Güneş yüksekliği: doğuşta 0, tepede 1, batışta 0
+  const elev = isDay ? Math.sin(Math.PI * t) : 0;
+
+  // Yatay yön: doğuda (+x) doğar, batıda (-x) batar
+  const sunX = isDay ? Math.cos(Math.PI * t) : 0;
+
+  // Gölge yönü güneşin tersi. Tepeden bakış olduğu için gölgeye ayrıca
+  // sabit bir "aşağı" bileşeni veriyoruz; yoksa öğlen gölge tamamen kaybolur
+  // ve nesneler zeminden kopuk görünür.
+  const len = 1 / Math.max(0.28, elev);
+  const shadowX = -sunX * len;
+  const shadowY = (0.45 + (1 - elev) * 0.55) * len * 0.6;
+
+  // Renk: düz boya sürmek yerine ÇARPMA (multiply) ile renk derecelendirme.
+  // Düz boya her şeyi soluklaştırıp çimeni gri yapıyordu; çarpma ise gerçek
+  // ışık gibi davranır — koyu yerler daha koyu, renkler korunur.
+  // mul = (255,255,255) hiçbir şey yapmaz; küçüldükçe karartır ve renklendirir.
+  let mul;
+  if (!isDay) {
+    // Gece: derin mavi. Gece yarısına yaklaştıkça biraz daha koyu.
+    const night = h < SUNRISE_HOUR ? (SUNRISE_HOUR - h) / SUNRISE_HOUR
+      : (h - SUNSET_HOUR) / (24 - SUNSET_HOUR);
+    const deep = Math.min(1, night * 1.15);
+    const k = 0.34 - deep * 0.10;                // 0.34 → 0.24 arası parlaklık
+    mul = { r: Math.round(255 * k * 0.72), g: Math.round(255 * k * 0.86), b: Math.round(255 * k * 1.5) };
+  } else if (elev > 0.72) {
+    mul = { r: 255, g: 255, b: 255 };            // öğlen: dokunma
+  } else {
+    // Ufka yakın: sıcak turuncu ve hafif karartma. En alçakta neredeyse gece.
+    const low = 1 - elev / 0.72;                 // 0 (yüksek) .. 1 (ufukta)
+    const warm = Math.pow(low, 1.4);
+    const dim = 1 - warm * 0.42;
+    mul = {
+      r: Math.round(255 * dim),
+      g: Math.round(255 * dim * (1 - warm * 0.20)),
+      b: Math.round(255 * dim * (1 - warm * 0.42)),
+    };
+  }
+
+  return {
+    hour: h,
+    isDay,
+    elev,
+    sunX,
+    shadowX,
+    shadowY,
+    shadowAlpha: isDay ? 0.18 + elev * 0.32 : 0.12,
+    mul,
+    // Gece oyuncunun etrafındaki aydınlık halka bu güçte
+    lamp: isDay ? Math.max(0, (0.25 - elev) * 1.4) : 1,
+  };
+}
+
+/** Maçın kaçıncı saatinde olduğumuz: başlangıç saati + geçen süre. */
+export function matchHour(startHour, elapsedMs, matchMs) {
+  const p = matchMs > 0 ? Math.max(0, Math.min(1.2, elapsedMs / matchMs)) : 0;
+  return (startHour + p * DAY_HOURS_PER_MATCH) % 24;
+}
 
 // Duvar arkası ve çok uzaktaki düşmanlar çizilmez (wallhack yok).
 const VIS_DIST = 1300;
 
 // ---------------------------------------------------------------- efektler
+// Zemin dokusunun bir kiremitinin kaç dünya pikselini kapladığı.
+// Küçültmek çim tellerini inceltir (karaktere göre daha doğru orantı),
+// büyütmek kabalaştırır. Oyuncu boyu ~63 px olduğu için 190 iyi oturuyor.
+const GRASS_TILE_PX = 190;
+
 export class FX {
   constructor() { this.parts = []; this.shake = 0; }
 
@@ -74,6 +155,9 @@ export class Renderer {
     this.camX = 0; this.camY = 0;
     this.zoom = 1;
     this.seen = new Map();       // id -> son görülme zamanı (ms)
+    // id -> yürüyüş salınımının açıklığı (0..1). Oyuncu nesneleri her karede
+    // yeniden kurulduğu için bu değeri burada saklamak zorundayız.
+    this.gait = new Map();
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -138,6 +222,10 @@ export class Renderer {
 
     const view = this.viewRect();
 
+    // Bu karedeki güneş/ışık durumu. Gölgeler ve renk buradan besleniyor.
+    const day = g.day || daylight(12);
+    this.day = day;
+
     this.drawGround(ctx, g.map, view);
     this.drawPickups(ctx, g, view);
     this.drawObstacles(ctx, g.map, view);
@@ -151,11 +239,45 @@ export class Renderer {
     this.drawFriendliesOverBushes(ctx, g, now);
     if (g.zone) this.drawZone(ctx, g.zone, g.map);
 
+    // Günün saatine göre ışık: dünyanın üstüne, arayüzün altına.
+    this.drawDaylight(ctx, view, day);
+
     ctx.restore();
 
     this.drawVignette(ctx);
     this.drawCrosshair(ctx, g);
     if (this.mctx) this.drawMinimap(g, now);
+  }
+
+  // Günün saatine göre tüm sahneye renk bindirir. Gece koyu mavi, şafak ve
+  // gün batımı turuncu, öğlen neredeyse hiç.
+  drawDaylight(ctx, view, day) {
+    const m = day.mul;
+    if (!m) return;
+    const w = view.x1 - view.x0, h = view.y1 - view.y0;
+
+    ctx.save();
+    if (m.r < 254 || m.g < 254 || m.b < 254) {
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = `rgb(${m.r},${m.g},${m.b})`;
+      ctx.fillRect(view.x0, view.y0, w, h);
+    }
+
+    // Karanlıkta oyuncunun etrafı aydınlık kalsın ki oyun oynanabilir olsun.
+    if (day.lamp > 0.02) {
+      const r = 560;
+      const gr = ctx.createRadialGradient(this.camX, this.camY, 30, this.camX, this.camY, r);
+      const a = 0.24 * Math.min(1, day.lamp);
+      gr.addColorStop(0, `rgba(255,236,196,${a})`);
+      gr.addColorStop(0.55, `rgba(255,226,170,${a * 0.35})`);
+      gr.addColorStop(1, 'rgba(255,226,170,0)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(this.camX, this.camY, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   viewRect() {
@@ -164,57 +286,306 @@ export class Renderer {
     return { x0: this.camX - hw, y0: this.camY - hh, x1: this.camX + hw, y1: this.camY + hh };
   }
 
+  // Çimen zemin dokusu.
+  //
+  // Amaç: yakından bakınca "gürültü" gibi durmayan, yumuşak bir çimen.
+  // Nasıl:
+  //   1) Doku 3x3 döşenmiş büyük bir tuvale çiziliyor,
+  //   2) tamamına bulanıklık uygulanıyor,
+  //   3) ortadaki kare kırpılıyor.
+  // Bu üç adım olmadan bulanıklık kenarlarda saydamlığa karışır ve döşeme
+  // yerlerinde dikiş izi çıkardı. Böylece kenarlar da yumuşak ve kusursuz
+  // tekrar ediyor.
+  // Zemin dokusu olarak kullanılacak görsel. Sunucudan servis edilen sürüm
+  // dosyayı normal yolla yükler; tek dosyalık (internetsiz) sürümde ise
+  // build-single.mjs görseli data URL olarak gömer ve bu değişkeni ayarlar.
+  grassImage() {
+    if (this._grassImg !== undefined) return this._grassImg;
+    const url = (typeof window !== 'undefined' && window.__GRASS_URL) || '/textures/grass.jpg';
+    const img = new Image();
+    img.onload = () => { this._grass = null; };     // deseni yeniden kur
+    img.onerror = () => { this._grassImg = null; }; // görsel yoksa çizime düş
+    img.src = url;
+    this._grassImg = img;
+    return img;
+  }
+
+  grassPattern(ctx) {
+    // Görsel hazırsa onu kullan.
+    const img = this.grassImage();
+    if (img && img.complete && img.naturalWidth > 0) {
+      if (!this._grassFromImg) {
+        const pat = ctx.createPattern(img, 'repeat');
+        // Ölçek meselesi: dokuyu 1:1 döşersen çim telleri karakter boyuna
+        // yaklaşır ve orantı bozuk görünür. Bir kiremiti GRASS_TILE_PX kadar
+        // dünya pikseline sığdırıyoruz; tel boyu karaktere göre doğru oluyor.
+        // (Daha büyük görsel bunu çözmez — mesele çözünürlük değil, ölçek.)
+        try {
+          const k = GRASS_TILE_PX / img.naturalWidth;
+          if (pat && pat.setTransform) pat.setTransform(new DOMMatrix().scale(k, k));
+        } catch { /* setTransform yoksa 1:1 döşenir */ }
+        this._grassFromImg = pat;
+      }
+      if (this._grassFromImg) return this._grassFromImg;
+    }
+
+    // Görsel yoksa ya da henüz yüklenmediyse: kodla üretilen çimen.
+    if (this._grass) return this._grass;
+
+    const S = 256;
+
+    // --- 1) ham doku ---
+    const raw = document.createElement('canvas');
+    raw.width = S; raw.height = S;
+    const g = raw.getContext('2d');
+
+    let seed = 20260819;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    g.fillStyle = '#1e2c1f';
+    g.fillRect(0, 0, S, S);
+
+    // Geniş, çok yumuşak lekeler — çimenin tekdüze görünmemesi için
+    for (let i = 0; i < 22; i++) {
+      const x = rnd() * S, y = rnd() * S, r = 30 + rnd() * 60;
+      const light = rnd() > 0.5;
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, light ? 'rgba(66,98,58,0.22)' : 'rgba(16,26,17,0.20)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Çim telleri: keskin çizgi yerine soluk, ince ve kısa. Bulanıklık sonrası
+    // tek tek seçilmiyor, sadece yüzeye canlılık katıyor.
+    g.lineCap = 'round';
+    g.lineWidth = 1.4;
+    for (let i = 0; i < 520; i++) {
+      const x = rnd() * S, y = rnd() * S;
+      const len = 3 + rnd() * 4;
+      const lean = (rnd() - 0.5) * 2.4;
+      const tone = rnd();
+      g.strokeStyle = tone > 0.7 ? 'rgba(112,150,88,0.16)'
+        : tone > 0.34 ? 'rgba(74,108,62,0.18)'
+          : 'rgba(20,32,21,0.18)';
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + lean, y - len);
+      g.stroke();
+    }
+
+    // --- 2) 3x3 döşe, bulanıklaştır, ortayı kırp ---
+    const big = document.createElement('canvas');
+    big.width = S * 3; big.height = S * 3;
+    const bg = big.getContext('2d');
+    for (let ty = 0; ty < 3; ty++) {
+      for (let tx = 0; tx < 3; tx++) bg.drawImage(raw, tx * S, ty * S);
+    }
+
+    const tile = document.createElement('canvas');
+    tile.width = S; tile.height = S;
+    const tg = tile.getContext('2d');
+    tg.filter = 'blur(1.6px)';
+    tg.drawImage(big, -S, -S);
+    tg.filter = 'none';
+
+    this._grass = ctx.createPattern(tile, 'repeat');
+    return this._grass;
+  }
+
+  // Döşemenin tekrar ettiği gözle seçilmesin diye harita ölçeğinde birkaç çok
+  // büyük, çok yumuşak leke. Konumları haritadan türetiliyor, sabit.
+  grassBlotches(map) {
+    if (this._blotch && this._blotchKey === `${map.w}x${map.h}`) return this._blotch;
+    let seed = (map.w * 73856093) ^ (map.h * 19349663);
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const list = [];
+    const n = Math.round((map.w * map.h) / 240000);
+    for (let i = 0; i < n; i++) {
+      list.push({
+        x: rnd() * map.w,
+        y: rnd() * map.h,
+        r: 220 + rnd() * 360,
+        light: rnd() > 0.5,
+      });
+    }
+    this._blotchKey = `${map.w}x${map.h}`;
+    this._blotch = list;
+    return list;
+  }
+
   drawGround(ctx, map, view) {
-    ctx.fillStyle = '#141a21';
+    // Harita dışı: koyu boşluk
+    ctx.fillStyle = '#0b110c';
     ctx.fillRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
 
-    // Harita alanı biraz daha açık
-    ctx.fillStyle = '#182029';
+    // Harita zemini: çimen
+    ctx.save();
+    ctx.fillStyle = this.grassPattern(ctx);
     ctx.fillRect(0, 0, map.w, map.h);
+    ctx.restore();
 
-    // Izgara
-    const step = 100;
-    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const gx0 = Math.max(0, Math.floor(view.x0 / step) * step);
-    const gx1 = Math.min(map.w, view.x1);
-    for (let x = gx0; x <= gx1; x += step) {
-      ctx.moveTo(x, Math.max(0, view.y0));
-      ctx.lineTo(x, Math.min(map.h, view.y1));
+    // Harita ölçeğinde yumuşak lekeler: döşeme tekrarını gizler
+    for (const b of this.grassBlotches(map)) {
+      if (b.x + b.r < view.x0 || b.x - b.r > view.x1
+        || b.y + b.r < view.y0 || b.y - b.r > view.y1) continue;
+      const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+      grad.addColorStop(0, b.light ? 'rgba(84,116,70,0.16)' : 'rgba(10,20,12,0.18)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
     }
-    const gy0 = Math.max(0, Math.floor(view.y0 / step) * step);
-    const gy1 = Math.min(map.h, view.y1);
-    for (let y = gy0; y <= gy1; y += step) {
-      ctx.moveTo(Math.max(0, view.x0), y);
-      ctx.lineTo(Math.min(map.w, view.x1), y);
-    }
-    ctx.stroke();
 
-    // Sınır
-    ctx.strokeStyle = '#3a4757';
+    // Kenarlara doğru yumuşak kararma: alan sınırı hissedilsin (sert şerit değil)
+    const edge = 90;
+    const bands = [
+      [0, 0, map.w, edge, 0, 1],
+      [0, map.h - edge, map.w, edge, 0, -1],
+      [0, 0, edge, map.h, 1, 0],
+      [map.w - edge, 0, edge, map.h, -1, 0],
+    ];
+    for (const [bx, by, bw, bh, dx, dy] of bands) {
+      const x0 = dx > 0 ? bx : dx < 0 ? bx + bw : bx;
+      const y0 = dy > 0 ? by : dy < 0 ? by + bh : by;
+      const x1 = dx > 0 ? bx + bw : dx < 0 ? bx : bx;
+      const y1 = dy > 0 ? by + bh : dy < 0 ? by : by;
+      const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+      grad.addColorStop(0, 'rgba(0,0,0,0.30)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(bx, by, bw, bh);
+    }
+
+    // Sınır duvarı
+    ctx.strokeStyle = '#46523c';
     ctx.lineWidth = 6;
     ctx.strokeRect(0, 0, map.w, map.h);
   }
 
+  // Engeller artık düz blok değil, tepeden görünen BİNA: çatı yüzeyi, parapet
+  // (çatı korkuluğu), çatı panelleri ve çatı üstü detayları (bacalar, çatı
+  // pencereleri). Detaylar binanın konumundan türetilir — her karede aynı.
   drawObstacles(ctx, map, view) {
     for (const o of map.obstacles) {
       if (o.x > view.x1 || o.x + o.w < view.x0 || o.y > view.y1 || o.y + o.h < view.y0) continue;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(o.x + 5, o.y + 6, o.w, o.h);
+      // Binanın kendine ait sabit rastgeleliği
+      let h = ((o.x * 73856093) ^ (o.y * 19349663) ^ (o.w * 83492791)) >>> 0;
+      const rnd = () => { h = (h * 1664525 + 1013904223) >>> 0; return h / 4294967296; };
 
-      ctx.fillStyle = '#2b3745';
-      ctx.fillRect(o.x, o.y, o.w, o.h);
+      // --- yere düşen gölge: güneşin tam tersine, güneş alçaldıkça uzun ---
+      const day = this.day || { shadowX: 0.7, shadowY: 0.9, shadowAlpha: 0.45 };
+      ctx.save();
+      ctx.shadowColor = `rgba(0,0,0,${day.shadowAlpha})`;
+      ctx.shadowBlur = 14 + (1 - (day.elev ?? 0.6)) * 16;
+      ctx.shadowOffsetX = day.shadowX * 11;
+      ctx.shadowOffsetY = day.shadowY * 11;
+      ctx.fillStyle = '#1d242c';
+      this.roundRect(ctx, o.x, o.y, o.w, o.h, 4);
+      ctx.fill();
+      ctx.restore();
 
-      ctx.fillStyle = 'rgba(255,255,255,0.09)';
-      ctx.fillRect(o.x, o.y, o.w, Math.min(6, o.h));
-      ctx.fillRect(o.x, o.y, Math.min(6, o.w), o.h);
+      // --- çatı yüzeyi (biraz içeride: duvar kalınlığı hissi) ---
+      const t = 5;
+      const rx = o.x + t, ry = o.y + t;
+      const rw = Math.max(2, o.w - t * 2), rh = Math.max(2, o.h - t * 2);
+      const tone = 58 + Math.floor(rnd() * 12);
+      ctx.fillStyle = `rgb(${tone},${tone + 5},${tone + 12})`;
+      this.roundRect(ctx, rx, ry, rw, rh, 3);
+      ctx.fill();
 
-      ctx.strokeStyle = '#3b4a5c';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(o.x + 1, o.y + 1, o.w - 2, o.h - 2);
+      // Çatı yüzeyine köşegen bir ışık geçişi: düz renk yerine hafif hacim
+      const lit = ctx.createLinearGradient(o.x, o.y, o.x + o.w, o.y + o.h);
+      lit.addColorStop(0, 'rgba(255,255,255,0.07)');
+      lit.addColorStop(0.55, 'rgba(255,255,255,0)');
+      lit.addColorStop(1, 'rgba(0,0,0,0.16)');
+      ctx.fillStyle = lit;
+      this.roundRect(ctx, rx, ry, rw, rh, 3);
+      ctx.fill();
+
+      // Çatı panelleri: soluk çizgiler
+      ctx.strokeStyle = 'rgba(0,0,0,0.13)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = rx + 40; x < rx + rw; x += 40) { ctx.moveTo(x, ry); ctx.lineTo(x, ry + rh); }
+      for (let y = ry + 40; y < ry + rh; y += 40) { ctx.moveTo(rx, y); ctx.lineTo(rx + rw, y); }
+      ctx.stroke();
+
+      // --- parapet: sert şerit yerine kenardan içeri sönen geçiş ---
+      const band = (x, y, w, h, x0, y0, x1, y1, col) => {
+        const gr = ctx.createLinearGradient(x0, y0, x1, y1);
+        gr.addColorStop(0, col);
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gr;
+        ctx.fillRect(x, y, w, h);
+      };
+      const T = t + 3;
+      band(o.x, o.y, o.w, T, o.x, o.y, o.x, o.y + T, 'rgba(255,255,255,0.16)');
+      band(o.x, o.y, T, o.h, o.x, o.y, o.x + T, o.y, 'rgba(255,255,255,0.16)');
+      band(o.x, o.y + o.h - T, o.w, T, o.x, o.y + o.h, o.x, o.y + o.h - T, 'rgba(0,0,0,0.40)');
+      band(o.x + o.w - T, o.y, T, o.h, o.x + o.w, o.y, o.x + o.w - T, o.y, 'rgba(0,0,0,0.40)');
+
+      // --- çatı üstü detaylar (yeterince büyük binalarda) ---
+      if (rw > 70 && rh > 70) {
+        const n = 1 + Math.floor(rnd() * 3);
+        for (let i = 0; i < n; i++) {
+          const dw = 14 + rnd() * 16;
+          const dh = 14 + rnd() * 16;
+          const dx = rx + 8 + rnd() * Math.max(1, rw - dw - 16);
+          const dy = ry + 8 + rnd() * Math.max(1, rh - dh - 16);
+          ctx.save();
+          ctx.shadowColor = 'rgba(0,0,0,0.45)';
+          ctx.shadowBlur = 7;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 3;
+          if (rnd() > 0.45) {
+            // havalandırma / makine dairesi
+            ctx.fillStyle = '#4c5663';
+            this.roundRect(ctx, dx, dy, dw, dh, 3);
+            ctx.fill();
+            ctx.restore();
+            ctx.fillStyle = 'rgba(255,255,255,0.11)';
+            this.roundRect(ctx, dx, dy, dw, Math.min(4, dh), 3);
+            ctx.fill();
+          } else {
+            // çatı penceresi
+            ctx.fillStyle = '#5d7488';
+            this.roundRect(ctx, dx, dy, dw, dh, 3);
+            ctx.fill();
+            ctx.restore();
+            ctx.fillStyle = 'rgba(190,220,255,0.18)';
+            this.roundRect(ctx, dx + 2, dy + 2, dw - 4, dh - 4, 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // --- dış hat: ince ve yumuşak ---
+      ctx.strokeStyle = 'rgba(14,18,23,0.75)';
+      ctx.lineWidth = 1.5;
+      this.roundRect(ctx, o.x + 0.75, o.y + 0.75, o.w - 1.5, o.h - 1.5, 4);
+      ctx.stroke();
     }
+  }
+
+  // Yuvarlatılmış dikdörtgen yolu (eski tarayıcılarda roundRect olmayabilir).
+  roundRect(ctx, x, y, w, h, r) {
+    const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, rad); return; }
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
   }
 
   // Çalılar: engel değil, örtü. Oyuncuların üstüne çizilir ki içindeki gizlensin.
@@ -401,7 +772,9 @@ export class Renderer {
     const myTeam = g.myTeam;
 
     for (const p of g.playersRender) {
-      if (!p.alive && p.id !== g.myId) continue;
+      // Ölen oyuncu çizilmez. Eskiden kendi ölü bedenimiz soluk olarak
+      // ekranda kalıyordu ve yerde ceset varmış gibi görünüyordu.
+      if (!p.alive) continue;
 
       const isMe = p.id === g.myId;
       const friendly = myTeam !== 0 && p.team === myTeam;
@@ -422,7 +795,6 @@ export class Renderer {
         alpha = lineBlocked(me.x, me.y, p.x, p.y, g.idx) ? 0.45 : 1;
       }
 
-      if (!p.alive && isMe) alpha = 0.35;
       if (p.hidden) alpha *= 0.55;        // çalıdaysa siluet gibi görünsün
 
       ctx.globalAlpha = alpha;
@@ -444,19 +816,45 @@ export class Renderer {
 
     const dir = dirFromAngle(p.aim);
     const frames = set[dir];
-    const frame = p.moving ? frames[p.walkFrame % 3] : frames[1];
+    // Dururken nötr duruş (0. kare), yürürken 8 kareli döngü.
+    const frame = p.moving ? frames[p.walkFrame % WALK_FRAMES] : frames[0];
+
+    // --- yumuşak geçiş -------------------------------------------------------
+    // Kareler ayrık, ama gövdenin inip kalkması ve hafif yana salınımı SÜREKLİ:
+    // kesirli yürüyüş fazından sinüsle hesaplanıyor. Böylece kareden kareye
+    // atlama görünmüyor, hareket akıp gidiyor. Dururken de sıfıra doğru eriyor.
+    // DİKKAT: playersRender listesi her karede sıfırdan kuruluyor, bu yüzden
+    // yumuşatma değerini oyuncu nesnesinde tutamayız — kaybolur. Oyuncu
+    // kimliğine göre çizicide saklıyoruz.
+    const ph = p.walkPhase || 0;
+    const target = p.moving ? 1 : 0;
+    const prev = this.gait.get(p.id);
+    const gait = (prev ?? target) + (target - (prev ?? target)) * 0.18;
+    this.gait.set(p.id, gait);
+    p._gait = gait;                     // testlerin ve hata ayıklamanın görmesi için
+    // İki adımda bir tam iniş-çıkış (8 karelik döngüde 2 kez)
+    const bob = Math.sin(ph * Math.PI / 2) * 2.2 * gait;
+    const sway = Math.sin(ph * Math.PI / 4) * 0.9 * gait;
 
     const scale = 1.75;
     const w = SPRITE_W * scale, h = SPRITE_H * scale;
     // Ayaklar oyuncunun konumunda dursun, gövde yukarı doğru uzasın.
-    const left = p.x - w / 2;
-    const top = p.y + PLAYER_RADIUS * 0.55 - h;
+    const left = p.x - w / 2 + sway;
+    const top = p.y + PLAYER_RADIUS * 0.55 - h - Math.abs(bob);
 
-    // --- zemin gölgesi -------------------------------------------------------
-    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    // --- zemin gölgesi: güneşin tersine uzanır -------------------------------
+    const day = this.day || { shadowX: 0.5, shadowY: 0.9, shadowAlpha: 0.42, elev: 0.6 };
+    const sx = day.shadowX * PLAYER_RADIUS * 0.9;
+    const sy = day.shadowY * PLAYER_RADIUS * 0.5;
+    const stretch = 1 + Math.min(1.6, Math.abs(day.shadowX) * 0.5);
+    ctx.save();
+    ctx.fillStyle = `rgba(0,0,0,${day.shadowAlpha})`;
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y + 4, PLAYER_RADIUS * 0.95, PLAYER_RADIUS * 0.48, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x + sx, p.y + 4 + sy,
+      PLAYER_RADIUS * 0.95 * stretch, PLAYER_RADIUS * 0.48,
+      Math.atan2(day.shadowY, day.shadowX), 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
 
     // --- doğuş koruması ------------------------------------------------------
     if (p.protected) {
