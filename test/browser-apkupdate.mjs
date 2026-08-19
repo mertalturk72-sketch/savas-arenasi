@@ -210,6 +210,60 @@ sunucuSurum = 'yenisurum123';
   await ctx.close();
 }
 
+// ===== 6) APK'nın gerçek durumu: sayfa https://localhost'tan servis ediliyor
+// Capacitor uygulamanın kendi dosyalarını `https://localhost` üzerinden verir.
+// Bu "gerçek bir sunucudan geliyor" gibi göründüğü için oyun Online'a basınca
+// kendi kendine bağlanmaya çalışıp "Bağlanılıyor: localhost" ekranında
+// takılıyordu. Burada o durumu birebir kuruyoruz.
+{
+  const ctx = await baglamKur();
+  // https://localhost adresini APK'nın içeriğiyle cevapla
+  await ctx.route('**://localhost/**', async (route) => {
+    const u = new URL(route.request().url());
+    if (u.pathname === '/' || u.pathname === '/index.html') {
+      await route.fulfill({
+        status: 200, contentType: 'text/html; charset=utf-8',
+        body: fs.readFileSync(FILE, 'utf-8'),
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, body: '' });
+  });
+
+  const page = await yeniSayfa(ctx);
+  await page.goto('https://localhost/');
+  await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
+
+  const paket = await page.evaluate(() => ({
+    bundled: !!window.__BUNDLED__,
+    proto: location.protocol,
+    host: location.host,
+    mode: window.__net && window.__net.mode,
+  }));
+  console.log('6) APK ortamı:', JSON.stringify(paket));
+  if (!paket.bundled) errors.push('APK ortamında __BUNDLED__ yok — test kurulumu yanlış');
+  if (paket.mode !== 'local') errors.push('APK açılışta çevrimdışı başlamıyor');
+
+  // Online'a bas: localhost'a değil, bulut sunucuya gitmeli
+  await page.click('#tabOnline');
+  await page.waitForTimeout(1200);
+  const online = await page.evaluate(() => ({
+    hedef: window.__net.url,
+    kutu: document.getElementById('serverInput').value.trim(),
+    durum: (document.getElementById('connStatus').textContent || '').trim(),
+  }));
+  console.log('   Online → hedef:', JSON.stringify(online.hedef));
+  console.log('   durum:', online.durum.slice(0, 80));
+  if (/localhost/i.test(online.hedef || '')) {
+    errors.push('APK Online modunda kendi kendine (localhost) bağlanmaya çalışıyor');
+  }
+  if (!/onrender/.test(online.hedef || '')) {
+    errors.push(`APK Online modunda bulut sunucuya gitmiyor: ${online.hedef}`);
+  }
+  if (/localhost/i.test(online.durum)) errors.push('durum yazısında hâlâ localhost görünüyor');
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 

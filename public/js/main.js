@@ -88,11 +88,27 @@ async function useLocal(save = true) {
 // bağlanılamayan boş bir adrese dönüşüyordu ve ekranda "adresine
 // ulaşılamıyor — 3. deneme" gibi adresi olmayan bir mesaj çıkıyordu.
 // Paketlenmiş sürümde boş adres artık bulut sunucuya çözülüyor.
+// Sayfanın kendi oyun sunucusu var mı?
+//
+// Protokole bakmak YETMİYOR: APK içindeki sayfa Capacitor tarafından
+// `https://localhost` üzerinden servis ediliyor, yani gerçek bir sunucudan
+// geliyormuş gibi görünüyor — ama arkasında oyun sunucusu yok. Bu yüzden
+// APK'da Online'a basınca oyun kendi kendine bağlanmaya çalışıp
+// "Bağlanılıyor: localhost" ekranında takılıyordu.
+//
+// Doğru ölçüt paketlenmiş olup olmadığı: paket sürümlerinde __BUNDLED__ var.
+function isPackagedApp() {
+  return !!window.__BUNDLED__
+    || !!window.Capacitor
+    || location.protocol === 'file:'
+    || location.protocol === 'capacitor:';
+}
+
 function resolveServerUrl(url) {
   const u = (url || '').trim();
   if (u) return u;
-  const servedFromServer = location.protocol === 'http:' || location.protocol === 'https:';
-  return servedFromServer ? '' : UPDATE_SERVER;
+  // Paketlenmiş sürümde "boş adres" diye bir şey yok; bulut sunucuya bağlan.
+  return isPackagedApp() ? UPDATE_SERVER : '';
 }
 
 function useOnline(rawUrl, save = true) {
@@ -226,7 +242,7 @@ function renderLobby() {
 
   // Davet linki — sadece gerçek bir sunucuya bağlıyken anlamlı
   const inviteRow = $('inviteRow');
-  if (state.netMode === 'online' && (location.protocol === 'http:' || location.protocol === 'https:')) {
+  if (state.netMode === 'online' && (net.url || !isPackagedApp())) {
     const base = net.url ? normalizeHttp(net.url) : location.origin;
     const link = `${base}/?lobi=${l.code}`;
     inviteRow.classList.remove('hidden');
@@ -500,7 +516,9 @@ net.on('_retry', (d) => {
   // 192.168.x.x) o adres tarayıcıda saklı kalıyor ve bulut sunucudan açılan
   // sayfa bile o ölü adrese bağlanmaya çalışıyordu. Ekranda sadece "sunucu
   // uyanıyor" yazdığı için sebebi görmek imkânsızdı.
-  const servedFromServer = location.protocol === 'http:' || location.protocol === 'https:';
+  // Paketlenmiş sürümde sayfanın sunucusu olmadığı için buraya düşmemeli.
+  const servedFromServer = !isPackagedApp()
+    && (location.protocol === 'http:' || location.protocol === 'https:');
   if (d.attempt >= 3 && net.url && servedFromServer) {
     toast('Kayıtlı sunucu adresine ulaşılamadı — bu sayfanın sunucusuna geçiliyor.');
     $('serverInput').value = '';
@@ -659,8 +677,7 @@ function initUi() {
   $('tabOnline').onclick = () => {
     // Paketlenmiş sürümde "boş = bu sayfanın sunucusu" diye bir şey yok;
     // kutuyu bulut sunucuyla dolduruyoruz ki kullanıcı nereye bağlandığını görsün.
-    const packaged = location.protocol !== 'http:' && location.protocol !== 'https:';
-    if (packaged && !$('serverInput').value.trim()) $('serverInput').value = UPDATE_SERVER;
+    if (isPackagedApp() && !$('serverInput').value.trim()) $('serverInput').value = UPDATE_SERVER;
     sfx.unlockAudio(); sfx.sfxUi(); cancelAutoFallback();
     useOnline($('serverInput').value.trim());
   };

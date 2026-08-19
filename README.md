@@ -185,6 +185,14 @@ görebilirsin.
 
 Kendi sunucun varsa `shared/constants.js` → `UPDATE_SERVER` adresini değiştir.
 
+**Dikkat edilen bir tuzak:** APK içindeki sayfa Capacitor tarafından
+`https://localhost` üzerinden servis edilir. Yani protokole bakıp "gerçek bir
+sunucudan geliyorum" sonucuna varmak yanlıştır — arkasında oyun sunucusu yoktur.
+"Online" seçilince oyun kendi kendine bağlanmaya çalışıp *"Bağlanılıyor:
+localhost"* ekranında takılıyordu. Doğru ölçüt `window.__BUNDLED__`
+(`isPackagedApp()`); paketlenmiş sürümde boş adres bulut sunucuya çözülür.
+`npm run test:browser` bu ortamı birebir taklit edip sınıyor.
+
 ### APK nasıl derlenir
 
 `android/` klasörünün depoda olmasına gerek yok (90 dosya, GitHub'ın 100 dosya
