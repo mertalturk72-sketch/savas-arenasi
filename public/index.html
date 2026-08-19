@@ -45,11 +45,17 @@
   <button id="bootRetry" style="display:none">Yeniden dene</button>
 </div>
 
-<!-- Paketlenmiş sürümde (APK / tek dosya) sunucuda yeni sürüm çıkınca -->
-<div id="updateBar" class="update-bar hidden">
-  <span id="updateText">Yeni sürüm var</span>
-  <button id="btnGetUpdate">GÜNCELLE</button>
-  <button id="btnSkipUpdate" class="skip">Şimdi değil</button>
+<!-- Paketlenmiş sürümde (APK / tek dosya) sunucuda yeni sürüm çıkınca.
+     Ekranın en üstünde ince bir çubuk olarak duruyordu; telefon çentiği
+     altında kalıp basılamıyordu. Artık ortada, tam ekran ve büyük. -->
+<div id="updateOverlay" class="update-overlay hidden">
+  <div class="update-card">
+    <div class="update-icon">⬆</div>
+    <h1>GÜNCELLEME VAR</h1>
+    <p id="updateText">Sunucuda yeni bir sürüm hazır.</p>
+    <button id="btnGetUpdate" class="update-go">GÜNCELLE</button>
+    <button id="btnSkipUpdate" class="update-skip">Şimdi değil</button>
+  </div>
 </div>
 
 <!-- ================= BAĞLANTI DURUMU ================= -->

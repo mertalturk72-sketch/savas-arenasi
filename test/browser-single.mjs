@@ -173,6 +173,17 @@ async function playAMatch(page, { mode = 0, bots = 6 } = {}) {
   page.on('pageerror', (e) => errors.push(`[online] ${e.message}`));
   await page.goto(URL_);
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
+
+  // Sahte sunucu farklı bir sürüm bildiriyor → açılışta tam ekran "GÜNCELLEME
+  // VAR" penceresi çıkar ve menüyü kapatır (kasıtlı). Menüyü sınamadan önce
+  // "Şimdi değil" ile kapatıyoruz.
+  if (await page.locator('#updateOverlay:not(.hidden)').waitFor({ timeout: 6000 })
+    .then(() => true).catch(() => false)) {
+    await page.click('#btnSkipUpdate');
+    await page.waitForSelector('#updateOverlay', { state: 'hidden', timeout: 3000 })
+      .catch(() => errors.push('"Şimdi değil" güncelleme ekranını kapatmadı'));
+  }
+
   await page.click('#tabOnline');
   await page.waitForTimeout(1200);
 

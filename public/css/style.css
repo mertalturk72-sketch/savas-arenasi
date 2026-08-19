@@ -53,20 +53,44 @@ h1, h2, h3 { font-weight: 700; letter-spacing: .02em; }
   padding: 7px; font-weight: 600; font-size: 14px;
 }
 
-/* ===== Güncelleme çubuğu ===== */
-.update-bar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 210;
-  background: linear-gradient(180deg, #1f6b3a, #16512c);
-  color: #eafff1; padding: 9px 14px;
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  font-weight: 600; font-size: 14px; flex-wrap: wrap;
+/* ===== Güncelleme penceresi =====
+   Eskiden ekranın en üstünde ince bir çubuktu; telefon çentiği/durum çubuğu
+   altında kalıp basılamıyordu. Artık ortada duran, kaçırılamayacak bir
+   pencere — güvenli alan boşlukları da hesaba katılıyor. */
+.update-overlay {
+  position: fixed; inset: 0; z-index: 400;
+  background: rgba(5, 9, 7, .88); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
 }
-.update-bar button {
-  background: #eafff1; color: #123d22; border: none; border-radius: 7px;
-  padding: 6px 14px; font-weight: 800; font-size: 13px; cursor: pointer;
+.update-card {
+  width: min(420px, 92vw); text-align: center;
+  background: linear-gradient(180deg, #17301f 0%, #101d15 100%);
+  border: 1px solid #2f7a4a; border-radius: 18px;
+  padding: 26px 22px 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
 }
-.update-bar button.skip {
-  background: transparent; color: #bfe8cd; border: 1px solid #3f8a5c; font-weight: 600;
+.update-icon {
+  width: 62px; height: 62px; margin: 0 auto 12px;
+  border-radius: 50%; background: #2f7a4a; color: #eafff1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 700;
+}
+.update-card h1 {
+  font-size: clamp(24px, 6vw, 32px); letter-spacing: .06em;
+  color: #b9f5cf; margin-bottom: 8px;
+}
+.update-card p { color: #8fb99f; font-size: 14.5px; line-height: 1.5; margin-bottom: 20px; }
+.update-go {
+  display: block; width: 100%; padding: 16px; border: none; border-radius: 12px;
+  background: linear-gradient(180deg, #34c46e, #1f8f4b); color: #06210f;
+  font-size: 18px; font-weight: 800; letter-spacing: .06em; cursor: pointer;
+}
+.update-go:active { transform: translateY(1px); }
+.update-skip {
+  display: block; width: 100%; margin-top: 10px; padding: 12px;
+  background: transparent; border: 1px solid #2f5a41; border-radius: 10px;
+  color: #7fa78c; font-size: 14px; cursor: pointer;
 }
 .build-info {
   text-align: center; color: #55606d; font-size: 11px; margin: 6px 0 0;

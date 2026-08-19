@@ -95,6 +95,20 @@ async function yeniSayfa(ctx) {
   return page;
 }
 
+// Güncelleme ekranı artık tam ekran bir pencere (kamera çentiğinin altında
+// kalmasın diye). Yani açıkken menüye dokunulamaz — bu kasıtlı. Menüyü
+// sınayan bölümlerde önce "Şimdi değil" diyip kapatıyoruz; kapanmazsa bu
+// başlı başına bir hatadır, çünkü kullanıcı oyuna hiç giremez demektir.
+async function guncellemeyiKapat(page, etiket) {
+  const acik = await page.locator('#updateOverlay:not(.hidden)')
+    .waitFor({ timeout: 8000 }).then(() => true).catch(() => false);
+  if (!acik) return false;
+  await page.click('#btnSkipUpdate');
+  await page.waitForSelector('#updateOverlay', { state: 'hidden', timeout: 3000 })
+    .catch(() => errors.push(`${etiket}: "Şimdi değil" güncelleme ekranını kapatmadı`));
+  return true;
+}
+
 // ===== 1) Sürümler aynı → uyarı çıkmamalı ================================
 {
   const ctx = await baglamKur();
@@ -103,7 +117,7 @@ async function yeniSayfa(ctx) {
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
   await page.waitForTimeout(1500);
   const r = await page.evaluate(() => ({
-    bar: !document.getElementById('updateBar').classList.contains('hidden'),
+    bar: !document.getElementById('updateOverlay').classList.contains('hidden'),
     surum: (document.getElementById('buildInfo').textContent || '').trim(),
     surumGizli: document.getElementById('buildInfo').classList.contains('hidden'),
   }));
@@ -122,19 +136,19 @@ sunucuSurum = 'yenisurum123';
   const page = await yeniSayfa(ctx);
   await page.goto('file://' + FILE);
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
-  await page.waitForSelector('#updateBar:not(.hidden)', { timeout: 8000 })
+  await page.waitForSelector('#updateOverlay:not(.hidden)', { timeout: 8000 })
     .catch(() => errors.push('yeni sürüm varken uyarı çıkmadı'));
   const txt = await page.textContent('#updateText');
   console.log('2) yeni sürüm → uyarı çıktı ✓ ·', JSON.stringify(txt.trim()));
 
   // "Şimdi değil" → uyarı kapanmalı ve bir daha bu sürüm için çıkmamalı
   await page.click('#btnSkipUpdate');
-  await page.waitForSelector('#updateBar', { state: 'hidden', timeout: 3000 });
+  await page.waitForSelector('#updateOverlay', { state: 'hidden', timeout: 3000 });
   await page.reload();
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
   await page.waitForTimeout(1500);
   const yine = await page.evaluate(() =>
-    !document.getElementById('updateBar').classList.contains('hidden'));
+    !document.getElementById('updateOverlay').classList.contains('hidden'));
   console.log('   "şimdi değil" sonrası tekrar sorar mı:', yine ? 'EVET ✗' : 'hayır ✓');
   if (yine) errors.push('"şimdi değil" dendiği hâlde aynı sürüm için tekrar soruyor');
   await ctx.close();
@@ -146,7 +160,7 @@ sunucuSurum = 'yenisurum123';
   const page = await yeniSayfa(ctx);
   await page.goto('file://' + FILE);
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
-  await page.waitForSelector('#updateBar:not(.hidden)', { timeout: 8000 });
+  await page.waitForSelector('#updateOverlay:not(.hidden)', { timeout: 8000 });
 
   await Promise.all([
     page.waitForURL(/onrender\.com/, { timeout: 15000 })
@@ -175,7 +189,7 @@ sunucuSurum = 'yenisurum123';
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
   await page.waitForTimeout(2000);
   const r = await page.evaluate(() => ({
-    bar: !document.getElementById('updateBar').classList.contains('hidden'),
+    bar: !document.getElementById('updateOverlay').classList.contains('hidden'),
     mode: window.__net && window.__net.mode,
   }));
   console.log('4) internet yokken → uyarı:', r.bar ? 'ÇIKTI ✗' : 'çıkmadı ✓', '· mod:', r.mode);
@@ -243,6 +257,12 @@ sunucuSurum = 'yenisurum123';
   console.log('6) APK ortamı:', JSON.stringify(paket));
   if (!paket.bundled) errors.push('APK ortamında __BUNDLED__ yok — test kurulumu yanlış');
   if (paket.mode !== 'local') errors.push('APK açılışta çevrimdışı başlamıyor');
+
+  // Sunucuda hâlâ yeni sürüm duruyor → APK ortamında da güncelleme ekranı
+  // çıkmalı ve kapatılabilmeli. Kapanmadan menüye erişilemez.
+  const cikti = await guncellemeyiKapat(page, '6');
+  console.log('   güncelleme ekranı:', cikti ? 'çıktı ve kapandı ✓' : 'ÇIKMADI ✗');
+  if (!cikti) errors.push('APK ortamında (https://localhost) güncelleme ekranı çıkmıyor');
 
   // Online'a bas: localhost'a değil, bulut sunucuya gitmeli
   await page.click('#tabOnline');

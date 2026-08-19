@@ -941,8 +941,10 @@ async function checkForUpdate() {
   if (uzak.surum === window.__BUILD__) return;              // zaten güncel
   if (store(UPDATE_SKIP_KEY) === uzak.surum) return;        // bu sürümü atladı
 
-  const bar = $('updateBar');
-  $('updateText').textContent = `Yeni sürüm hazır (${uzak.surum.slice(0, 6)})`;
+  const bar = $('updateOverlay');
+  $('updateText').textContent =
+    `Sunucuda yeni bir sürüm hazır (${uzak.surum.slice(0, 6)}). `
+    + 'Güncelleyince oyunun en yeni hâline geçersin — yeniden kurmana gerek yok.';
   bar.classList.remove('hidden');
   $('btnGetUpdate').onclick = () => {
     store(UPDATE_PREF_KEY, '1');
