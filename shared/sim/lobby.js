@@ -6,6 +6,7 @@ import {
   CHARACTERS, DEFAULT_CHAR, CHAR_IDS,
   POST_MATCH_MS, SNAPSHOT_MS, MIN_PLAYERS_TO_START, BOT_NAMES, CLASS_IDS,
   MAX_LOBBY_NAME_LEN, MAX_CHAT_LEN,
+  BOT_LEVELS, DEFAULT_BOT_LEVEL,
 } from '../constants.js';
 import { S } from '../protocol.js';
 import { Game } from './game.js';
@@ -47,6 +48,7 @@ export class Lobby {
     this.maxPlayers = Math.min(MAX_PLAYERS, Math.max(2, opts.maxPlayers | 0 || MAX_PLAYERS));
     this.private = !!opts.private;
     this.botCount = Math.min(MAX_PLAYERS - 1, Math.max(0, opts.botCount | 0));
+    this.botLevel = BOT_LEVELS[opts.botLevel] ? opts.botLevel : DEFAULT_BOT_LEVEL;
     this.hostId = host.id;
     this.members = new Map();     // clientId -> member
     this.state = 'waiting';       // waiting | countdown | playing | post
@@ -159,6 +161,7 @@ export class Lobby {
     if (s.botCount !== undefined) {
       this.botCount = Math.min(MAX_PLAYERS - 1, Math.max(0, s.botCount | 0));
     }
+    if (s.botLevel !== undefined && BOT_LEVELS[s.botLevel]) this.botLevel = s.botLevel;
     if (s.private !== undefined) this.private = !!s.private;
 
     this.broadcastState();
@@ -279,6 +282,7 @@ export class Lobby {
   }
 
   startMatch() {
+    this.matchNo = (this.matchNo || 0) + 1;
     const mode = MODES[this.modeId];
     const roster = [];
 
@@ -312,6 +316,7 @@ export class Lobby {
       roster.push({
         id: this.hub.nextBotId(),
         name, bot: true, team,
+        botLevel: this.botLevel,
         cls: clsPool[(botIdx - 1) % clsPool.length],
         char: CHAR_IDS[(botIdx - 1) % CHAR_IDS.length],
         conn: null,
@@ -364,6 +369,8 @@ export class Lobby {
       if (g.over) {
         this.game = null;
         this._lastScoreboard = g.scoreboard();
+        // Her maça bir numara: istemci 'bu tabloyu zaten gördüm' diyebilsin.
+        this._lastScoreboard.matchId = `${this.id}-${this.matchNo || 1}`;
         this.state = 'post';
         this.postEnd = now + POST_MATCH_MS;
         this.broadcast(S.MATCH_END, { scoreboard: this._lastScoreboard, nextIn: POST_MATCH_MS });
@@ -390,6 +397,7 @@ export class Lobby {
       players: this.members.size,
       max: this.maxPlayers,
       bots: this.botCount,
+      botLevel: this.botLevel,
       state: this.state,
       private: this.private,
     };
@@ -403,6 +411,7 @@ export class Lobby {
       mode: this.modeId,
       maxPlayers: this.maxPlayers,
       botCount: this.botCount,
+      botLevel: this.botLevel,
       private: this.private,
       hostId: this.hostId,
       state: this.state,

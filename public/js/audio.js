@@ -57,6 +57,8 @@ export function sfxShot(weapon, pan = 0, dist = 0) {
     rifle: { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 },
     shotgun: { dur: 0.26, f0: 500, f1: 60, gain: 0.9, lp: 1500 },
     sniper: { dur: 0.34, f0: 1400, f1: 90, gain: 1.0, lp: 3400 },
+    // Bomba fırlatma: kısa, boğuk bir savurma sesi (patlama ayrı → sfxBoom).
+    bomba: { dur: 0.16, f0: 420, f1: 70, gain: 0.4, lp: 900 },
   }[weapon] || { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 };
 
   const src = c.createBufferSource();
@@ -85,6 +87,58 @@ export function sfxShot(weapon, pan = 0, dist = 0) {
   osc.connect(oe);
   place(oe, pan, dist, 1400);
   osc.start(now); osc.stop(now + cfg.dur + 0.02);
+}
+
+// Patlama: alçak bir gümbürtü + geniş bir gürültü kuyruğu.
+export function sfxBoom(pan = 0, dist = 0) {
+  const c = ensure();
+  if (!c || !enabled) return;
+  const now = c.currentTime;
+
+  // Gürültü gövdesi
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, 0.9);
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(1800, now);
+  filt.frequency.exponentialRampToValueAtTime(120, now + 0.75);
+  const env = c.createGain();
+  env.gain.setValueAtTime(1.05, now);
+  env.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+  src.connect(filt); filt.connect(env);
+  place(env, pan, dist, 2200);
+  src.start(now); src.stop(now + 0.9);
+
+  // Alçak gümbürtü
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(120, now);
+  osc.frequency.exponentialRampToValueAtTime(28, now + 0.5);
+  const oe = c.createGain();
+  oe.gain.setValueAtTime(0.95, now);
+  oe.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc.connect(oe);
+  place(oe, pan, dist, 2200);
+  osc.start(now); osc.stop(now + 0.65);
+}
+
+// Kazanma fanfarı: yükselen üç nota + parıltı.
+export function sfxWin() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const notalar = [523.25, 659.25, 783.99, 1046.5];   // do-mi-sol-do
+  notalar.forEach((f, i) => {
+    const t = now + i * 0.13;
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, t);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    osc.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + 0.55);
+  });
 }
 
 export function sfxHit() {

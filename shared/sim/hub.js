@@ -170,6 +170,7 @@ export class Hub {
           maxPlayers: msg.maxPlayers,
           private: msg.private,
           botCount: msg.botCount,
+          botLevel: msg.botLevel,
         });
         if (error) this.error(client, error);
         else this.send(client, S.LOBBY_STATE, { lobby: created.full() });

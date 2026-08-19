@@ -43,8 +43,10 @@ async function open(url) {
     const b = document.getElementById('btnUpdate');
     return { hidden: b.classList.contains('hidden'), text: b.textContent.trim() };
   });
-  console.log('Güncelle düğmesi:', !upd.hidden ? 'görünür ✓' : 'GİZLİ ✗', JSON.stringify(upd.text));
-  if (upd.hidden) errors.push('Güncelle düğmesi görünmüyor');
+  // Güncelle düğmesi artık SADECE gerçekten güncelleme varken çıkıyor.
+  // Sunucudan yeni açılmış bir sayfada güncelleme yoktur → gizli olmalı.
+  console.log('Güncelle düğmesi:', upd.hidden ? 'gizli ✓ (güncelleme yok)' : 'GÖRÜNÜR ✗', JSON.stringify(upd.text));
+  if (!upd.hidden) errors.push('güncelleme yokken Güncelle düğmesi görünüyor');
   const head = await page.evaluate(() => fetch('/savas-arenasi.html').then((r) => r.ok && r.headers.get('content-type')));
   console.log('  internetsiz sürüm hâlâ adresten indirilebiliyor:', head ? '✓' : '✗');
   if (!head) errors.push('/savas-arenasi.html sunulmuyor');

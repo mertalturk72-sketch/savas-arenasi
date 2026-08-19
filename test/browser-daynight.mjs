@@ -143,6 +143,13 @@ await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
 
 // ===== 4) Öğlen gerçekten gece yarısından aydınlık mı? ===================
 {
+  // Parlaklığı NEREDEN ölçtüğümüz önemli.
+  //
+  // Oyuncunun çevresinde gece bilerek sıcak sarı bir lamba var (harita
+  // okunabilsin diye). Ekranın ortasını ölçersek gece neredeyse öğlen kadar
+  // aydınlık çıkar — ama bu tasarım gereği. Asıl kural şu: LAMBANIN DIŞINDA
+  // gece belirgin biçimde karanlık olmalı. O yüzden ölçümü ekranın kenarından
+  // alıyoruz; oyuncu ortada olduğu için orası lambanın erişemediği bölge.
   const bright = async (h) => {
     await page.evaluate((hh) => {
       const g = window.__game;
@@ -150,7 +157,7 @@ await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
       g.scores = { ...(g.scores || {}), left: 300 };
     }, h);
     await page.waitForTimeout(400);
-    const shot = await page.screenshot({ clip: { x: 0, y: 120, width: 960, height: 380 } });
+    const shot = await page.screenshot({ clip: { x: 0, y: 120, width: 220, height: 380 } });
     // ortalama parlaklık
     return page.evaluate(async (b64) => {
       const img = new Image();
@@ -170,9 +177,32 @@ await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
   const noon = await bright(12);
   const night = await bright(1);
   const dusk = await bright(19.4);
-  console.log(`parlaklık — öğlen ${noon.toFixed(1)} · gün batımı ${dusk.toFixed(1)} · gece ${night.toFixed(1)}`);
+  console.log(`kenar parlaklığı — öğlen ${noon.toFixed(1)} · gün batımı ${dusk.toFixed(1)} · gece ${night.toFixed(1)}`);
   if (!(noon > night * 1.4)) errors.push(`öğlen geceden yeterince aydınlık değil (${noon.toFixed(1)} / ${night.toFixed(1)})`);
   if (!(noon > dusk)) errors.push('gün batımı öğlenden aydınlık görünüyor');
+
+  // Ve lambanın kendisi çalışıyor mu: gece, oyuncunun çevresi kenardan
+  // belirgin şekilde aydınlık VE sarı olmalı.
+  await page.evaluate(() => {
+    const g = window.__game;
+    Object.defineProperty(g, 'startHour', { value: 1, configurable: true });
+  });
+  await page.waitForTimeout(450);
+  const lamba = await page.evaluate(() => {
+    const c = document.getElementById('canvas');
+    const x = c.getContext('2d', { willReadFrequently: true });
+    const orta = x.getImageData(Math.round(c.width / 2), Math.round(c.height / 2) + 130, 1, 1).data;
+    const kenar = x.getImageData(Math.round(c.width * 0.05), Math.round(c.height / 2), 1, 1).data;
+    const par = (d) => (d[0] + d[1] + d[2]) / 3;
+    return { ortaPar: par(orta), kenarPar: par(kenar), ortaR: orta[0], ortaB: orta[2] };
+  });
+  console.log(`gece lambası — çevre ${lamba.ortaPar.toFixed(1)} · uzak ${lamba.kenarPar.toFixed(1)} · R${lamba.ortaR}/B${lamba.ortaB}`);
+  if (!(lamba.ortaPar > lamba.kenarPar * 1.8)) {
+    errors.push(`gece lambası çevreyi aydınlatmıyor (${lamba.ortaPar.toFixed(1)} / ${lamba.kenarPar.toFixed(1)})`);
+  }
+  if (!(lamba.ortaR > lamba.ortaB + 12)) {
+    errors.push(`gece lambası sarı değil (R${lamba.ortaR} / B${lamba.ortaB})`);
+  }
 }
 
 await page.screenshot({ path: `${OUT}/daynight.png` });

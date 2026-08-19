@@ -374,6 +374,22 @@ hazır olunca ekranı kaplayan **5 · 4 · 3 · 2 · 1** geri sayımı başlar.
 
 Tek başınaysan HAZIRIM demen yeterli; botlarla hemen başlar.
 
+### Bot zorluğu
+
+Lobide (ve lobi kurarken) **Kolay / Orta / Zor** seçilir. Seçim tek bir
+"yetenek" sayısına dönüşür ve botun üç davranışını birden belirler: nişan
+isabeti, hedefin hareketini ne kadar öngördüğü ve ateş etmeden önceki tepki
+süresi. Ayrıca görüş menzili değişir — kolay botlar seni geç fark eder.
+
+| Seviye | Yetenek | Görüş | Tepki |
+|---|---|---|---|
+| Kolay | 0,12–0,34 | 780 px | 520 ms |
+| Orta | 0,42–0,68 | 1150 px | 220 ms |
+| Zor | 0,78–0,98 | 1400 px | 90 ms |
+
+Tek sayı değil ARALIK veriyoruz: aynı zorluktaki botlar birbirinin kopyası
+olmasın. Ayarlar `shared/constants.js` → `BOT_LEVELS`.
+
 ### Sınıflar
 
 | Sınıf | Can | Hız | Silah | Cephane | Özet |
@@ -386,6 +402,22 @@ Cephane ekranda **şarjördeki / yedek** biçiminde yazar (`30 / 60`). Yedek bit
 sayı kırmızıya döner. Haritadaki kutular yedeğin yarısını doldurur.
 
 Sınıfı maç sırasında da değiştirebilirsin; bir sonraki doğuşta geçerli olur.
+
+### Bombacı ve ayarlanabilir menzil
+
+Bombacı diğer sınıflardan farklı çalışır: ateş tuşunu **basılı tutarsın**,
+menzil dolar, **bırakınca** bomba atılır. Nereye düşeceği ve patlama alanı
+ekranda canlı gösterilir — ayarlanabilir menzil, göstergesiz işkence olurdu.
+
+* Menzil 190–900 px arası, dolma süresi 850 ms.
+* Doğrudan isabet hasarı **yok** (`dmg: 0`); bütün iş patlamada.
+* Patlama 165 px yarıçapında, merkezde 74 hasar, kenarda dörtte biri.
+* Kurallar mermiyle aynı: dost ateşi geçmez, yeni doğan korunur ve
+  **duvar arkası korur** — patlama duvarı delmez.
+* Kendi bombandan sen de zarar görürsün: yakına atmak risklidir.
+
+Botlar da aynı mekaniği kullanır (tutup bırakırlar); yetenekleri düştükçe
+tutma süresini şaşırırlar, yani kolay botlar bombayı ıskalar.
 
 ### Can ve cephane
 
@@ -558,6 +590,8 @@ npm test                 # fizik + 20 botla üç modun tam maç simülasyonu + W
 npm run test:ws          # sadece WebSocket protokolü (ham TCP ile, kütüphanesiz)
 npm run test:binary      # ikili durum paketi: kodla→çöz→JSON ile birebir aynı mı?
 npm run test:binary-net  # ikili paket ağ üzerinde çalışıyor mu + eski istemci bozuldu mu?
+npm run test:apk         # GERÇEK APK ortamı (https://localhost + Capacitor köprüsü)
+npm run test:grass       # zemin dokusu geç yüklenirse ekran güncelleniyor mu?
 npm run test:load        # 20 gerçek WebSocket istemcisi, bant genişliği ölçümü
 npm run test:browser     # uçtan uca tarayıcı testleri (playwright gerekir)
 npm run test:bundle      # APK'nın içindeki sürüm — sunucusuz çalışıyor mu?
@@ -590,7 +624,10 @@ pes edip çevrimdışına düşmemesi), yürüyüş döngüsündeki 8 karenin he
 olması, salınımın yumuşakça açılıp sönmesi, adım tozunun oluşup sönmesi,
 zeminin çimen olması ve duvarların düz blok değil bina gibi çizilmesi,
 durum paketlerinin ikili gidip tarayıcıda birebir çözülmesi ve `bin` demeyen
-eski istemcilerin JSON almaya devam edip maça girebilmesi.
+eski istemcilerin JSON almaya devam edip maça girebilmesi, APK'nın kendi
+adresine (localhost) bağlanmaya çalışmaması, sunucuya ulaşılamadığında
+uygulamanın kendi sayfasını terk etmemesi ve APK'da service worker
+kaydolmaması.
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 ayrı senaryoda sınanıyor: el
 sıkışma özeti, parçalı mesaj birleştirme, bayt bayt gelen çerçeveler, 16/64 bit
@@ -629,3 +666,53 @@ haritadan otomatik hesaplanır, elle güncellemen gerekmez.
 ---
 
 MIT lisansı. İyi eğlenceler — ve iyi nişanlar. 🎯
+
+---
+
+## APK'da "localhost adresine ulaşılamıyor" — kök nedeni ve çözümü
+
+Bu hata bir değil **üç** ayrı kusurdan doğuyordu. Üçünün ortak noktası şu:
+Capacitor, uygulamanın dosyalarını `https://localhost` üzerinden verir. Yani
+sayfa "güvenli bir sunucudan geliyor" gibi görünür — ama arkasında oyun
+sunucusu yoktur.
+
+**1. Doğrulamasız yönlendirme (asıl suçlu).**
+Kullanıcı bir kez "GÜNCELLE" derse bu tercih kalıcı olarak saklanıyor ve
+uygulama her açılışta sunucudaki sürüme gidiyordu. Ama gitmeden önce sunucuya
+ulaşılıp ulaşılmadığı kontrol edilmiyor, doğrudan `location.replace()` ile
+kendi sayfasının üstüne yazılıyordu. Sunucu uykudaysa geriye webview'ın hata
+sayfası kalıyor ve **dönüş yolu olmuyor** — uygulama tamamen kullanılamaz hâle
+geliyordu.
+
+→ Artık önce `/surum.json` sessizce sorgulanıyor (12 sn zaman aşımı). Cevap
+gelirse gidiliyor, gelmezse hiçbir şey yapılmıyor. Çalışan bir uygulama asla
+belirsiz bir sayfayla takas edilmiyor.
+
+**2. Telefonda kalan `localhost` sunucu kaydı.**
+Eski sürümlerden kalma kayıt, APK güncellenince silinmiyordu (webview verisi
+kurulumdan bağımsız yaşar). Online'a basınca uygulama kendi kendine bağlanmaya
+çalışıyordu.
+
+→ Paketlenmiş sürüm artık kendi adresini (`localhost`, `127.0.0.1`, kendi
+`location.host`'u) sunucu olarak kabul etmiyor; kayıtlıysa temizliyor ve bulut
+sunucuya düşüyor (`ownAddress()` / `resolveServerUrl()` / `serverBase()`).
+
+**3. APK içinde service worker.**
+`https://localhost` güvenli kaynak sayıldığı için service worker kaydoluyordu.
+Sonuç: yeni APK kurulsa bile ilk açılışta **eski sürümün** önbellekten gelen
+dosyaları çalışıyordu — yani düzeltilen hatalar telefonda düzelmiş görünmüyordu.
+
+→ APK'nın bütün dosyaları zaten içinde; önbellek katmanına ihtiyacı yok.
+Paketlenmiş sürümde service worker kaydedilmiyor ve varsa eskisi her açılışta
+sökülüp önbellekleri siliniyor (`dropServiceWorker()`).
+
+**Neden testler yakalamadı?** Mevcut APK testleri APK'yı tam taklit etmiyordu:
+`https://localhost` üzerinden **tek dosyalık** sürüm servis ediliyordu, gerçek
+`www/` klasörü değil; Capacitor köprüsü enjekte edilmiyordu; kirli
+`localStorage` senaryosu hiç kurulmuyordu. `test/browser-apk-real.mjs` bu
+ortamı birebir kuruyor ve beş senaryoyu sınıyor.
+
+**Zaten bozuk bir telefonda ne yapmalı?** Eski service worker eski dosyaları
+sunduğu için düzeltmenin ilk açılışta devreye girmeme ihtimali var. Kesin
+çözüm: yeni APK'yı kurmadan önce eskisini **kaldır**, ya da Ayarlar → Uygulamalar
+→ Savaş Arenası → Depolama → **Verileri temizle**.

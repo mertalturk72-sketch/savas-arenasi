@@ -28,7 +28,8 @@ export const BIN_SNAPSHOT = 1;          // ilk bayt: bu paketin türü
 const HAS_EV = 1, HAS_ZN = 2, HAS_SC = 4, HAS_PE = 8, HAS_TEAM = 16;
 
 // Olay tipleri — sıralama ASLA değişmemeli (istemciyle ortak sözlük).
-const EV_IDS = ['join', 'spawn', 'shot', 'imp', 'kill', 'pk', 'zone'];
+// YENİ TİP SONA EKLENİR — sıra değişirse eski istemciler yanlış çözer.
+const EV_IDS = ['join', 'spawn', 'shot', 'imp', 'kill', 'pk', 'zone', 'boom'];
 const PE_IDS = ['dry', 'hit', 'hurt', 'pick'];
 
 // kill.w alanı silah adı ya da 'zone' olabilir; 'zone' için ayrı numara.
@@ -212,21 +213,22 @@ export function encodeSnapshot(s) {
     w.i16(ps[i + 1]);       // x
     w.i16(ps[i + 2]);       // y
     w.i16(ps[i + 3]);       // nişan * 100
-    w.vu(ps[i + 4]);        // can
-    // Tek baytta: bayraklar (bit 0-4) + sınıf (bit 5-6) + "azami can sınıfın
-    // varsayılanı mı" (bit 7). Bayraklar 5 bitten taşarsa aşağıdaki kontrol
-    // hata fırlatır; sessizce bozulmaz.
+    // Tek baytta: bayraklar (bit 0-4) + sınıf (bit 5-7, 8 sınıfa kadar).
+    // "Azami can sınıfın varsayılanı mı" bilgisi için bayt kalmadı; onu CAN
+    // sayısının en düşük bitine sıkıştırıyoruz (can zaten küçük bir sayı,
+    // ikiye katlamak bir bayt bile büyütmüyor).
     const bayraklar = ps[i + 7];
     if (!Number.isInteger(bayraklar) || bayraklar < 0 || bayraklar > 31) {
       throw new Error(`ikili: oyuncu bayrağı 5 bite sığmıyor: ${bayraklar}`);
     }
     const sinif = ps[i + 6];
-    if (!Number.isInteger(sinif) || sinif < 0 || sinif > 3) {
-      throw new Error(`ikili: sınıf indeksi 2 bite sığmıyor: ${sinif}`);
+    if (!Number.isInteger(sinif) || sinif < 0 || sinif > 7) {
+      throw new Error(`ikili: sınıf indeksi 3 bite sığmıyor: ${sinif}`);
     }
     const varsayilanCan = CLASSES[CLASS_IDS[sinif]] && CLASSES[CLASS_IDS[sinif]].hp;
     const canTuretilmis = ps[i + 5] === varsayilanCan;
-    w.u8(bayraklar | (sinif << 5) | (canTuretilmis ? 128 : 0));
+    w.vu(ps[i + 4] * 2 + (canTuretilmis ? 0 : 1));   // can + "azami can ayrı mı" biti
+    w.u8(bayraklar | (sinif << 5));
     if (!canTuretilmis) w.vu(ps[i + 5]);
   }
 
@@ -317,6 +319,9 @@ function olayYaz(w, e) {
     case 'zone':
       w.u8(e.p); w.i16(e.x); w.i16(e.y); w.i16(e.r);
       break;
+    case 'boom':
+      w.i16(e.x); w.i16(e.y); w.i16(e.r);
+      break;
     default:
       throw new Error(`ikili: olay yazılamadı: ${e.e}`);
   }
@@ -387,10 +392,12 @@ export function decodeSnapshot(bytes) {
     ps[o + 1] = r.i16();
     ps[o + 2] = r.i16();
     ps[o + 3] = r.i16();
-    ps[o + 4] = r.vu();
+    const canPaket = r.vu();
+    ps[o + 4] = Math.floor(canPaket / 2);
+    const canAyri = (canPaket % 2) === 1;
     const paket = r.u8();
-    const cls = (paket >> 5) & 3;
-    ps[o + 5] = (paket & 128) ? CLASSES[CLASS_IDS[cls]].hp : r.vu();
+    const cls = (paket >> 5) & 7;
+    ps[o + 5] = canAyri ? r.vu() : CLASSES[CLASS_IDS[cls]].hp;
     ps[o + 6] = cls;
     ps[o + 7] = paket & 31;
   }
@@ -476,6 +483,7 @@ function olayOku(r) {
     }
     case 'pk': return { e: 'pk', i: r.vu(), a: r.u8() };
     case 'zone': return { e: 'zone', p: r.u8(), x: r.i16(), y: r.i16(), r: r.i16() };
+    case 'boom': return { e: 'boom', x: r.i16(), y: r.i16(), r: r.i16() };
     default: throw new Error('ikili: tanınmayan olay numarası');
   }
 }

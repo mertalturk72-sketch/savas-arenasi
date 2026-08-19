@@ -45,8 +45,11 @@ export function daylight(hour) {
     const night = h < SUNRISE_HOUR ? (SUNRISE_HOUR - h) / SUNRISE_HOUR
       : (h - SUNSET_HOUR) / (24 - SUNSET_HOUR);
     const deep = Math.min(1, night * 1.15);
-    const k = 0.34 - deep * 0.10;                // 0.34 → 0.24 arası parlaklık
-    mul = { r: Math.round(255 * k * 0.72), g: Math.round(255 * k * 0.86), b: Math.round(255 * k * 1.5) };
+    // Gece GECE gibi dursun: çevre serin ve koyu mavi kalıyor. Aydınlatma işi
+    // aşağıdaki sarı lambanın; taban rengini sarartmak bütün haritayı sepya
+    // yapıyor ve çimenin yeşili kayboluyordu.
+    const k = 0.40 - deep * 0.09;                // 0.40 → 0.31 arası parlaklık
+    mul = { r: Math.round(255 * k * 0.74), g: Math.round(255 * k * 0.88), b: Math.round(255 * k * 1.42) };
   } else if (elev > 0.72) {
     mul = { r: 255, g: 255, b: 255 };            // öğlen: dokunma
   } else {
@@ -240,6 +243,7 @@ export class Renderer {
     this.drawPickups(ctx, g, view);
     this.drawAimLaser(ctx, g);
     this.drawBullets(ctx, g, view);
+    this.drawBlasts(ctx, g);
     g.fx.draw(ctx);
     this.drawPlayers(ctx, g, now);
     this.drawBushes(ctx, g, view);      // oyuncuların üstünde: içindekini örter
@@ -273,13 +277,19 @@ export class Renderer {
     }
 
     // Karanlıkta oyuncunun etrafı aydınlık kalsın ki oyun oynanabilir olsun.
+    // Işık SARI ve geniş: gece haritayı okuyabilmek gerekiyor, mavi karanlığın
+    // içinde soluk beyaz bir halka yeterli olmuyordu.
     if (day.lamp > 0.02) {
-      const r = 560;
-      const gr = ctx.createRadialGradient(this.camX, this.camY, 30, this.camX, this.camY, r);
-      const a = 0.24 * Math.min(1, day.lamp);
-      gr.addColorStop(0, `rgba(255,236,196,${a})`);
-      gr.addColorStop(0.55, `rgba(255,226,170,${a * 0.35})`);
-      gr.addColorStop(1, 'rgba(255,226,170,0)');
+      const r = 700;
+      const k = Math.min(1, day.lamp);
+      const gr = ctx.createRadialGradient(this.camX, this.camY, 40, this.camX, this.camY, r);
+      // Sarı ama abartısız: merkez sıcak, kenar çabuk sönüyor. Böylece
+      // oyuncunun çevresi net görünürken uzak taraf karanlık kalıyor.
+      const a = 0.34 * k;
+      gr.addColorStop(0, `rgba(255,216,140,${a})`);
+      gr.addColorStop(0.4, `rgba(255,204,110,${a * 0.5})`);
+      gr.addColorStop(0.75, `rgba(255,196,96,${a * 0.16})`);
+      gr.addColorStop(1, 'rgba(255,196,96,0)');
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = gr;
       ctx.beginPath();
@@ -312,12 +322,36 @@ export class Renderer {
     if (this._grassImg !== undefined) return this._grassImg;
     const url = (typeof window !== 'undefined' && window.__GRASS_URL) || '/textures/grass.jpg';
     const img = new Image();
-    img.onload = () => { this._grass = null; };     // deseni yeniden kur
-    img.onerror = () => { this._grassImg = null; }; // görsel yoksa çizime düş
+    img.onload = () => {
+      // KRİTİK: sadece deseni tazelemek YETMİYOR.
+      //
+      // Zemin, 512 px'lik parçalara bir kez çizilip önbelleğe alınıyor
+      // (staticTile). Görsel geç yüklenirse ilk parçalar kodla üretilen YEDEK
+      // çimenle pişiyor ve orada kalıyor — kullanıcı "çimen bazen yüklenmiyor"
+      // diye görüyordu. Aslında yüklenmişti; ekrandaki parçalar eskiydi.
+      //
+      // O yüzden görsel gelince pişmiş parçaları da atıyoruz; bir sonraki
+      // karede gerçek dokuyla yeniden çiziliyorlar.
+      this._grass = null;
+      this._grassFromImg = null;
+      this.tiles.clear();
+    };
+    img.onerror = () => {
+      // Görsel hiç gelmedi: kodla üretilen çimene düş ve parçaları tazele
+      // (yarım kalmış bir görselle pişmiş parça kalmasın).
+      this._grassImg = null;
+      this._grassFromImg = null;
+      this.tiles.clear();
+    };
     img.src = url;
     this._grassImg = img;
     return img;
   }
+
+  // Dokuyu maç başlamadan yüklemeye başla: ilk karelerde yedek çimen görünüp
+  // sonra değişmesin. Yükleme bitmemişse yine de sorun değil — üstteki
+  // onload parçaları tazeliyor.
+  preloadTextures() { this.grassImage(); }
 
   grassPattern(ctx) {
     // Görsel hazırsa onu kullan.
@@ -750,6 +784,14 @@ export class Renderer {
     const wep = WEAPONS[g.weapon];
     if (!wep) return;
 
+    // Bomba: tuşu tuttukça menzil doluyor. Nereye düşeceğini GÖSTERMEDEN
+    // ayarlanabilir menzil işkence olurdu; o yüzden hedef noktayı ve patlama
+    // yarıçapını canlı çiziyoruz.
+    if (wep.throwable) {
+      this.drawThrowArc(ctx, g, wep);
+      return;
+    }
+
     if (!wep.laser) {
       if (g.aiming && !wep.auto) this.drawSpreadCone(ctx, g, wep);
       return;
@@ -833,10 +875,130 @@ export class Renderer {
     }
   }
 
+  // Bomba menzil göstergesi: atış hattı, düşeceği nokta ve patlama alanı.
+  // g.charge 0..1 arası (istemci kendi tuttuğu süreden hesaplıyor).
+  drawThrowArc(ctx, g, wep) {
+    const me = g.meRender;
+    const t = Math.max(0, Math.min(1, g.charge || 0));
+    const menzil = wep.minRange + t * (wep.maxRange - wep.minRange);
+    // Duvar varsa bomba oraya kadar gider.
+    const engel = rayHitDistance(me.x, me.y, g.aim, menzil, g.idx);
+    const d = Math.min(menzil, engel);
+    const hx = me.x + Math.cos(g.aim) * d;
+    const hy = me.y + Math.sin(g.aim) * d;
+    const tutuyor = !!g.aiming || t > 0.02;
+
+    ctx.save();
+    // atış hattı
+    ctx.strokeStyle = tutuyor ? 'rgba(255,159,90,0.55)' : 'rgba(255,159,90,0.22)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -(performance.now() / 26) % 18;
+    ctx.beginPath();
+    ctx.moveTo(me.x + Math.cos(g.aim) * (PLAYER_RADIUS + 8), me.y + Math.sin(g.aim) * (PLAYER_RADIUS + 8));
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // patlama alanı
+    ctx.strokeStyle = tutuyor ? 'rgba(255,120,60,0.75)' : 'rgba(255,120,60,0.32)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hx, hy, wep.blastR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = tutuyor ? 'rgba(255,120,60,0.13)' : 'rgba(255,120,60,0.05)';
+    ctx.fill();
+
+    // menzil doluluk halkası (hedefin üstünde küçük bir yay)
+    if (tutuyor) {
+      ctx.strokeStyle = '#ffd479';
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(hx, hy, wep.blastR + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    ctx.restore();
+  }
+
+  // Patlama halkası: hızla büyüyüp sönen turuncu bir dalga. Oyuncuya patlamanın
+  // NEREDE ve NE KADAR GENİŞ olduğunu gösteriyor — hasar alanıyla aynı yarıçap.
+  drawBlasts(ctx, g) {
+    if (!g.blasts || !g.blasts.length) return;
+    const now = performance.now();
+    const SURE = 620;   // patlama halkasının ömrü (ms)
+    for (let i = g.blasts.length - 1; i >= 0; i--) {
+      const b = g.blasts[i];
+      const t = (now - b.t) / SURE;
+      if (t >= 1) { g.blasts.splice(i, 1); continue; }
+      const r = b.r * (0.25 + t * 0.85);
+      ctx.save();
+      ctx.globalAlpha = (1 - t) * 0.9;
+      const gr = ctx.createRadialGradient(b.x, b.y, r * 0.2, b.x, b.y, r);
+      gr.addColorStop(0, 'rgba(255,236,180,0.85)');
+      gr.addColorStop(0.55, 'rgba(255,140,50,0.42)');
+      gr.addColorStop(1, 'rgba(255,90,30,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,190,110,${(1 - t) * 0.8})`;
+      ctx.lineWidth = 3 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (g.blasts.length > 24) g.blasts.splice(0, g.blasts.length - 24);
+  }
+
   drawBullets(ctx, g, view) {
     for (const b of g.bulletsRender) {
       if (b.x < view.x0 || b.x > view.x1 || b.y < view.y0 || b.y > view.y1) continue;
       const wep = WEAPONS[b.w] || WEAPONS.rifle;
+
+      // Bomba mermi gibi çizilmez: havada dönen koyu bir küre, fitili kıvılcım
+      // saçıyor. Böylece oyuncu "bu bir bomba, kaçmam lazım" diye anlıyor.
+      if (wep.throwable) {
+        const t = (performance.now() / 1000) % 1;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        // yere düşen gölge
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.beginPath();
+        ctx.ellipse(3, 6, wep.bulletR * 1.05, wep.bulletR * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.rotate(t * Math.PI * 4);
+        // gövde
+        const gr = ctx.createRadialGradient(-2, -3, 1, 0, 0, wep.bulletR + 2);
+        gr.addColorStop(0, '#5a6472');
+        gr.addColorStop(1, '#1b2029');
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(0, 0, wep.bulletR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // fitil + kıvılcım
+        ctx.strokeStyle = '#8a6a3f';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -wep.bulletR);
+        ctx.lineTo(2, -wep.bulletR - 5);
+        ctx.stroke();
+        ctx.fillStyle = '#ffd479';
+        ctx.shadowColor = '#ff9f43';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(2, -wep.bulletR - 5, 2 + Math.sin(t * Math.PI * 8) * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+        continue;
+      }
+
       const len = wep.id === 'sniper' ? 34 : wep.id === 'shotgun' ? 12 : 20;
       const tailX = b.x - Math.cos(b.a) * len;
       const tailY = b.y - Math.sin(b.a) * len;

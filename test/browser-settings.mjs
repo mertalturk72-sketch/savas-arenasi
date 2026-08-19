@@ -36,6 +36,8 @@ const browser = await chromium.launch({
 const SURUM_GURULTUSU = /surum\.json|ERR_TUNNEL|ERR_INTERNET|ERR_NAME_NOT_RESOLVED|Failed to load resource/i;
 
 const errors = [];
+// Menüde görünmesini beklediğimiz sınıflar (shared/constants.js ile aynı olmalı)
+const BEKLENEN_SINIFLAR = ['Komando', 'Akıncı', 'Keskin Nişancı', 'Bombacı'];
 
 async function startMatch(page, { mode = 0, bots = 0 } = {}) {
   await page.locator('#modePicker .mode-card').nth(mode).click();
@@ -51,7 +53,14 @@ async function startMatch(page, { mode = 0, bots = 0 } = {}) {
   if (classes.length) {
     console.log('sınıflar:', classes.join(' · '));
     if (classes.some((c) => /ağır|agir/i.test(c))) errors.push('Ağır Piyade hâlâ listede');
-    if (classes.length !== 3) errors.push(`3 sınıf bekleniyordu, ${classes.length} bulundu`);
+    // Sınıf sayısı sabit değil (bombacı eklendi). Sabit sayıya bakmak yerine
+    // sınıf listesinin sabitlerle birebir aynı olduğunu doğruluyoruz.
+    if (classes.length !== BEKLENEN_SINIFLAR.length) {
+      errors.push(`${BEKLENEN_SINIFLAR.length} sınıf bekleniyordu, ${classes.length} bulundu`);
+    }
+    for (const ad of BEKLENEN_SINIFLAR) {
+      if (!classes.includes(ad)) errors.push(`sınıf listesinde eksik: ${ad}`);
+    }
   }
 
   await page.click('#btnReady');

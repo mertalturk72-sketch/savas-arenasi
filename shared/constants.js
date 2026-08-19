@@ -153,9 +153,54 @@ export const CLASSES = {
     weapon: 'sniper',
     color: '#c39bff',
   },
+  bombaci: {
+    id: 'bombaci',
+    name: 'Bombacı',
+    desc: 'Bomba atar. Basılı tut, menzili ayarla, bırak.',
+    speed: 202,
+    hp: 94,
+    weapon: 'bomba',
+    color: '#ff9f5a',
+  },
 };
 export const CLASS_IDS = Object.keys(CLASSES);
 export const DEFAULT_CLASS = 'komando';
+
+// --- Bot zorluğu ----------------------------------------------------------
+// Botların "yeteneği" tek bir sayı (0..1) ve şu üç şeyi birden belirliyor:
+// nişan isabeti, hedefi ne kadar öngördüğü ve ateş etmeden önceki tepki
+// gecikmesi. Bir de görüş menzili var: kolay botlar seni geç fark eder.
+//
+// Aralık veriyoruz, tek sayı değil: aynı zorlukta bile botlar birbirinin
+// kopyası olmasın, aralarında biraz fark bulunsun.
+export const BOT_LEVELS = {
+  kolay: {
+    id: 'kolay',
+    name: 'Kolay',
+    desc: 'Geç fark eder, ıskalar',
+    skill: [0.12, 0.34],
+    view: 780,
+    reactMs: 520,
+  },
+  orta: {
+    id: 'orta',
+    name: 'Orta',
+    desc: 'Dengeli rakip',
+    skill: [0.42, 0.68],
+    view: 1150,
+    reactMs: 220,
+  },
+  zor: {
+    id: 'zor',
+    name: 'Zor',
+    desc: 'Çabuk görür, isabetli',
+    skill: [0.78, 0.98],
+    view: 1400,
+    reactMs: 90,
+  },
+};
+export const BOT_LEVEL_IDS = Object.keys(BOT_LEVELS);
+export const DEFAULT_BOT_LEVEL = 'orta';
 
 // --- Karakterler ----------------------------------------------------------
 // Görünüş seçimi; oynanışı etkilemez. Renkler kodla piksel piksel çizilir
@@ -204,6 +249,21 @@ export const WEAPONS = {
     dmg: 82, fireMs: 1250, speed: 1900, spread: 0.004, pellets: 1,
     mag: 5, reserve: 15, reloadMs: 2500, range: 1700, bulletR: 3, auto: false,
     laser: true,                      // nereye ateş edeceğini gösteren çizgi
+  },
+  // Bomba diğer silahlardan farklı çalışır: ATEŞ TUŞUNU BASILI TUTARSIN,
+  // menzil dolar, BIRAKINCA atılır. Çarptığı yerde patlar; hasar merkeze
+  // yakınlıkla azalır. Doğrudan isabet hasarı yoktur (dmg: 0) — bütün iş
+  // patlamada.
+  bomba: {
+    id: 'bomba', name: 'Bomba',
+    dmg: 0, fireMs: 620, speed: 560, spread: 0.02, pellets: 1,
+    mag: 3, reserve: 6, reloadMs: 2400, range: 900, bulletR: 8, auto: false,
+    throwable: true,
+    minRange: 190,        // hiç beklemeden bırakınca bu kadar gider
+    maxRange: 900,        // tam dolunca bu kadar gider
+    chargeMs: 850,        // menzilin dolması bu kadar sürer
+    blastR: 165,          // patlama yarıçapı
+    blastDmg: 74,         // merkezdeki hasar (kenarda %25'e iner)
   },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);

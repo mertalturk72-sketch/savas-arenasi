@@ -46,18 +46,24 @@ console.log('güncellemeden önce → service worker:', before.sw, '· önbellek
 if (before.sw === 0) errors.push('service worker hiç kurulmadı — test anlamsız');
 if (before.cache === 0) errors.push('önbellek hiç dolmadı — test anlamsız');
 
-// --- Düğme görünür mü? ---
-const visible = await page.evaluate(() =>
-  !document.getElementById('btnUpdate').classList.contains('hidden'));
-console.log('Güncelle düğmesi görünür mü:', visible ? '✓' : '✗');
-if (!visible) errors.push('Güncelle düğmesi görünmüyor');
+// --- Düğme, güncelleme YOKKEN gizli olmalı ---
+const gizliMi = await page.evaluate(() =>
+  document.getElementById('btnUpdate').classList.contains('hidden'));
+console.log('güncelleme yokken düğme gizli mi:', gizliMi ? '✓' : '✗');
+if (!gizliMi) errors.push('güncelleme yokken Güncelle düğmesi görünüyor');
+
+// NOT: "güncelleme VARSA düğme çıkıyor mu" sorusu burada değil,
+// test/browser-apkupdate.mjs içinde sınanıyor — orada sunucu gerçekten farklı
+// bir sürüm damgası bildiriyor ve düğmeyi gösteren kod yolu birebir çalışıyor.
+// Burada düğmenin İŞİNİ (kayıtlı kopyayı silip sayfayı tazelemek) sınıyoruz;
+// gizliyken de tıklanabiliyor, çünkü olay bağlantısı kuruludur.
 
 // --- Bas ve sayfanın yeniden yüklenmesini bekle ---
 await Promise.all([
   page.waitForNavigation({ waitUntil: 'load', timeout: 20000 }).catch(() => {
     errors.push('Güncelle sayfayı yeniden yüklemedi');
   }),
-  page.click('#btnUpdate'),
+  page.evaluate(() => document.getElementById('btnUpdate').click()),
 ]);
 await page.waitForSelector('#screenMenu.active', { timeout: 15000 });
 

@@ -141,6 +141,11 @@ sunucuSurum = 'yenisurum123';
   const txt = await page.textContent('#updateText');
   console.log('2) yeni sürüm → uyarı çıktı ✓ ·', JSON.stringify(txt.trim()));
 
+  // NOT: menüdeki GÜNCELLE düğmesi burada (file://) bilerek çıkmıyor — o düğme
+  // kayıtlı kopyayı silip sayfayı tazeliyor, dosyadan açılan sürümde
+  // tazeleyecek bir şey yok. Düğmenin çıkması gereken yer APK ortamı;
+  // aşağıda 6. bölümde sınanıyor.
+
   // "Şimdi değil" → uyarı kapanmalı ve bir daha bu sürüm için çıkmamalı
   await page.click('#btnSkipUpdate');
   await page.waitForSelector('#updateOverlay', { state: 'hidden', timeout: 3000 });
@@ -260,6 +265,13 @@ sunucuSurum = 'yenisurum123';
 
   // Sunucuda hâlâ yeni sürüm duruyor → APK ortamında da güncelleme ekranı
   // çıkmalı ve kapatılabilmeli. Kapanmadan menüye erişilemez.
+  // Menüdeki GÜNCELLE düğmesi: normalde gizli, sadece gerçekten güncelleme
+  // varken çıkıyor. Burada sunucu farklı bir sürüm bildiriyor → çıkmalı.
+  const dugme = await page.evaluate(() =>
+    !document.getElementById('btnUpdate').classList.contains('hidden'));
+  console.log('   menüdeki Güncelle düğmesi:', dugme ? 'göründü ✓' : 'GİZLİ ✗');
+  if (!dugme) errors.push('yeni sürüm varken menüdeki Güncelle düğmesi çıkmıyor');
+
   const cikti = await guncellemeyiKapat(page, '6');
   console.log('   güncelleme ekranı:', cikti ? 'çıktı ve kapandı ✓' : 'ÇIKMADI ✗');
   if (!cikti) errors.push('APK ortamında (https://localhost) güncelleme ekranı çıkmıyor');

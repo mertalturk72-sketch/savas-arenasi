@@ -18,6 +18,10 @@ export class Input {
     // edilir. Tek atışlılarda (keskin tüfek, pompalı) çubukla NİŞAN ALINIR,
     // parmağı kaldırınca ateş edilir — oyun kodu bunu her kareye günceller.
     this.weaponAuto = true;
+    // Atılabilir silah (bomba): nişan çubuğu basılı tutulurken menzil dolar,
+    // BIRAKINCA atılır. Yani tutarken IN_FIRE gönderilir, bırakınca kesilir —
+    // tek atışlılardaki "bırakınca tek darbe" davranışı burada YANLIŞ olur.
+    this.weaponThrowable = false;
     this.firePulse = 0;
     // Oyun içi ayarlar paneli açıkken girdiler oyuna gitmemeli.
     this.menuOpen = false;
@@ -73,7 +77,7 @@ export class Input {
         if (isAimStick) {
           slot.aiming = len > 20;
           // Otomatik silah: basılı tuttukça ateş. Tek atışlı: sadece nişan al.
-          slot.firing = this.weaponAuto && len > 20;
+          slot.firing = (this.weaponAuto || this.weaponThrowable) && len > 20;
           el.classList.toggle('aiming', slot.aiming && !this.weaponAuto);
         }
       };
@@ -96,7 +100,7 @@ export class Input {
         for (const t of e.changedTouches) {
           if (t.identifier !== slot.id) continue;
           // Tek atışlı silahta parmağı kaldırmak = ateş etmek
-          if (isAimStick && !this.weaponAuto && slot.aiming) this.firePulse = 3;
+          if (isAimStick && !this.weaponAuto && !this.weaponThrowable && slot.aiming) this.firePulse = 3;
           slot.id = null; slot.dx = 0; slot.dy = 0;
           if (isAimStick) { slot.firing = false; slot.aiming = false; }
           el.classList.remove('aiming');

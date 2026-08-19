@@ -5,10 +5,15 @@ import {
   IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE, IN_RELOAD,
   WEAPONS, PLAYER_RADIUS,
   BUSH_REVEAL_DIST,
+  BOT_LEVELS, DEFAULT_BOT_LEVEL,
 } from '../constants.js';
 import { lineBlocked, clamp } from '../physics.js';
 
-const VIEW = 1150;
+// Botun zorluk ayarları. Seviye oyuncuya ait (lobide seçiliyor); tanınmayan
+// bir değer gelirse sessizce ortaya düşüyoruz.
+function level(p) {
+  return BOT_LEVELS[p.botLevel] || BOT_LEVELS[DEFAULT_BOT_LEVEL];
+}
 
 export function resetBot(p) {
   p.brain = {
@@ -21,8 +26,14 @@ export function resetBot(p) {
     detourDir: 1,
     lastX: p.x, lastY: p.y, progressAt: 0,
     aim: p.aim,
-    skill: p.brain?.skill ?? (0.42 + Math.random() * 0.5),
+    // Yetenek seviyenin aralığından çekiliyor: aynı zorluktaki botlar
+    // birbirinin kopyası olmasın diye aralık, tek sayı değil.
+    skill: p.brain?.skill ?? (() => {
+      const [lo, hi] = level(p).skill;
+      return lo + Math.random() * (hi - lo);
+    })(),
     fireHold: 0,
+    throwStart: 0,
     fireReadyAt: 0,
     seq: p.brain?.seq || 0,
   };
@@ -55,6 +66,7 @@ export function botThink(p, game, dtMs) {
   }
 
   const wep = WEAPONS[p.weapon];
+  const gorus = level(p).view;
   const now = game.time;
   let keys = 0;
 
@@ -67,7 +79,7 @@ export function botThink(p, game, dtMs) {
       if (game.mode.teams && o.team === p.team) continue;
       if (o.protectUntil > now) continue;
       const d = Math.hypot(o.x - p.x, o.y - p.y);
-      if (d > VIEW) continue;
+      if (d > gorus) continue;
       // Çalıda saklanan hedefi bot da uzaktan göremez
       if (o.hidden && d > BUSH_REVEAL_DIST) continue;
       if (lineBlocked(p.x, p.y, o.x, o.y, game.idx)) continue;
@@ -78,13 +90,13 @@ export function botThink(p, game, dtMs) {
     const newId = best ? best.id : 0;
     if (newId !== b.targetId) {
       // Tepki süresi: bot yeni gördüğü hedefe anında ateş açmasın
-      b.fireReadyAt = now + 220 + (1 - b.skill) * 620 + (wep.id === 'sniper' ? 260 : 0);
+      b.fireReadyAt = now + level(p).reactMs + (1 - b.skill) * 620 + (wep.id === 'sniper' ? 260 : 0);
       b.targetId = newId;
     }
   }
 
   let target = b.targetId ? game.players.get(b.targetId) : null;
-  if (target && (!target.alive || Math.hypot(target.x - p.x, target.y - p.y) > VIEW * 1.15)) target = null;
+  if (target && (!target.alive || Math.hypot(target.x - p.x, target.y - p.y) > gorus * 1.15)) target = null;
   const hasLos = target ? !lineBlocked(p.x, p.y, target.x, target.y, game.idx) : false;
 
   // --- Amaç noktası -------------------------------------------------------
@@ -204,12 +216,28 @@ export function botThink(p, game, dtMs) {
     && Math.abs(angDiff(b.aim, Math.atan2(target.y - p.y, target.x - p.x))) < (wep.id === 'shotgun' ? 0.26 : 0.1);
 
   if (canShoot && p.ammo > 0 && !p.reloadUntil) {
-    if (wep.auto) keys |= IN_FIRE;
-    else {
+    if (wep.throwable) {
+      // Bomba: tuşu BASILI TUTARAK menzili doldurup BIRAKARAK atıyoruz —
+      // oyuncuyla tamamen aynı mekanik, botun ayrıcalığı yok.
+      // Ne kadar tutacağımızı hedefin uzaklığından hesaplıyoruz; yetenek
+      // düştükçe biraz şaşırıyor, yani kolay botlar bombayı ıskalıyor.
+      const d = Math.hypot(target.x - p.x, target.y - p.y);
+      const oran = clamp((d - wep.minRange) / (wep.maxRange - wep.minRange), 0, 1);
+      const sapma = (1 - b.skill) * 0.35 * (Math.random() - 0.5) * 2;
+      const hedefTut = clamp(oran + sapma, 0, 1) * wep.chargeMs;
+      if (!b.throwStart) b.throwStart = now;
+      if (now - b.throwStart < hedefTut) keys |= IN_FIRE;    // tut
+      else b.throwStart = 0;                                  // bırak → atılır
+    } else if (wep.auto) {
+      keys |= IN_FIRE;
+    } else {
       // Tek atışlılarda tetiği bırakıp basma (kenar tetikleme gerekiyor)
       b.fireHold = (b.fireHold + 1) % 2;
       if (b.fireHold === 0) keys |= IN_FIRE;
     }
+  } else if (b.throwStart) {
+    // Hedef kayboldu: elinde bombayla kalma, bırak gitsin.
+    b.throwStart = 0;
   }
   if (!p.reloadUntil && p.reserve > 0
     && (p.ammo === 0 || (!target && p.ammo < wep.mag * 0.4))) keys |= IN_RELOAD;

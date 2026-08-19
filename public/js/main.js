@@ -2,7 +2,7 @@
 
 import {
   MODES, CLASSES, TEAMS, MAX_PLAYERS, WEAPONS, MAX_NAME_LEN, CHARACTERS,
-  UPDATE_SERVER,
+  UPDATE_SERVER, BOT_LEVELS, DEFAULT_BOT_LEVEL,
 } from '/shared/constants.js';
 import { getCharacterSprites, drawWeaponOnPreview } from './sprites.js';
 import * as spritesModule from './sprites.js';
@@ -26,6 +26,7 @@ const state = {
   lobby: null,
   lobbies: [],
   createMode: 'ffa',
+  createBotLevel: DEFAULT_BOT_LEVEL,
   inMatch: false,
   netMode: 'local',      // 'local' | 'online'
 };
@@ -104,11 +105,25 @@ function isPackagedApp() {
     || location.protocol === 'capacitor:';
 }
 
+// Adres uygulamanın KENDİ adresini mi gösteriyor?
+// Capacitor, APK'nın dosyalarını `https://localhost` üzerinden veriyor. Orada
+// oyun sunucusu yoktur — ama eski sürümlerde bu adres "sunucu" diye kaydedilmiş
+// olabiliyordu ve webview verisi APK güncellemesinde silinmediği için kayıtlı
+// kalıyordu. Sonuç: "localhost adresine ulaşılamıyor".
+function ownAddress(u) {
+  const s = String(u).replace(/^[a-z]+:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+  const host = s.replace(/:\d+$/, '');
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true;
+  return !!location.host && s === location.host.toLowerCase();
+}
+
 function resolveServerUrl(url) {
   const u = (url || '').trim();
-  if (u) return u;
-  // Paketlenmiş sürümde "boş adres" diye bir şey yok; bulut sunucuya bağlan.
-  return isPackagedApp() ? UPDATE_SERVER : '';
+  if (!isPackagedApp()) return u;
+  // Paketlenmiş sürümde "boş adres" ya da "kendi adresim" diye bir sunucu
+  // yoktur; her iki durumda da bulut sunucuya bağlanıyoruz.
+  if (!u || ownAddress(u)) return UPDATE_SERVER;
+  return u;
 }
 
 function useOnline(rawUrl, save = true) {
@@ -151,6 +166,20 @@ function buildModePicker(container, selected, onPick) {
     const btn = document.createElement('button');
     btn.className = 'mode-card' + (id === selected ? ' sel' : '');
     btn.innerHTML = `<div class="mc-name">${esc(m.name)}</div><div class="mc-desc">${esc(m.desc)}</div>`;
+    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    container.appendChild(btn);
+  }
+}
+
+// Bot zorluk seçici (kolay / orta / zor). Hem menüde hem lobide aynı bileşen.
+function buildLevelPicker(container, selected, onPick) {
+  container.innerHTML = '';
+  for (const id of Object.keys(BOT_LEVELS)) {
+    const lv = BOT_LEVELS[id];
+    const btn = document.createElement('button');
+    btn.className = 'level-btn lv-' + id + (id === selected ? ' sel' : '');
+    btn.type = 'button';
+    btn.innerHTML = `<span class="lv-name">${esc(lv.name)}</span><span class="lv-desc">${esc(lv.desc)}</span>`;
     btn.onclick = () => { sfx.sfxUi(); onPick(id); };
     container.appendChild(btn);
   }
@@ -268,6 +297,8 @@ function renderLobby() {
     $('lobbyMaxVal').textContent = l.maxPlayers;
     $('lobbyBotVal').textContent = l.botCount;
     botIn.max = Math.max(0, l.maxPlayers - 1);
+    buildLevelPicker($('lobbyLevelPicker'), l.botLevel || DEFAULT_BOT_LEVEL,
+      (lv) => net.send(C.SET_SETTINGS, { botLevel: lv }));
   }
 
   // Takım seçimi
@@ -333,9 +364,18 @@ function renderLobby() {
   if (l.state === 'countdown') startCountdown(l.countdownLeft);
   else stopCountdown();
 
-  // Maç sonu tablosu
-  if (l.state === 'post' && l.lastScoreboard) showPostScoreboard(l.lastScoreboard, l.postLeft);
-  else $('lobbyScoreboard').classList.add('hidden');
+  // Maç sonu tablosu.
+  // Aynı tabloyu İKİ KEZ göstermiyoruz: maç bitince tam ekran tablo çıkıyor
+  // (matchEndOverlay), "LOBİYE DÖN" deyince de lobide ikinci bir kopyası
+  // beliriyordu — kullanıcı aynı ekranı tekrar görmüş oluyordu. Burası artık
+  // sadece maçı KAÇIRANLAR için: lobiye maç sonu evresinde katılan biri
+  // sonucu görebilsin diye.
+  const sb = l.lastScoreboard;
+  if (l.state === 'post' && sb && sb.matchId !== state.seenScoreboard) {
+    showPostScoreboard(sb, l.postLeft);
+  } else {
+    $('lobbyScoreboard').classList.add('hidden');
+  }
 }
 
 let cdTimer = null;
@@ -415,6 +455,94 @@ function scoreboardHtml(sb, title) {
   return html;
 }
 
+// Maçı BEN mi kazandım? Takım modunda takımım, diğerlerinde birinci sıra.
+function didIWin(sb) {
+  if (!sb || !sb.rows || !sb.rows.length) return false;
+  const ben = sb.rows.find((r) => r.id === state.me.id);
+  if (!ben) return false;
+  if (sb.teamScore) {
+    const t1 = sb.teamScore[1] || 0, t2 = sb.teamScore[2] || 0;
+    if (t1 === t2) return false;
+    return ben.team === (t1 > t2 ? 1 : 2);
+  }
+  if (sb.winner && sb.winner.id) return sb.winner.id === state.me.id;
+  return sb.rows[0].id === state.me.id;
+}
+
+// Kazanınca ekranın ortasında sarı "KAZANDIN" + konfeti.
+// Konfeti tek bir canvas'a çiziliyor; DOM'a yüzlerce parçacık eklemek
+// telefonu zorlardı.
+let konfetiRaf = 0;
+let winTabloTimer = 0;
+let winYaziTimer = 0;
+function showWinScreen() {
+  const el = $('winOverlay');
+  const cv = $('winConfetti');
+  if (!el || !cv) return;
+  el.classList.remove('hidden');
+  el.classList.remove('replay', 'fade');
+  void el.offsetWidth;            // animasyonu baştan başlat
+  el.classList.add('replay');
+  // Yazı 2 saniye tek başına kalsın, sonra sönsün; konfeti biraz daha sürer.
+  clearTimeout(winYaziTimer);
+  winYaziTimer = setTimeout(() => el.classList.add('fade'), WIN_SOLO_MS);
+
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = cv.width = Math.floor(window.innerWidth * dpr);
+  const H = cv.height = Math.floor(window.innerHeight * dpr);
+  const ctx = cv.getContext('2d');
+  const RENK = ['#ffd479', '#ffb02e', '#7ee787', '#7fb0d8', '#ff8f87', '#c39bff', '#fff3d0'];
+  const N = Math.min(220, Math.round(window.innerWidth / 6));
+  const parts = Array.from({ length: N }, () => ({
+    x: Math.random() * W,
+    y: -Math.random() * H * 0.6,
+    w: (5 + Math.random() * 7) * dpr,
+    h: (8 + Math.random() * 12) * dpr,
+    vy: (90 + Math.random() * 190) * dpr,
+    vx: (Math.random() - 0.5) * 90 * dpr,
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 7,
+    c: RENK[Math.floor(Math.random() * RENK.length)],
+    sway: Math.random() * Math.PI * 2,
+  }));
+
+  let last = performance.now();
+  // Konfeti, skor tablosu açılırken bitiyor: tablo okunurken ekranda kâğıt
+  // yağmuru olmasın. Son yarım saniyede sönerek kayboluyor.
+  const bitis = last + WIN_SOLO_MS;
+  cancelAnimationFrame(konfetiRaf);
+  const adim = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+    for (const p of parts) {
+      p.sway += dt * 3;
+      p.x += (p.vx + Math.sin(p.sway) * 40 * dpr) * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      if (p.y > H + 40) { p.y = -30; p.x = Math.random() * W; }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.c;
+      ctx.globalAlpha = now > bitis - 550 ? Math.max(0, (bitis - now) / 550) : 1;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    if (now < bitis) konfetiRaf = requestAnimationFrame(adim);
+    else { ctx.clearRect(0, 0, W, H); el.classList.add('hidden'); }
+  };
+  konfetiRaf = requestAnimationFrame(adim);
+}
+
+function hideWinScreen() {
+  cancelAnimationFrame(konfetiRaf);
+  clearTimeout(winYaziTimer);
+  clearTimeout(winTabloTimer);
+  const el = $('winOverlay');
+  if (el) el.classList.add('hidden');
+}
+
 function winnerText(sb) {
   if (!sb) return 'Maç bitti';
   if (sb.teamScore) {
@@ -435,7 +563,10 @@ function showPostScoreboard(sb, leftMs) {
     <div class="me-next">Lobi ${Math.ceil((leftMs || 0) / 1000)} saniye içinde açılıyor…</div>
     <button id="btnClosePost" class="ghost small" style="margin-top:12px">Kapat</button>
   </div></div>`;
-  $('btnClosePost').onclick = () => el.classList.add('hidden');
+  $('btnClosePost').onclick = () => {
+    if (sb && sb.matchId) state.seenScoreboard = sb.matchId;
+    el.classList.add('hidden');
+  };
 }
 
 // ============================================================ ağ olayları
@@ -602,19 +733,46 @@ net.on(S.MATCH_START, (m) => {
 
 net.on(S.SNAPSHOT, (m) => game.onSnapshot(m));
 
+// Kazanma anında KAZANDIN yazısının tek başına kaldığı süre.
+const WIN_SOLO_MS = 2000;
+
 net.on(S.MATCH_END, (m) => {
   if (!state.inMatch) return;
   closeSettings();
-  const el = $('matchEndOverlay');
-  el.classList.remove('hidden');
-  el.innerHTML = scoreboardHtml(m.scoreboard, winnerText(m.scoreboard))
-    + `<div class="me-next">Lobiye dönülüyor…</div>
-       <button id="btnBackLobby" class="primary big">LOBİYE DÖN</button></div>`;
-  $('btnBackLobby').onclick = backToLobby;
-  setTimeout(() => { if (state.inMatch) backToLobby(); }, Math.max(3000, (m.nextIn || 10000) - 1500));
+  // Bu tabloyu gördük; lobide ikinci kez gösterilmesin.
+  state.seenScoreboard = m.scoreboard && m.scoreboard.matchId;
+
+  const kazandim = didIWin(m.scoreboard);
+
+  const tabloyuGoster = () => {
+    if (!state.inMatch) return;          // bu arada lobiye dönmüş olabilir
+    const el = $('matchEndOverlay');
+    el.classList.remove('hidden');
+    el.innerHTML = scoreboardHtml(m.scoreboard, winnerText(m.scoreboard))
+      + `<div class="me-next">Lobiye dönülüyor…</div>
+         <button id="btnBackLobby" class="primary big">LOBİYE DÖN</button></div>`;
+    $('btnBackLobby').onclick = backToLobby;
+  };
+
+  if (kazandim) {
+    // Önce sadece KAZANDIN (+ konfeti). Skor tablosu 2 saniye sonra geliyor —
+    // ikisi aynı anda çıkınca yazı tabloyu örtüyordu.
+    showWinScreen();
+    sfx.sfxWin();
+    clearTimeout(winTabloTimer);
+    winTabloTimer = setTimeout(tabloyuGoster, WIN_SOLO_MS);
+  } else {
+    tabloyuGoster();
+  }
+
+  // Otomatik lobiye dönüş: kazananda tablo 2 sn geç açıldığı için o kadar
+  // ek süre tanıyoruz, tabloya bakacak vakit kalsın.
+  const bekle = Math.max(3000, (m.nextIn || 10000) - 1500) + (kazandim ? WIN_SOLO_MS : 0);
+  setTimeout(() => { if (state.inMatch) backToLobby(); }, bekle);
 });
 
 function backToLobby() {
+  hideWinScreen();
   if (!state.inMatch) return;
   state.inMatch = false;
   game.stop();
@@ -659,6 +817,11 @@ function initUi() {
   };
   maxIn.addEventListener('input', syncCreateSliders);
   botIn.addEventListener('input', syncCreateSliders);
+  const seviyeSec = (lv) => {
+    state.createBotLevel = lv;
+    buildLevelPicker($('botLevelPicker'), lv, seviyeSec);
+  };
+  buildLevelPicker($('botLevelPicker'), state.createBotLevel, seviyeSec);
   syncCreateSliders();
 
   $('btnCreate').onclick = () => {
@@ -668,6 +831,7 @@ function initUi() {
       mode: state.createMode,
       maxPlayers: Number(maxIn.value),
       botCount: Number(botIn.value),
+      botLevel: state.createBotLevel,
       private: $('privateInput').checked,
     });
   };
@@ -677,7 +841,9 @@ function initUi() {
   $('tabOnline').onclick = () => {
     // Paketlenmiş sürümde "boş = bu sayfanın sunucusu" diye bir şey yok;
     // kutuyu bulut sunucuyla dolduruyoruz ki kullanıcı nereye bağlandığını görsün.
-    if (isPackagedApp() && !$('serverInput').value.trim()) $('serverInput').value = UPDATE_SERVER;
+    // Kutuda boş ya da kendi adresi varsa bulut sunucuyu yaz — kullanıcı ne
+    // yazdığını görsün, sessizce başka yere bağlanmayalım.
+    if (isPackagedApp()) $('serverInput').value = resolveServerUrl($('serverInput').value);
     sfx.unlockAudio(); sfx.sfxUi(); cancelAutoFallback();
     useOnline($('serverInput').value.trim());
   };
@@ -913,8 +1079,13 @@ function isPackaged() {
 
 function serverBase() {
   // Kullanıcı kendi sunucusunu yazdıysa ona bak, yoksa varsayılana.
+  // Paketlenmiş sürümde uygulamanın KENDİ adresi (localhost) asla sunucu
+  // olamaz; eski bir sürümden kalmış olsa bile yok sayıyoruz.
   const custom = store('sa_server');
-  try { return custom ? normalizeHttp(custom) : UPDATE_SERVER; } catch { return UPDATE_SERVER; }
+  try {
+    if (custom && !(isPackagedApp() && ownAddress(custom))) return normalizeHttp(custom);
+  } catch { /* bozuk adres: varsayılana düş */ }
+  return UPDATE_SERVER;
 }
 
 function showBuildInfo() {
@@ -941,6 +1112,7 @@ async function checkForUpdate() {
   if (uzak.surum === window.__BUILD__) return;              // zaten güncel
   if (store(UPDATE_SKIP_KEY) === uzak.surum) return;        // bu sürümü atladı
 
+  markUpdateAvailable();
   const bar = $('updateOverlay');
   $('updateText').textContent =
     `Sunucuda yeni bir sürüm hazır (${uzak.surum.slice(0, 6)}). `
@@ -958,23 +1130,62 @@ async function checkForUpdate() {
 
 // Daha önce "GÜNCELLE" dendiyse ve internet varsa, uygulama açılışta doğrudan
 // sunucudaki güncel sürüme gider. İnternet yoksa içindeki kopyayla açılır.
-function preferOnlineIfChosen() {
+// KRİTİK: burada uygulamanın kendi sayfasının ÜSTÜNE yazıyoruz. Gittiğimiz
+// adres açılmazsa (sunucu uykuda, adres bozuk, mobil veri kapalı) kullanıcının
+// elinde çalışan bir uygulama değil, tarayıcının hata sayfası kalır — ve geri
+// dönüş yolu yoktur, çünkü kendi sayfamızı kapatmışızdır. Kullanıcıda tam da
+// bu oldu: "localhost adresine ulaşılamıyor".
+//
+// O yüzden yönlendirmeden ÖNCE sunucunun gerçekten cevap verdiğini
+// doğruluyoruz. Cevap yoksa hiçbir şey yapmıyoruz: uygulama kendi içindeki
+// kopyayla normal şekilde açılır, oyun oynanır.
+async function preferOnlineIfChosen() {
   if (!isPackaged()) return false;
   if (store(UPDATE_PREF_KEY) !== '1') return false;
   if (navigator.onLine === false) return false;
-  location.replace(serverBase() + '/');
+
+  const base = serverBase();
+  if (!base || ownAddress(base)) { store(UPDATE_PREF_KEY, ''); return false; }
+
+  try {
+    const iptal = new AbortController();
+    const zaman = setTimeout(() => iptal.abort(), 12000);
+    const r = await fetch(`${base}/surum.json?t=${Date.now()}`, { cache: 'no-store', signal: iptal.signal });
+    clearTimeout(zaman);
+    if (!r.ok) return false;
+    await r.json();                       // gerçekten bizim sunucumuz mu?
+  } catch {
+    return false;                         // ulaşılamadı: kendi kopyamızla aç
+  }
+
+  location.replace(`${base}/`);
   return true;
 }
 
+// GÜNCELLE düğmesi artık HER ZAMAN durmuyor: sadece gerçekten güncelleme
+// varken çıkıyor. Sürekli duran bir "güncelle" düğmesi hem menüyü kalabalık
+// yapıyor hem de "acaba eski sürümde miyim?" diye tedirgin ediyordu.
+//
+// "Güncelleme var" iki yerden anlaşılıyor:
+//   • paket sürümde  → sunucudaki damga bizimkinden farklı (checkForUpdate)
+//   • tarayıcıda     → service worker yeni bir sürüm indirip beklemeye geçti
 function showUpdateButton() {
   const btn = $('btnUpdate');
   const note = $('downloadNote');
   if (!btn) return;
-  // Dosyadan açılan tek dosyalık sürümde güncellenecek bir şey yok.
+  btn.classList.add('hidden');
+  if (note) note.classList.add('hidden');
+  btn.onclick = () => { forceUpdate(); };
+}
+
+// Güncelleme bulundu: düğmeyi göster.
+function markUpdateAvailable() {
+  const btn = $('btnUpdate');
+  const note = $('downloadNote');
+  if (!btn) return;
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   btn.classList.remove('hidden');
   if (note) note.classList.remove('hidden');
-  btn.onclick = () => { forceUpdate(); };
 }
 
 async function forceUpdate() {
@@ -1013,14 +1224,62 @@ function cleanUpdateStamp() {
   } catch { /* önemsiz */ }
 }
 
+// Paketlenmiş sürümde (APK / tek dosya) daha önce kurulmuş bir service
+// worker varsa onu SÖK ve önbelleklerini sil.
+//
+// NEDEN: Capacitor uygulamanın dosyalarını `https://localhost` üzerinden
+// veriyor. Burası "güvenli kaynak" sayıldığı için service worker kayıt
+// oluyordu. Sonuç: kullanıcı yeni APK'yı kursa bile ilk açılışta ESKİ
+// sürümün önbellekten gelen dosyaları çalışıyordu — yani düzelttiğimiz
+// hatalar telefonda düzelmiş görünmüyordu.
+//
+// APK'nın service worker'a ihtiyacı da yok: bütün dosyalar zaten uygulamanın
+// içinde, internetsiz açılması için ek bir önbellek katmanına gerek yok.
+// Webview verisi APK güncellemesinde silinmediği için sökme işini burada,
+// her açılışta yapıyoruz.
+async function dropServiceWorker() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      if (regs.length) {
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+        console.info('[paket] eski service worker söküldü');
+      }
+    }
+  } catch { /* önemli değil */ }
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => {})));
+    }
+  } catch { /* önemli değil */ }
+}
+
 function initPwa() {
-  // Service worker: uygulamanın internetsiz açılmasını sağlar.
-  // Sadece güvenli kaynakta dene — file:// ve http://192.168… üzerinde
-  // kayıt zaten hata verir, boşuna konsolu kirletmesin.
-  if ('serviceWorker' in navigator && isSecureOrigin() && location.protocol !== 'file:'
+  // Service worker: TARAYICIDAN açılan sürümün internetsiz çalışmasını sağlar.
+  // Paketlenmiş sürümde (APK / tek dosya) kaydedilmez — yukarıdaki açıklamaya
+  // bakın. Ayrıca file:// ve http://192.168… üzerinde kayıt zaten hata verir.
+  if (isPackagedApp()) {
+    dropServiceWorker();
+  } else if ('serviceWorker' in navigator && isSecureOrigin() && location.protocol !== 'file:'
       && location.protocol !== 'capacitor:') {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        if (!reg) return;
+        // Zaten beklemede bir sürüm varsa (önceki ziyaretten kalma)
+        if (reg.waiting && navigator.serviceWorker.controller) markUpdateAvailable();
+        reg.addEventListener('updatefound', () => {
+          const yeni = reg.installing;
+          if (!yeni) return;
+          yeni.addEventListener('statechange', () => {
+            // 'installed' + zaten bir kontrolcü varsa: bu bir GÜNCELLEME.
+            // Kontrolcü yoksa ilk kurulumdur, güncelleme değil.
+            if (yeni.state === 'installed' && navigator.serviceWorker.controller) {
+              markUpdateAvailable();
+            }
+          });
+        });
+      }).catch((err) => {
         console.warn('Service worker kaydolmadı:', err);
       });
     });
@@ -1080,13 +1339,15 @@ window.__state = state;
 
 // Daha önce "GÜNCELLE" denmişse ve internet varsa doğrudan güncel sürüme git.
 // Bu, oyunun geri kalanını kurmadan önce olmalı — boşuna iş yapmayalım.
-if (!preferOnlineIfChosen()) {
-  initUi();
-  initSettings();
-  initPwa();
-  show('menu');
-  startup();
-}
+// Sunucuya erişilebildiği doğrulanana kadar uygulamayı normal şekilde
+// açıyoruz. Doğrulama başarılı olursa zaten sayfa değişir; olmazsa oyuncu
+// hiçbir şey kaybetmemiş olur.
+initUi();
+initSettings();
+initPwa();
+show('menu');
+startup();
+preferOnlineIfChosen();
 
 // Açılış bekçisine "her şey yüklendi" işareti (bkz. index.html).
 window.__bootOk = true;
@@ -1106,8 +1367,15 @@ function startup() {
     return;
   }
 
+  // Kayıtlı adres eski bir sürümden kalma "localhost" olabilir; paketlenmiş
+  // sürümde bu adres asla çalışmaz, o yüzden temizleyip kaydını da siliyoruz.
   const savedServer = store('sa_server');
-  $('serverInput').value = savedServer;
+  if (isPackagedApp() && savedServer && ownAddress(savedServer)) {
+    store('sa_server', '');
+    $('serverInput').value = '';
+  } else {
+    $('serverInput').value = savedServer;
+  }
 
   const savedMode = store('sa_mode');
 

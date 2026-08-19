@@ -181,6 +181,7 @@ sina({
     { e: 'kill', k: 0, kn: '', kt: 0, v: 9, vn: 'Kurban', vt: 2, w: 'zone' },  // konumsuz
     { e: 'pk', i: 2, a: 1 },
     { e: 'zone', p: 3, x: 2300, y: 1700, r: 900 },
+    { e: 'boom', x: 1234, y: -5, r: 165 },
   ],
   pe: [
     { e: 'dry' },
@@ -216,6 +217,8 @@ console.log('  elle kurulmuş uç paketler sınandı');
 console.log('\n3) Bozuk girdi reddi');
 const bozuklar = [
   ['menzil dışı x', { ...bos, ps: [1, 99999, 0, 0, 100, 100, 0, 1] }],
+  ['sınıf indeksi taşması', { ...bos, ps: [1, 0, 0, 0, 100, 100, 8, 1] }],
+  ['bayrak taşması', { ...bos, ps: [1, 0, 0, 0, 100, 100, 0, 32] }],
   ['tanınmayan sınıf', { ...bos, you: { ...bos.you, cl: 'yokboyle' } }],
   ['tanınmayan olay', { ...bos, ev: [{ e: 'uyduruk', i: 1 }] }],
   ['negatif can', { ...bos, you: { ...bos.you, hp: -5 } }],

@@ -8,6 +8,7 @@ import {
   CLASS_IDS, WEAPON_IDS, VIS_DIST, VIS_GRACE_MS, BULLET_VIS, EVENT_AUDIO_DIST,
   DEFAULT_CHAR,
   BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS,
+  DEFAULT_BOT_LEVEL,
 } from '../constants.js';
 import { F_ALIVE, F_PROTECTED, F_RELOADING, F_MUZZLE, F_HIDDEN } from '../protocol.js';
 import { applyMovement, queryObstacles, clamp, lineBlocked } from '../physics.js';
@@ -63,6 +64,7 @@ export class Game {
       id: info.id,
       name: info.name,
       bot: !!info.bot,
+      botLevel: info.botLevel || DEFAULT_BOT_LEVEL,   // kolay | orta | zor
       conn: info.conn || null,
       team: this.mode.teams ? (info.team || 1) : 0,
       cls: cls.id,
@@ -204,7 +206,26 @@ export class Game {
     }
     if (p.reloadUntil && this.time >= p.reloadUntil) this.finishReload(p, wep);
 
-    const firing = wep.auto ? !!(inp.k & IN_FIRE) : ((inp.k & IN_FIRE) && !(p.prevKeys & IN_FIRE));
+    // Bomba diğer silahlar gibi "basınca ateşler" değildir: BASILI TUTARKEN
+    // menzil dolar, BIRAKINCA atılır. Böylece oyuncu bombayı nereye
+    // düşüreceğini kendisi ayarlar.
+    let atisMenzili = 0;
+    let firing;
+    if (wep.throwable) {
+      const basili = !!(inp.k & IN_FIRE);
+      const oncekiBasili = !!(p.prevKeys & IN_FIRE);
+      if (basili && !oncekiBasili) p.chargeStart = this.time;      // tutmaya başladı
+      firing = !basili && oncekiBasili && p.chargeStart > 0;       // bıraktı
+      if (firing) {
+        const tuttu = Math.max(0, this.time - p.chargeStart);
+        const t = Math.max(0, Math.min(1, tuttu / wep.chargeMs));
+        atisMenzili = wep.minRange + t * (wep.maxRange - wep.minRange);
+        p.chargeStart = 0;
+      }
+    } else {
+      firing = wep.auto ? !!(inp.k & IN_FIRE) : ((inp.k & IN_FIRE) && !(p.prevKeys & IN_FIRE));
+    }
+
     if (firing && !p.reloadUntil && this.time >= p.nextFireAt) {
       if (p.ammo <= 0) {
         // Şarjör boş: yedek varsa kendiliğinden doldur, yoksa cephane bitti.
@@ -214,7 +235,7 @@ export class Game {
           p.privEvents.push({ e: 'dry' });
         }
       } else {
-        this.fire(p, wep);
+        this.fire(p, wep, atisMenzili);
       }
     }
     p.prevKeys = inp.k;
@@ -230,7 +251,7 @@ export class Game {
     if (take > 0) p.dryNotified = false;
   }
 
-  fire(p, wep) {
+  fire(p, wep, menzil = 0) {
     p.ammo--;
     p.nextFireAt = this.time + wep.fireMs;
     p.muzzle = this.time;
@@ -253,7 +274,11 @@ export class Game {
         dmg: wep.dmg,
         r: wep.bulletR,
         w: wep.id,
-        life: (wep.range / wep.speed) * 1000,
+        // Bombada menzil her atışta farklı (ne kadar tuttuysan o kadar).
+        life: ((menzil > 0 ? menzil : wep.range) / wep.speed) * 1000,
+        // Patlayıcıysa çarpınca/menzil bitince patlasın.
+        blastR: wep.blastR || 0,
+        blastDmg: wep.blastDmg || 0,
       });
     }
     this.globalEvents.push({ e: 'shot', i: p.id, x: Math.round(ox), y: Math.round(oy), a: +p.aim.toFixed(2), w: wep.id });
@@ -299,25 +324,58 @@ export class Game {
     const next = [];
     for (const b of this.bullets) {
       b.life -= dtSec * 1000;
-      if (b.life <= 0) continue;
+      // Ömrü bitti: normal mermi sessizce kaybolur, bomba düştüğü yerde patlar.
+      if (b.life <= 0) {
+        if (b.blastR > 0) this.explode(b, b.x, b.y);
+        continue;
+      }
 
       const dx = b.vx * dtSec, dy = b.vy * dtSec;
       const hit = this.raycast(b, dx, dy);
 
       if (hit.type === 'player') {
+        if (b.blastR > 0) { this.explode(b, hit.x, hit.y); continue; }
         this.damage(hit.player, b.dmg, this.players.get(b.owner), DEATH_BULLET, b.w);
         this.globalEvents.push({ e: 'imp', x: Math.round(hit.x), y: Math.round(hit.y), t: 1 });
         continue;
       }
       if (hit.type === 'wall') {
+        if (b.blastR > 0) { this.explode(b, hit.x, hit.y); continue; }
         this.globalEvents.push({ e: 'imp', x: Math.round(hit.x), y: Math.round(hit.y), t: 0 });
         continue;
       }
       b.x += dx; b.y += dy;
-      if (b.x < 0 || b.y < 0 || b.x > this.map.w || b.y > this.map.h) continue;
+      if (b.x < 0 || b.y < 0 || b.x > this.map.w || b.y > this.map.h) {
+        if (b.blastR > 0) this.explode(b, Math.max(0, Math.min(this.map.w, b.x)), Math.max(0, Math.min(this.map.h, b.y)));
+        continue;
+      }
       next.push(b);
     }
     this.bullets = next;
+  }
+
+  // Patlama: yarıçap içindeki herkese, merkeze yakınlıkla artan hasar.
+  //
+  // Kurallar mermiyle aynı tutuluyor ki bomba "kural tanımaz" olmasın:
+  //   • dost ateşi geçmez (takım modunda),
+  //   • yeni doğmuş (koruma altındaki) oyuncu zarar görmez,
+  //   • DUVAR ARKASI KORUR — patlama duvarı delip geçmez.
+  // Atan kişi kendi bombasından zarar görür: yakına atmak risklidir.
+  explode(b, x, y) {
+    const attacker = this.players.get(b.owner) || null;
+    this.globalEvents.push({ e: 'boom', x: Math.round(x), y: Math.round(y), r: Math.round(b.blastR) });
+
+    for (const p of this.players.values()) {
+      if (!p.alive) continue;
+      if (this.mode.teams && p.id !== b.owner && p.team === b.team) continue;
+      if (p.protectUntil > this.time) continue;
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d > b.blastR) continue;
+      if (lineBlocked(x, y, p.x, p.y, this.idx)) continue;
+      // Merkezde tam hasar, kenarda dörtte biri.
+      const k = 1 - (d / b.blastR) * 0.75;
+      this.damage(p, b.blastDmg * k, attacker, DEATH_BULLET, b.w);
+    }
   }
 
   // Mermi yolu üzerinde en yakın çarpışmayı bulur (tünelleme olmaz).

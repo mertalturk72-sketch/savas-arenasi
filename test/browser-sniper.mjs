@@ -76,8 +76,12 @@ const dry = await page.evaluate(() => {
   const hub = window.__net.impl.hub;
   const sim = [...hub.lobbies.values()][0].game;
   const me = sim.players.get(window.__net.impl.client.id);
+  // Cephane kutularını kapat: oyuncu ölçüm sırasında kutunun üstünden geçip
+  // yedeğini doldurabiliyordu (yarım kapasite = 8) ve test sahte hata
+  // veriyordu. Kutular kapalıyken "yedek gerçekten 0" durumu sabit kalıyor.
+  for (const k of sim.pickups) { k.active = false; k.respawnAt = Number.MAX_SAFE_INTEGER; }
   me.ammo = 0; me.reserve = 0;
-  return { ammo: me.ammo, reserve: me.reserve };
+  return { ammo: me.ammo, reserve: me.reserve, kutu: sim.pickups.length };
 });
 await page.waitForTimeout(600);
 const reserveText = await page.textContent('#reserveText');

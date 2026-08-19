@@ -342,18 +342,30 @@ test('doğuşta cephane tazelenir', () => {
 });
 
 console.log('\n— Sınıflar ve cephane —');
-test('Ağır Piyade kaldırıldı, 3 sınıf kaldı', () => {
-  assert.deepEqual(CLASS_IDS, ['komando', 'akinci', 'nisanci']);
+test('Ağır Piyade kaldırıldı, dört sınıf var (bombacı dahil)', () => {
+  assert.deepEqual(CLASS_IDS, ['komando', 'akinci', 'nisanci', 'bombaci']);
   assert.equal(CLASSES.agir, undefined);
   assert.equal(WEAPONS.lmg, undefined);
   // Hiçbir sınıf artık var olmayan bir silaha işaret etmesin
   for (const id of CLASS_IDS) {
     assert.ok(WEAPONS[CLASSES[id].weapon], `${id} sınıfının silahı yok: ${CLASSES[id].weapon}`);
   }
+  // İkili paket biçimi sınıf indeksini 3 bitte taşıyor: 8 sınıfa kadar yer var.
+  // Bu sınırı aşarsak paketler sessizce JSON'a düşer, bant kazancı kaybolur.
+  assert.ok(CLASS_IDS.length <= 8, 'sınıf sayısı 8’i aşarsa ikili biçim güncellenmeli');
 });
 
-test('cephane değerleri: komando 30/60, akıncı 5/15, nişancı 5/15', () => {
-  const beklenen = { komando: [30, 60], akinci: [5, 15], nisanci: [5, 15] };
+test('bombacı: menzili ayarlanabilir patlayıcı', () => {
+  const w = WEAPONS[CLASSES.bombaci.weapon];
+  assert.ok(w.throwable, 'bomba atılabilir olmalı');
+  assert.ok(w.minRange > 0 && w.maxRange > w.minRange, 'menzil aralığı geçersiz');
+  assert.ok(w.chargeMs > 0, 'şarj süresi olmalı');
+  assert.ok(w.blastR > 0 && w.blastDmg > 0, 'patlama yarıçapı ve hasarı olmalı');
+  assert.equal(w.dmg, 0, 'bombanın doğrudan isabet hasarı olmamalı — iş patlamada');
+});
+
+test('cephane değerleri: komando 30/60, akıncı 5/15, nişancı 5/15, bombacı 3/6', () => {
+  const beklenen = { komando: [30, 60], akinci: [5, 15], nisanci: [5, 15], bombaci: [3, 6] };
   for (const [cls, [mag, reserve]] of Object.entries(beklenen)) {
     const w = WEAPONS[CLASSES[cls].weapon];
     assert.equal(w.mag, mag, `${cls} şarjörü ${w.mag}, ${mag} olmalı`);

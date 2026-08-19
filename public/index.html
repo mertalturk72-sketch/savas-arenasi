@@ -143,6 +143,9 @@
           </div>
         </div>
 
+        <label>Bot zorluğu</label>
+        <div id="botLevelPicker" class="level-picker"></div>
+
         <label class="check"><input type="checkbox" id="privateInput"> Gizli lobi (listede görünmez, kodla girilir)</label>
         <button id="btnCreate" class="primary big">LOBİYİ KUR</button>
       </div>
@@ -207,6 +210,10 @@
             <label>Bot: <b id="lobbyBotVal">0</b></label>
             <input type="range" id="lobbyBotInput" min="0" max="19" value="0">
           </div>
+        </div>
+        <div class="hc-row">
+          <label>Bot zorluğu</label>
+          <div id="lobbyLevelPicker" class="level-picker"></div>
         </div>
       </div>
 
@@ -331,6 +338,12 @@
   </div>
 
   <div id="matchEndOverlay" class="match-end hidden"></div>
+
+  <!-- Kazanma ekranı: konfeti + büyük sarı KAZANDIN -->
+  <div id="winOverlay" class="win-overlay hidden">
+    <canvas id="winConfetti" class="win-confetti"></canvas>
+    <div class="win-text">KAZANDIN</div>
+  </div>
 </section>
 
 <div id="toast" class="toast hidden"></div>

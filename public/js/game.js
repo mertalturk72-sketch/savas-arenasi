@@ -19,11 +19,36 @@ import * as sfx from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 
+// Ölüm ekranındaki kafatası. Dosya eklemiyoruz: SVG doğrudan kodda, böylece
+// çevrimdışı sürüm ve tek dosyalık paket için ek bir kaynak gerekmiyor.
+const SKULL_SVG = `
+<svg viewBox="0 0 64 64" width="100%" height="100%">
+  <defs>
+    <radialGradient id="skg" cx="42%" cy="34%" r="70%">
+      <stop offset="0%" stop-color="#ff8f87"/>
+      <stop offset="55%" stop-color="#d13b34"/>
+      <stop offset="100%" stop-color="#6b1512"/>
+    </radialGradient>
+  </defs>
+  <path fill="url(#skg)" d="M32 4c-13 0-22 9-22 21 0 6 2 10 5 13 1.6 1.6 2 2.6 2.2 4.5l.4 3.6c.2 1.7 1.6 2.9 3.3 2.9h3.4v5.2c0 1.5 1.2 2.7 2.7 2.7h9.9c1.5 0 2.7-1.2 2.7-2.7V49h3.4c1.7 0 3.1-1.2 3.3-2.9l.4-3.6c.2-1.9.6-2.9 2.2-4.5 3-3 5-7 5-13C54 13 45 4 32 4z"/>
+  <ellipse cx="22" cy="26" rx="7.5" ry="8.5" fill="#2b0a09"/>
+  <ellipse cx="42" cy="26" rx="7.5" ry="8.5" fill="#2b0a09"/>
+  <ellipse cx="24" cy="24" rx="2.4" ry="2.8" fill="#ff6f66" opacity=".55"/>
+  <ellipse cx="44" cy="24" rx="2.4" ry="2.8" fill="#ff6f66" opacity=".55"/>
+  <path d="M32 33l-3.4 7h6.8z" fill="#2b0a09"/>
+  <rect x="25" y="43" width="3.2" height="6" rx="1.4" fill="#2b0a09"/>
+  <rect x="30.4" y="43" width="3.2" height="6" rx="1.4" fill="#2b0a09"/>
+  <rect x="35.8" y="43" width="3.2" height="6" rx="1.4" fill="#2b0a09"/>
+</svg>`;
+
 export class ClientGame {
   constructor(net, input) {
     this.net = net;
     this.input = input;
     this.renderer = new Renderer($('canvas'), $('minimap'));
+    // Zemin dokusunu daha menüdeyken yüklemeye başla: maç açılınca ilk
+    // kareler yedek çimenle çizilip sonra değişmesin.
+    this.renderer.preloadTextures();
     this.fx = new FX();
     this.running = false;
 
@@ -81,6 +106,8 @@ export class ClientGame {
     this.zoneWarnPhase = -1;
     this.hudTimer = 0;
     this.meRender = { x: 0, y: 0 };
+    this.chargeStart = 0;      // bomba: tuşu ne zaman tutmaya başladık
+    this.charge = 0;           // 0..1 menzil doluluğu (sadece gösterim)
     this.anim = new Map();          // id -> yürüyüş animasyonu durumu
   }
 
@@ -175,7 +202,9 @@ export class ClientGame {
       this.weapon = you.wp || CLASSES[you.cl].weapon;
     }
     // Dokunmatik kumanda tek atışlı silahlarda "bırakınca ateşle" moduna geçsin
-    this.input.weaponAuto = (WEAPONS[this.weapon] || WEAPONS.rifle).auto !== false;
+    const _w = WEAPONS[this.weapon] || WEAPONS.rifle;
+    this.input.weaponAuto = _w.auto !== false;
+    this.input.weaponThrowable = !!_w.throwable;
 
     const before = { x: this.me.x, y: this.me.y };
     this.me.x = you.x; this.me.y = you.y;
@@ -218,6 +247,21 @@ export class ClientGame {
             this.fx.spawn(ev.x, ev.y, { count: 9, speed: 190, life: 0.42, size: 3.4, color: '#c8323c' });
           } else {
             this.fx.spawn(ev.x, ev.y, { count: 6, speed: 150, life: 0.3, size: 2.6, color: '#9fb0c2' });
+          }
+          break;
+        }
+        case 'boom': {
+          const d = Math.hypot(ev.x - this.me.x, ev.y - this.me.y);
+          // Ateş topu + kıvılcım + duman
+          this.fx.spawn(ev.x, ev.y, { count: 26, speed: 520, life: 0.5, size: 6, color: '#ffcf6a', glow: true, drag: 2.6 });
+          this.fx.spawn(ev.x, ev.y, { count: 18, speed: 330, life: 0.75, size: 8, color: '#c2410c', drag: 2.2 });
+          this.fx.spawn(ev.x, ev.y, { count: 14, speed: 180, life: 1.1, size: 11, color: '#3a3a3a', drag: 1.6 });
+          this.blasts = this.blasts || [];
+          this.blasts.push({ x: ev.x, y: ev.y, r: ev.r, t: performance.now() });
+          if (d < 900) this.fx.addShake(Math.max(2, 13 - d / 90));
+          if (d < 2200) {
+            const pan = Math.max(-1, Math.min(1, (ev.x - this.me.x) / 800));
+            sfx.sfxBoom(pan, d);
           }
           break;
         }
@@ -374,8 +418,37 @@ export class ClientGame {
 
   // Ateş sesi/efekti gecidikmesin diye görsel-işitsel kısmı yerelde tahmin ediyoruz.
   predictFire(keys) {
-    if (!(keys & IN_FIRE)) { this.firePrev = false; return; }
     const wep = WEAPONS[this.weapon] || WEAPONS.rifle;
+
+    // Bomba: tuşu TUTARKEN menzil dolar, BIRAKINCA atılır. Sunucu da aynı
+    // kuralla çalışıyor; buradaki iş sadece göstergeyi ve sesi gecikmesiz
+    // vermek (yetkili karar hep sunucuda).
+    if (wep.throwable) {
+      const basili = !!(keys & IN_FIRE);
+      const now0 = performance.now();
+      if (basili) {
+        if (!this.chargeStart) this.chargeStart = now0;
+        this.charge = Math.max(0, Math.min(1, (now0 - this.chargeStart) / wep.chargeMs));
+        this.firePrev = true;
+        return;
+      }
+      if (this.firePrev && this.chargeStart) {
+        // bıraktı → attı
+        this.chargeStart = 0;
+        this.charge = 0;
+        this.firePrev = false;
+        if (now0 >= this.localNextFire && !(this.you && (this.you.rl > 0 || this.you.am <= 0))) {
+          this.localNextFire = now0 + wep.fireMs;
+          sfx.sfxShot(wep.id, 0, 0);
+        }
+        return;
+      }
+      this.firePrev = false;
+      this.charge = 0;
+      return;
+    }
+
+    if (!(keys & IN_FIRE)) { this.firePrev = false; return; }
     if (!wep.auto && this.firePrev) return;
     this.firePrev = true;
 
@@ -609,6 +682,7 @@ export class ClientGame {
       this.el.respawn.classList.remove('hidden');
       const canRespawn = this.mode.respawn;
       this.el.respawn.innerHTML = `
+        <div class="rm-skull" aria-hidden="true">${SKULL_SVG}</div>
         <div class="rm-title">ÖLDÜN</div>
         <div class="rm-killer">${this.deathKiller ? esc(this.deathKiller) + ' seni indirdi' : ''}</div>
         <div class="rm-sub">${canRespawn
@@ -663,7 +737,7 @@ export class ClientGame {
         <td class="num">${r.k}</td>
         <td class="num">${r.d}</td>
         <td class="num">${r.dm}</td>
-        <td class="num">${r.a ? '<span style="color:#4fd18b">yaşıyor</span>' : '<span style="color:#8b98a7">öldü</span>'}</td>
+        <td class="num">${r.a ? '<span class="sb-alive">yaşıyor</span>' : '<span class="sb-dead">öldü</span>'}</td>
       </tr>`;
     }
     html += '</table>';

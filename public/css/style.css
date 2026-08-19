@@ -483,6 +483,30 @@ body.touch #canvas { cursor: none; }
   align-items: center; justify-content: center; gap: 8px;
   background: rgba(20,4,4,.45); text-align: center;
 }
+/* Ölünce ekranın SOLUNDA duran kırmızı kafatası. Yazının arkasına girmesin
+   diye ortadan değil kenardan konumlanıyor; dar ekranlarda küçülüyor. */
+.respawn-msg .rm-skull {
+  position: absolute;
+  left: clamp(12px, 6vw, 90px);
+  top: 50%;
+  width: clamp(96px, 16vw, 190px);
+  height: clamp(96px, 16vw, 190px);
+  transform: translateY(-50%);
+  filter: drop-shadow(0 0 26px rgba(255,60,50,.55)) drop-shadow(0 6px 14px rgba(0,0,0,.7));
+  animation: skullIn .45s cubic-bezier(.2,1.5,.4,1) both, skullPulse 2.4s ease-in-out .45s infinite;
+  pointer-events: none;
+}
+@keyframes skullIn {
+  from { opacity: 0; transform: translateY(-50%) scale(.4) rotate(-12deg); }
+  to   { opacity: 1; transform: translateY(-50%) scale(1) rotate(0); }
+}
+@keyframes skullPulse {
+  0%, 100% { filter: drop-shadow(0 0 22px rgba(255,60,50,.45)) drop-shadow(0 6px 14px rgba(0,0,0,.7)); }
+  50%      { filter: drop-shadow(0 0 40px rgba(255,70,60,.8)) drop-shadow(0 6px 14px rgba(0,0,0,.7)); }
+}
+@media (max-width: 620px) {
+  .respawn-msg .rm-skull { left: 8px; width: 88px; height: 88px; }
+}
 .respawn-msg .rm-title { font-size: 46px; font-weight: 700; color: #ff6b6b; letter-spacing: .06em; text-shadow: 0 4px 20px #000; }
 .respawn-msg .rm-sub { font-size: 20px; color: #e8d6d6; }
 .respawn-msg .rm-killer { font-size: 16px; color: var(--muted); }
@@ -508,6 +532,9 @@ body.touch #canvas { cursor: none; }
 .sb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .sb-table th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .sb-table td { padding: 7px 8px; border-bottom: 1px solid #1a2430; }
+/* Tab tablosunda durum: yaşayan yeşil, ÖLEN KIRMIZI. */
+.sb-alive { color: #4fd18b; font-weight: 600; }
+.sb-dead  { color: #ff5a52; font-weight: 700; letter-spacing: .04em; }
 .sb-table tr.me td { background: rgba(255,138,61,.10); }
 .sb-table tr.t1 td:first-child { border-left: 3px solid var(--red); }
 .sb-table tr.t2 td:first-child { border-left: 3px solid var(--blue); }
@@ -666,3 +693,227 @@ body:not(.touch) .touch-ui { display: none !important; }
 ::-webkit-scrollbar-track { background: #0c1218; }
 ::-webkit-scrollbar-thumb { background: #2b3846; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a4b5c; }
+
+/* --- Bot zorluk seçici --------------------------------------------------- */
+.level-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.level-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 6px;
+  border-radius: 10px;
+  border: 1px solid #2a323c;
+  background: #161b22;
+  color: #c9d1d9;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .15s, background .15s, transform .1s;
+}
+.level-btn:hover { background: #1c232c; }
+.level-btn:active { transform: scale(.97); }
+.level-btn .lv-name { font-weight: 700; font-size: 14px; letter-spacing: .3px; }
+.level-btn .lv-desc { font-size: 11px; color: #7d8796; line-height: 1.25; }
+.level-btn.sel { background: #1d2630; }
+.level-btn.lv-kolay.sel  { border-color: #56d364; box-shadow: 0 0 0 1px #56d36455, 0 0 14px #56d36433; }
+.level-btn.lv-kolay.sel  .lv-name { color: #7ee787; }
+.level-btn.lv-orta.sel   { border-color: #e3b341; box-shadow: 0 0 0 1px #e3b34155, 0 0 14px #e3b34133; }
+.level-btn.lv-orta.sel   .lv-name { color: #ffd479; }
+.level-btn.lv-zor.sel    { border-color: #f85149; box-shadow: 0 0 0 1px #f8514955, 0 0 14px #f8514933; }
+.level-btn.lv-zor.sel    .lv-name { color: #ff8f87; }
+
+
+/* --- Kazanma ekranı ------------------------------------------------------ */
+.win-overlay {
+  position: fixed; inset: 0; z-index: 380;
+  pointer-events: none;                 /* altındaki skor tablosuna basılabilsin */
+  /* Yazı önce TAM ORTADA tek başına duruyor (2 sn). Skor tablosu açılırken
+     yazı sönüp yukarı kayıyor — ikisi üst üste binip okunmaz hale gelmiyor. */
+  display: flex; align-items: center; justify-content: center;
+}
+.win-confetti { position: absolute; inset: 0; width: 100%; height: 100%; }
+.win-text {
+  position: relative;
+  font-size: clamp(34px, 8.5vw, 104px);
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: #ffd23f;
+  text-shadow:
+    0 0 18px rgba(255,196,0,.85),
+    0 0 46px rgba(255,150,0,.55),
+    0 6px 0 #b46b00,
+    0 10px 30px rgba(0,0,0,.75);
+  -webkit-text-stroke: 2px #7a4600;
+  padding: 0 16px;
+  text-align: center;
+}
+.win-overlay.replay .win-text {
+  animation: winPop .7s cubic-bezier(.2,1.7,.4,1) both, winFloat 2.6s ease-in-out .7s infinite;
+}
+@keyframes winPop {
+  0%   { opacity: 0; transform: scale(.3) rotate(-8deg); }
+  60%  { opacity: 1; transform: scale(1.12) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes winFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-10px) scale(1.03); }
+}
+/* Skor tablosu açılırken yazı sönüp yukarı çekiliyor. */
+.win-overlay.fade .win-text {
+  animation: none;
+  opacity: 0;
+  transform: translateY(-26vh) scale(.72);
+  transition: opacity .55s ease, transform .55s cubic-bezier(.4,0,.2,1);
+}
+
+/* =========================================================================
+   ARAYÜZ VURGUSU
+   Amaç: oyun "canlı" hissettirsin — ama okunabilirlik ve hız bozulmasın.
+   Kural olarak sadece GPU'nun ucuz yaptığı şeyleri kullanıyoruz (transform,
+   opacity, filter). Konum/boyut animasyonu yok, telefonda kasmasın.
+   Hareketi kapatan kullanıcı için en altta prefers-reduced-motion var.
+   ========================================================================= */
+
+/* --- Canlı arka plan ----------------------------------------------------- */
+/* Menü ve lobi ekranının arkasında yavaşça nefes alan iki renk kütlesi.
+   body'nin kendi gradyanının üstüne, içeriğin altına giriyor. */
+#screenMenu::before,
+#screenLobby::before {
+  content: '';
+  position: fixed; inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(52vw 52vw at 18% 12%, rgba(255,138,61,.14), transparent 62%),
+    radial-gradient(48vw 48vw at 84% 78%, rgba(63,155,255,.12), transparent 62%),
+    radial-gradient(38vw 38vw at 60% 25%, rgba(126,231,135,.07), transparent 60%);
+  animation: bgDrift 26s ease-in-out infinite alternate;
+}
+@keyframes bgDrift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
+}
+
+/* --- Başlık -------------------------------------------------------------- */
+.brand h1 {
+  background: linear-gradient(180deg, #fff 0%, #ffd7ae 42%, var(--accent) 118%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 46px rgba(255,138,61,.28);
+  animation: brandGlow 4.5s ease-in-out infinite;
+}
+@keyframes brandGlow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(255,138,61,.18)); }
+  50%      { filter: drop-shadow(0 0 26px rgba(255,160,80,.45)); }
+}
+/* Başlığın altında ince, parlayan bir çizgi */
+.brand::after {
+  content: '';
+  pointer-events: none;
+  display: block;
+  width: min(320px, 60%);
+  height: 2px;
+  margin: 14px auto 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 14px rgba(255,138,61,.6);
+}
+
+/* --- Paneller ------------------------------------------------------------ */
+.panel {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(28,38,50,.92) 0%, rgba(16,22,30,.94) 100%);
+  border: 1px solid #2c3a49;
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter: blur(2px);
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+/* Panelin üstünde ince turuncu vurgu şeridi */
+.panel::before {
+  content: '';
+  pointer-events: none;              /* tıklamaları engellemesin */
+  position: absolute; left: 14px; right: 14px; top: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,138,61,.75), transparent);
+  opacity: .55;
+}
+.panel-head h2 {
+  background: linear-gradient(180deg, #fff, #c8d4e2);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* --- Düğmeler ------------------------------------------------------------ */
+button.primary {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 6px 18px rgba(255,120,40,.28),
+    inset 0 1px 0 rgba(255,255,255,.35);
+}
+button.primary::after {           /* üstünden geçen parıltı */
+  content: '';
+  pointer-events: none;
+  position: absolute; top: 0; bottom: 0; left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
+  transform: skewX(-18deg);
+  animation: shine 3.6s ease-in-out infinite;
+}
+@keyframes shine {
+  0%, 62% { left: -60%; }
+  86%     { left: 130%; }
+  100%    { left: 130%; }
+}
+button.primary:hover { filter: brightness(1.12); transform: translateY(-1px); }
+button.primary:active { transform: translateY(1px); filter: brightness(.96); }
+
+button.ghost { transition: border-color .15s, background .15s, transform .08s; }
+button.ghost:hover { border-color: var(--accent); background: rgba(255,138,61,.08); }
+button.ghost:active { transform: translateY(1px); }
+
+/* --- Seçim kartları ------------------------------------------------------ */
+.mode-card, .class-card, .char-card {
+  position: relative;
+  transition: border-color .15s, background .15s, transform .12s, box-shadow .15s;
+}
+.mode-card:hover, .class-card:hover, .char-card:hover { transform: translateY(-2px); }
+.mode-card.sel, .class-card.sel {
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 0 22px rgba(255,138,61,.22);
+}
+.mode-card.sel::after, .class-card.sel::after {
+  content: '';
+  pointer-events: none;
+  position: absolute; left: 0; top: 10%; bottom: 10%;
+  width: 3px; border-radius: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.char-card.sel { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 20px rgba(255,138,61,.25); }
+
+/* --- Lobi kodu ----------------------------------------------------------- */
+.code-chip, #lobbyCode { text-shadow: 0 0 12px rgba(255,138,61,.5); }
+
+/* --- Oyun içi HUD -------------------------------------------------------- */
+.hp-fill { box-shadow: 0 0 14px rgba(80,220,140,.35) inset; }
+.hp-fill.low { animation: hpAlarm 1s ease-in-out infinite; }
+@keyframes hpAlarm {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.55); }
+}
+
+/* Hareket duyarlılığı: kullanıcı animasyon istemiyorsa hepsi kapansın. */
+@media (prefers-reduced-motion: reduce) {
+  #screenMenu::before, #screenLobby::before,
+  .brand h1, button.primary::after, .hp-fill.low,
+  .respawn-msg .rm-skull, .win-overlay.replay .win-text {
+    animation: none !important;
+  }
+}
