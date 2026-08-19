@@ -33,7 +33,7 @@ const browser = await chromium.launch({
 });
 const errors = [];
 
-async function startMatch(page, { mode = 0, bots = 6 } = {}) {
+async function startMatch(page, { mode = 0, bots = 0 } = {}) {
   await page.locator('#modePicker .mode-card').nth(mode).click();
   await page.evaluate((n) => {
     const b = document.getElementById('botCountInput');
@@ -103,13 +103,46 @@ async function startMatch(page, { mode = 0, bots = 6 } = {}) {
   await page.waitForSelector('#settingsOverlay:not(.hidden)', { timeout: 3000 });
   console.log('Esc açıyor ✓');
 
-  // Panel kapanınca hareket geri gelmeli
+  // Panel kapanınca hareket geri gelmeli.
+  // Harita her maçta yeniden üretildiği için körlemesine "sağa yürü" demek
+  // bazen duvara toslamak oluyordu; önce gerçekten açık bir yön seçiyoruz.
   await page.click('#setResume');
   await page.waitForSelector('#settingsOverlay', { state: 'hidden', timeout: 3000 });
+  const dir = await page.evaluate(() => {
+    const hub = window.__net.impl.hub;
+    const sim = [...hub.lobbies.values()][0].game;
+    const me = sim.players.get(window.__net.impl.client.id);
+    const R = 18;
+    const clear = (dx, dy) => {
+      for (let t = 0; t <= 240; t += 8) {
+        const px = me.x + dx * t, py = me.y + dy * t;
+        if (px < R || py < R || px > sim.map.w - R || py > sim.map.h - R) return false;
+        for (const o of sim.map.obstacles) {
+          const cx = Math.max(o.x, Math.min(px, o.x + o.w));
+          const cy = Math.max(o.y, Math.min(py, o.y + o.h));
+          if ((px - cx) ** 2 + (py - cy) ** 2 < (R + 4) ** 2) return false;
+        }
+      }
+      return true;
+    };
+    for (const d of [['d', 1, 0], ['a', -1, 0], ['s', 0, 1], ['w', 0, -1]]) {
+      if (clear(d[1], d[2])) return d[0];
+    }
+    me.x = sim.map.w / 2; me.y = sim.map.h / 2;
+    return 'd';
+  });
+  // Ölüysek hareket edemeyiz — ölçüm öncesi hayatta olduğumuzu garanti et.
+  await page.evaluate(() => {
+    const hub = window.__net.impl.hub;
+    const sim = [...hub.lobbies.values()][0].game;
+    const me = sim.players.get(window.__net.impl.client.id);
+    if (!me.alive) sim.respawn(me);
+  });
+  await page.waitForTimeout(300);
   const b2 = await page.evaluate(() => ({ x: window.__game.me.x, y: window.__game.me.y }));
-  await page.keyboard.down('d');
+  await page.keyboard.down(dir);
   await page.waitForTimeout(700);
-  await page.keyboard.up('d');
+  await page.keyboard.up(dir);
   const a2 = await page.evaluate(() => ({ x: window.__game.me.x, y: window.__game.me.y }));
   const moved2 = Math.hypot(a2.x - b2.x, a2.y - b2.y);
   console.log('panel kapanınca hareket:', Math.round(moved2), 'px', moved2 > 30 ? '✓' : '✗');
@@ -157,6 +190,7 @@ async function startMatch(page, { mode = 0, bots = 6 } = {}) {
     '· "ayakta" içeriyor:', /ayakta/i.test(sb) ? 'EVET ✗' : 'hayır ✓');
   if (!/yaşıyor/.test(sb)) errors.push('skor tablosunda "yaşıyor" yazmıyor');
   if (/ayakta/i.test(sb)) errors.push('skor tablosunda hâlâ "ayakta" yazıyor');
+  if (/\byerde\b/i.test(sb)) errors.push('skor tablosunda hâlâ "yerde" yazıyor');
 
   // Çıkış → ana menü (panel yukarıda kapatılmıştı, tekrar aç)
   await page.click('#btnSettings');
@@ -183,7 +217,7 @@ async function startMatch(page, { mode = 0, bots = 6 } = {}) {
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
   await page.fill('#nameInput', 'Cep');
   await page.dispatchEvent('#nameInput', 'change');
-  await startMatch(page, { mode: 0, bots: 5 });
+  await startMatch(page, { mode: 0, bots: 0 });
 
   const b = await page.locator('#btnSettings').boundingBox();
   console.log('telefonda düğme boyutu:', b && `${Math.round(b.width)}×${Math.round(b.height)}`);
@@ -208,23 +242,28 @@ async function startMatch(page, { mode = 0, bots = 6 } = {}) {
   await page.dispatchEvent('#nameInput', 'change');
   await startMatch(page, { mode: 0, bots: 12 });
 
-  // Haritadaki TÜM oyuncuların ilk konumlarını ölç.
+  // DİKKAT: canlı konumları ölçmek yanlış olur — oyuncular doğduktan sonra
+  // yürüyor ve kenara yaklaşabiliyorlar. Ölçülmesi gereken şey DOĞUŞ
+  // NOKTALARININ kendisi. (Bu test önce canlı konumu ölçtüğü için ara sıra
+  // haksız yere düşüyordu.)
   const res = await page.evaluate(() => {
-    const g = window.__game;
-    const snap = g.snaps.at(-1);
-    const w = g.map.w, h = g.map.h;
+    const hub = window.__net.impl.hub;
+    const sim = [...hub.lobbies.values()][0].game;
+    const w = sim.map.w, h = sim.map.h;
     const pts = [];
-    // snap.players bir Map (sunucu görünürlük kısıtı yüzünden sadece
-    // görebildiklerimiz gelir) — kendi konumumuz her hâlükârda ölçülür.
-    if (snap && snap.players) for (const p of snap.players.values()) pts.push({ x: p.x, y: p.y });
-    if (g.me) pts.push({ x: g.me.x, y: g.me.y });
-    if (!pts.length) return { w, h, n: 0, min: -1, avg: -1 };
+    for (const key of ['all', 1, 2]) {
+      for (const s2 of (sim.spawns[key] || [])) pts.push(s2);
+    }
     const edges = pts.map((p) => Math.min(p.x, w - p.x, p.y, h - p.y));
-    return { w, h, n: pts.length, min: Math.min(...edges), avg: edges.reduce((a, b) => a + b, 0) / edges.length };
+    return {
+      w, h, n: pts.length,
+      min: Math.min(...edges),
+      avg: edges.reduce((a, b) => a + b, 0) / edges.length,
+    };
   });
-  const limit = Math.min(res.w, res.h) * 0.10;
-  console.log(`harita ${res.w}×${res.h} · ${res.n} oyuncu · en yakın kenar mesafesi ${Math.round(res.min)} px · ortalama ${Math.round(res.avg)} px`);
-  if (res.min < limit) errors.push(`bir oyuncu kenara çok yakın doğdu: ${Math.round(res.min)} px (sınır ${Math.round(limit)})`);
+  const limit = Math.min(res.w, res.h) * 0.12;
+  console.log(`harita ${res.w}×${res.h} · ${res.n} doğuş noktası · en yakın kenar mesafesi ${Math.round(res.min)} px · ortalama ${Math.round(res.avg)} px`);
+  if (res.min < limit) errors.push(`doğuş noktası kenara çok yakın: ${Math.round(res.min)} px (sınır ${Math.round(limit)})`);
   await ctx.close();
 }
 

@@ -663,7 +663,7 @@ export class ClientGame {
         <td class="num">${r.k}</td>
         <td class="num">${r.d}</td>
         <td class="num">${r.dm}</td>
-        <td class="num">${r.a ? '<span style="color:#4fd18b">yaşıyor</span>' : '<span style="color:#8b98a7">yerde</span>'}</td>
+        <td class="num">${r.a ? '<span style="color:#4fd18b">yaşıyor</span>' : '<span style="color:#8b98a7">öldü</span>'}</td>
       </tr>`;
     }
     html += '</table>';

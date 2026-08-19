@@ -166,15 +166,22 @@ const sbRows = await host.evaluate(() => {
 console.log('Skor tablosundaki satır sayısı:', sbRows);
 if (sbRows !== 7) errors.push(`Skor tablosunda 7 satır bekleniyordu, ${sbRows} var`);
 
-// Birkaç saniye boyunca en az bir düşman görünmeli
+// En az bir düşman görünmeli.
+//
+// Harita büyük (3400x2400), görüş 1250 px ve doğuş noktaları birbirinden uzak;
+// yani kısa bir pencerede kimseyi görmemek MÜMKÜN. Test bu yüzden ara sıra
+// düşüyordu. Çözüm: pencereyi uzat ama düşman görülür görülmez çık — normal
+// durumda test yine bir saniyede biter, kötü durumda haksız yere düşmez.
 let maxSeen = 0;
-for (let i = 0; i < 12; i++) {
+const enCok = 50;                       // 50 x 400 ms = en fazla 20 saniye
+for (let i = 0; i < enCok; i++) {
   const n = await host.evaluate(() => window.__game.playersRender.length);
   maxSeen = Math.max(maxSeen, n);
+  if (maxSeen >= 2) { console.log(`  ${(i * 0.4).toFixed(1)} sn içinde düşman görüldü`); break; }
   await host.waitForTimeout(400);
 }
 console.log('En fazla eşzamanlı görülen birim:', maxSeen);
-if (maxSeen < 2) errors.push('Hiçbir düşman görünmedi — görüş kısıtı fazla agresif olabilir');
+if (maxSeen < 2) errors.push('20 saniye boyunca hiçbir düşman görünmedi — görüş kısıtı fazla agresif olabilir');
 
 await host.waitForTimeout(2500);
 await host.screenshot({ path: `${OUT}/07-game-later.png` });

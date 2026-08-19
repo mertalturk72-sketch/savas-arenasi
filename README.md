@@ -143,6 +143,20 @@ Ayarlar `shared/constants.js` içinde: `DAY_HOURS_PER_MATCH`, `SUNRISE_HOUR`,
   kareden kareye atlama görünmüyor.
 * **Adım izi.** Ayağın yere bastığı karelerde küçük bir toz bulutu çıkıyor.
 
+### Güncelle düğmesi
+
+Oyun `https://` üzerinden açıldığında kendini tarayıcıya kaydeder (service
+worker) — internetsiz de açılabilsin diye. Bunun bedeli şu: sunucuya yeni sürüm
+yüklenince tarayıcı bir süre **eski kopyayı** göstermeye devam edebilir.
+
+Ana menüdeki **🔄 Güncelle** düğmesi bunu tek tıkla çözer: kayıtlı kopyayı
+(service worker) ve tüm önbellekleri siler, adrese tek seferlik bir damga
+ekleyip sayfayı sıfırdan yükler, sonra damgayı adres çubuğundan temizler.
+`npm run test:browser` bu düğmenin gerçekten sildiğini doğruluyor.
+
+İnternetsiz tek dosya hâlâ `https://<sunucun>/savas-arenasi.html` adresinden
+indirilebilir.
+
 ### Oyun içi ayarlar
 
 Maç sırasında sağ üstteki **⚙** düğmesi (klavyede **Esc**) ayarları açar:

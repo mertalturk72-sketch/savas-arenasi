@@ -39,14 +39,14 @@ async function open(url) {
     const el = document.getElementById('insecureWarn');
     return { hidden: el.classList.contains('hidden'), text: (el.textContent || '').trim() };
   });
-  const dl = await page.evaluate(() => {
-    const b = document.getElementById('btnDownloadSingle');
-    return { hidden: b.classList.contains('hidden'), href: b.getAttribute('href'), dl: b.getAttribute('download') };
+  const upd = await page.evaluate(() => {
+    const b = document.getElementById('btnUpdate');
+    return { hidden: b.classList.contains('hidden'), text: b.textContent.trim() };
   });
-  console.log('İndirme düğmesi:', !dl.hidden ? 'görünür ✓' : 'GİZLİ ✗', dl.href, dl.dl);
-  if (dl.hidden) errors.push('tek dosya indirme düğmesi görünmüyor');
+  console.log('Güncelle düğmesi:', !upd.hidden ? 'görünür ✓' : 'GİZLİ ✗', JSON.stringify(upd.text));
+  if (upd.hidden) errors.push('Güncelle düğmesi görünmüyor');
   const head = await page.evaluate(() => fetch('/savas-arenasi.html').then((r) => r.ok && r.headers.get('content-type')));
-  console.log('  sunucu dosyayı veriyor mu:', head, head ? '✓' : '✗');
+  console.log('  internetsiz sürüm hâlâ adresten indirilebiliyor:', head ? '✓' : '✗');
   if (!head) errors.push('/savas-arenasi.html sunulmuyor');
 
   console.log('lan.test uyarısı görünür mü:', !w.hidden ? 'evet ✓' : 'HAYIR ✗');

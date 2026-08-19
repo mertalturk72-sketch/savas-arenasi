@@ -84,13 +84,16 @@ async function useLocal(save = true) {
 
 function useOnline(url, save = true) {
   state.netMode = 'online';
-  if (save) { store('sa_mode', 'online'); store('sa_server', url || ''); }
+  // Adresi HEMEN kaydetmiyoruz: çalışmayan bir adres kaydedilirse tarayıcıda
+  // kalıcı olarak takılı kalır ve kullanıcı bir daha hiçbir sunucuya
+  // bağlanamaz. Kayıt, bağlantı gerçekten kurulunca (_open) yapılıyor.
+  if (save) { store('sa_mode', 'online'); state.pendingServer = url || ''; }
   $('tabOnline').classList.add('sel');
   $('tabLocal').classList.remove('sel');
   $('serverRow').classList.remove('hidden');
   $('browsePanel').classList.remove('hidden');
   $('offlinePanel').classList.add('hidden');
-  setConnStatus('Sunucuya bağlanılıyor…');
+  setConnStatus(`Bağlanılıyor: ${url || location.host}`);
   state.lobby = null;
   wakeServer(url);
   net.connectRemote(url);
@@ -435,6 +438,11 @@ net.on('_open', () => {
   cancelAutoFallback();
   $('connBar').classList.add('hidden');
   if (state.netMode === 'online') {
+    // Ancak GERÇEKTEN bağlanınca adresi kaydediyoruz.
+    if (state.pendingServer !== undefined) {
+      store('sa_server', state.pendingServer);
+      state.pendingServer = undefined;
+    }
     setConnStatus(`Bağlandı: ${net.url || location.host}`, 'ok');
   }
   const name = $('nameInput').value.trim() || savedName() || randomName();
@@ -453,15 +461,38 @@ net.on('_close', () => {
   }
 });
 
+// Hangi adrese bağlanmaya çalışıyoruz? Boşsa sayfanın kendi sunucusu.
+function currentTarget() {
+  return net.url || location.host;
+}
+
 net.on('_retry', (d) => {
   if (state.netMode !== 'online') return;
   // Her denemede sunucuyu HTTP ile de dürtüyoruz: uykudaysa uyanma yolu budur.
   wakeServer(net.url);
+
+  // Kayıtlı ÖZEL bir adres tutmuyorsa, sayfanın kendi sunucusuna dön.
+  //
+  // Neden: kullanıcı daha önce kutuya bir adres yazdıysa (mesela ev ağındaki
+  // 192.168.x.x) o adres tarayıcıda saklı kalıyor ve bulut sunucudan açılan
+  // sayfa bile o ölü adrese bağlanmaya çalışıyordu. Ekranda sadece "sunucu
+  // uyanıyor" yazdığı için sebebi görmek imkânsızdı.
+  const servedFromServer = location.protocol === 'http:' || location.protocol === 'https:';
+  if (d.attempt >= 3 && net.url && servedFromServer) {
+    toast('Kayıtlı sunucu adresine ulaşılamadı — bu sayfanın sunucusuna geçiliyor.');
+    $('serverInput').value = '';
+    useOnline('');
+    return;
+  }
+
   $('connBar').classList.remove('hidden');
   $('connText').textContent = d.attempt <= 2
-    ? 'Sunucu uyanıyor, bağlanılıyor…'
-    : `Sunucu uyanıyor — ${d.attempt}. deneme. Ücretsiz sunucu ilk açılışta 1 dakikaya kadar sürebilir.`;
-  setConnStatus(`Sunucu uyanıyor… (${d.attempt}. deneme) Beklemek istemezsen çevrimdışı oynayabilirsin.`);
+    ? `Bağlanılıyor: ${currentTarget()}`
+    : `${currentTarget()} adresine ulaşılamıyor — ${d.attempt}. deneme.`;
+  setConnStatus(
+    `Bağlanmaya çalışılıyor: ${currentTarget()} (${d.attempt}. deneme). `
+    + 'Ücretsiz sunucu uykudaysa 1 dakikaya kadar sürebilir.',
+  );
   const b = $('btnPlayOffline');
   if (b) b.classList.remove('hidden');
 });
@@ -813,20 +844,58 @@ function showInsecureWarning() {
     + 've kurulum gerekmez.';
 }
 
-// Telefona dosya atmanın en zahmetsiz yolu: telefon zaten sunucuya bağlanabiliyor,
-// bırak dosyayı oradan indirsin. Kablo, WhatsApp, Drive derdi kalmıyor.
-// Düğmeyi sadece dosya gerçekten sunuluyorsa göster.
-async function showDownloadButton() {
-  const btn = $('btnDownloadSingle');
+// "Güncelle" düğmesi.
+//
+// Neden gerekli: oyun https üzerinden açıldığında kendini tarayıcıya
+// kaydediyor (service worker) ki internetsiz de açılabilsin. Bu iyi bir şey
+// ama sunucuya yeni sürüm yüklenince tarayıcı bir süre eski kopyayı
+// göstermeye devam edebiliyor — "neden değişmedi?" sorusunun sebebi bu.
+// Bu düğme kayıtlı kopyayı ve tüm önbellekleri silip sayfayı sıfırdan yükler.
+function showUpdateButton() {
+  const btn = $('btnUpdate');
   const note = $('downloadNote');
   if (!btn) return;
+  // Dosyadan açılan tek dosyalık sürümde güncellenecek bir şey yok.
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
-  try {
-    const res = await fetch('/savas-arenasi.html', { method: 'HEAD' });
-    if (!res.ok) return;
-  } catch { return; }
   btn.classList.remove('hidden');
   if (note) note.classList.remove('hidden');
+  btn.onclick = () => { forceUpdate(); };
+}
+
+async function forceUpdate() {
+  const btn = $('btnUpdate');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Güncelleniyor…'; }
+  setConnStatus('Kayıtlı kopya siliniyor, en yeni sürüm indiriliyor…');
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+    }
+  } catch { /* devam */ }
+
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => {})));
+    }
+  } catch { /* devam */ }
+
+  // Tarayıcının kendi önbelleğini de atlamak için adrese tek seferlik bir
+  // damga ekliyoruz; sayfa açılınca damgayı adres çubuğundan temizliyoruz.
+  const u = new URL(location.href);
+  u.searchParams.set('g', Date.now().toString(36));
+  location.replace(u.toString());
+}
+
+// Güncelleme damgasını adres çubuğunda bırakma (link paylaşılırsa kirletmesin).
+function cleanUpdateStamp() {
+  try {
+    const u = new URL(location.href);
+    if (!u.searchParams.has('g')) return;
+    u.searchParams.delete('g');
+    history.replaceState(null, '', u.pathname + (u.search || '') + u.hash);
+  } catch { /* önemsiz */ }
 }
 
 function initPwa() {
@@ -842,7 +911,8 @@ function initPwa() {
     });
   }
   showInsecureWarning();
-  showDownloadButton();
+  showUpdateButton();
+  cleanUpdateStamp();
 
   // "Ana ekrana ekle" istemi: tarayıcı izin verdiğinde butonu göster.
   window.addEventListener('beforeinstallprompt', (e) => {
