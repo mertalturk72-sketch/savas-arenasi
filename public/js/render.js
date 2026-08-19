@@ -4,85 +4,15 @@ import { PLAYER_RADIUS, CLASSES, TEAMS, WEAPONS } from '/shared/constants.js';
 import { lineBlocked, rayHitDistance } from '/shared/physics.js';
 import { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H, WALK_FRAMES } from './sprites.js';
 import { CHARACTERS, DEFAULT_CHAR } from '/shared/constants.js';
-import { DAY_HOURS_PER_MATCH, SUNRISE_HOUR, SUNSET_HOUR } from '/shared/constants.js';
 
-/**
- * Oyun saatinden ışık ve güneş konumu.
- *
- * Güneş doğuda (ekranda sağda) doğar, tepeden geçer, batıda batar. Gölgeler
- * güneşin TAM TERSİNE düşer ve güneş alçaldıkça uzar — bu yüzden şafakta ve
- * gün batımında upuzun, öğlen neredeyse yok.
- *
- * @param {number} hour 0..24 arası oyun saati
- */
-export function daylight(hour) {
-  const h = ((hour % 24) + 24) % 24;
-  const dayLen = SUNSET_HOUR - SUNRISE_HOUR;
-  // Gündüz ilerlemesi 0..1 (0 = gün doğumu, 1 = gün batımı)
-  const t = (h - SUNRISE_HOUR) / dayLen;
-  const isDay = t >= 0 && t <= 1;
-
-  // Güneş yüksekliği: doğuşta 0, tepede 1, batışta 0
-  const elev = isDay ? Math.sin(Math.PI * t) : 0;
-
-  // Yatay yön: doğuda (+x) doğar, batıda (-x) batar
-  const sunX = isDay ? Math.cos(Math.PI * t) : 0;
-
-  // Gölge yönü güneşin tersi. Tepeden bakış olduğu için gölgeye ayrıca
-  // sabit bir "aşağı" bileşeni veriyoruz; yoksa öğlen gölge tamamen kaybolur
-  // ve nesneler zeminden kopuk görünür.
-  const len = 1 / Math.max(0.28, elev);
-  const shadowX = -sunX * len;
-  const shadowY = (0.45 + (1 - elev) * 0.55) * len * 0.6;
-
-  // Renk: düz boya sürmek yerine ÇARPMA (multiply) ile renk derecelendirme.
-  // Düz boya her şeyi soluklaştırıp çimeni gri yapıyordu; çarpma ise gerçek
-  // ışık gibi davranır — koyu yerler daha koyu, renkler korunur.
-  // mul = (255,255,255) hiçbir şey yapmaz; küçüldükçe karartır ve renklendirir.
-  let mul;
-  if (!isDay) {
-    // Gece: derin mavi. Gece yarısına yaklaştıkça biraz daha koyu.
-    const night = h < SUNRISE_HOUR ? (SUNRISE_HOUR - h) / SUNRISE_HOUR
-      : (h - SUNSET_HOUR) / (24 - SUNSET_HOUR);
-    const deep = Math.min(1, night * 1.15);
-    // Gece GECE gibi dursun: çevre serin ve koyu mavi kalıyor. Aydınlatma işi
-    // aşağıdaki sarı lambanın; taban rengini sarartmak bütün haritayı sepya
-    // yapıyor ve çimenin yeşili kayboluyordu.
-    const k = 0.40 - deep * 0.09;                // 0.40 → 0.31 arası parlaklık
-    mul = { r: Math.round(255 * k * 0.74), g: Math.round(255 * k * 0.88), b: Math.round(255 * k * 1.42) };
-  } else if (elev > 0.72) {
-    mul = { r: 255, g: 255, b: 255 };            // öğlen: dokunma
-  } else {
-    // Ufka yakın: sıcak turuncu ve hafif karartma. En alçakta neredeyse gece.
-    const low = 1 - elev / 0.72;                 // 0 (yüksek) .. 1 (ufukta)
-    const warm = Math.pow(low, 1.4);
-    const dim = 1 - warm * 0.42;
-    mul = {
-      r: Math.round(255 * dim),
-      g: Math.round(255 * dim * (1 - warm * 0.20)),
-      b: Math.round(255 * dim * (1 - warm * 0.42)),
-    };
-  }
-
-  return {
-    hour: h,
-    isDay,
-    elev,
-    sunX,
-    shadowX,
-    shadowY,
-    shadowAlpha: isDay ? 0.18 + elev * 0.32 : 0.12,
-    mul,
-    // Gece oyuncunun etrafındaki aydınlık halka bu güçte
-    lamp: isDay ? Math.max(0, (0.25 - elev) * 1.4) : 1,
-  };
-}
-
-/** Maçın kaçıncı saatinde olduğumuz: başlangıç saati + geçen süre. */
-export function matchHour(startHour, elapsedMs, matchMs) {
-  const p = matchMs > 0 ? Math.max(0, Math.min(1.2, elapsedMs / matchMs)) : 0;
-  return (startHour + p * DAY_HOURS_PER_MATCH) % 24;
-}
+// GÜN DÖNGÜSÜ VE GÖLGELER KALDIRILDI.
+//
+// Eskiden her maç günün rastgele bir saatinde geçiyor, sahneye çarpma
+// (multiply) ile renk bindiriliyor, binalar ve karakterler güneşin tersine
+// gölge düşürüyordu. İstenmediği için tamamı çıkarıldı: sahne her zaman düz
+// gündüz ışığında. Bunun iki faydası da var — parça önbelleği artık güneş
+// kaydıkça boşaltılmıyor ve gölge çizimi (bina başına bulanık gölge) tamamen
+// kalktı.
 
 // Duvar arkası ve çok uzaktaki düşmanlar çizilmez (wallhack yok).
 const VIS_DIST = 1300;
@@ -234,12 +164,8 @@ export class Renderer {
 
     const view = this.viewRect();
 
-    // Bu karedeki güneş/ışık durumu. Gölgeler ve renk buradan besleniyor.
-    const day = g.day || daylight(12);
-    this.day = day;
-
     // Zemin + binalar tek seferde, önbellekten
-    this.drawWorld(ctx, g.map, view, day);
+    this.drawWorld(ctx, g.map, view);
     this.drawPickups(ctx, g, view);
     this.drawAimLaser(ctx, g);
     this.drawBullets(ctx, g, view);
@@ -252,9 +178,6 @@ export class Renderer {
     this.drawFriendliesOverBushes(ctx, g, now);
     if (g.zone) this.drawZone(ctx, g.zone, g.map);
 
-    // Günün saatine göre ışık: dünyanın üstüne, arayüzün altına.
-    this.drawDaylight(ctx, view, day);
-
     ctx.restore();
 
     this.drawVignette(ctx);
@@ -262,42 +185,6 @@ export class Renderer {
     if (this.mctx) this.drawMinimap(g, now);
   }
 
-  // Günün saatine göre tüm sahneye renk bindirir. Gece koyu mavi, şafak ve
-  // gün batımı turuncu, öğlen neredeyse hiç.
-  drawDaylight(ctx, view, day) {
-    const m = day.mul;
-    if (!m) return;
-    const w = view.x1 - view.x0, h = view.y1 - view.y0;
-
-    ctx.save();
-    if (m.r < 254 || m.g < 254 || m.b < 254) {
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = `rgb(${m.r},${m.g},${m.b})`;
-      ctx.fillRect(view.x0, view.y0, w, h);
-    }
-
-    // Karanlıkta oyuncunun etrafı aydınlık kalsın ki oyun oynanabilir olsun.
-    // Işık SARI ve geniş: gece haritayı okuyabilmek gerekiyor, mavi karanlığın
-    // içinde soluk beyaz bir halka yeterli olmuyordu.
-    if (day.lamp > 0.02) {
-      const r = 700;
-      const k = Math.min(1, day.lamp);
-      const gr = ctx.createRadialGradient(this.camX, this.camY, 40, this.camX, this.camY, r);
-      // Sarı ama abartısız: merkez sıcak, kenar çabuk sönüyor. Böylece
-      // oyuncunun çevresi net görünürken uzak taraf karanlık kalıyor.
-      const a = 0.34 * k;
-      gr.addColorStop(0, `rgba(255,216,140,${a})`);
-      gr.addColorStop(0.4, `rgba(255,204,110,${a * 0.5})`);
-      gr.addColorStop(0.75, `rgba(255,196,96,${a * 0.16})`);
-      gr.addColorStop(1, 'rgba(255,196,96,0)');
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = gr;
-      ctx.beginPath();
-      ctx.arc(this.camX, this.camY, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
 
   viewRect() {
     const hw = this.w / (2 * this.zoom) + 80;
@@ -527,7 +414,7 @@ export class Renderer {
   // Tek istisna: güneş hareket ettikçe gölgelerin yönü değişir. Güneş konumu
   // gözle görülür şekilde değiştiğinde önbellek boşaltılıyor — maç boyunca
   // birkaç kez olur, fark edilmez.
-  staticTile(map, tx, ty, day) {
+  staticTile(map, tx, ty) {
     const key = `${tx},${ty}`;
     const cached = this.tiles.get(key);
     if (cached) {
@@ -572,7 +459,7 @@ export class Renderer {
     const pay = 140;
     this.paintObstacles(g, map, {
       x0: ox - pay, y0: oy - pay, x1: ox + S + pay, y1: oy + S + pay,
-    }, day);
+    });
 
     this.tiles.set(key, c);
     if (this.tiles.size > MAX_TILES) {
@@ -582,11 +469,10 @@ export class Renderer {
     return c;
   }
 
-  drawWorld(ctx, map, view, day) {
-    // Güneş yönü belirgin değiştiyse gölgeler de değişti: önbelleği tazele.
-    const gunes = `${Math.round(day.shadowX * 6)},${Math.round(day.shadowY * 6)},${Math.round(day.shadowAlpha * 20)}`;
-    if (gunes !== this._sunKey || this._tileMapKey !== `${map.w}x${map.h}`) {
-      this._sunKey = gunes;
+  drawWorld(ctx, map, view) {
+    // Harita değiştiyse önbelleği tazele. (Güneş kalktığı için başka bir
+    // tazeleme sebebi kalmadı: dünya katmanı maç boyunca sabit.)
+    if (this._tileMapKey !== `${map.w}x${map.h}`) {
       this._tileMapKey = `${map.w}x${map.h}`;
       this.tiles.clear();
     }
@@ -596,12 +482,12 @@ export class Renderer {
     const ty0 = Math.floor(view.y0 / S), ty1 = Math.floor(view.y1 / S);
     for (let ty = ty0; ty <= ty1; ty++) {
       for (let tx = tx0; tx <= tx1; tx++) {
-        ctx.drawImage(this.staticTile(map, tx, ty, day), tx * S, ty * S);
+        ctx.drawImage(this.staticTile(map, tx, ty), tx * S, ty * S);
       }
     }
   }
 
-  paintObstacles(ctx, map, view, day) {
+  paintObstacles(ctx, map, view) {
     for (const o of map.obstacles) {
       if (o.x > view.x1 || o.x + o.w < view.x0 || o.y > view.y1 || o.y + o.h < view.y0) continue;
 
@@ -611,10 +497,6 @@ export class Renderer {
 
       // --- yere düşen gölge: güneşin tam tersine, güneş alçaldıkça uzun ---
       ctx.save();
-      ctx.shadowColor = `rgba(0,0,0,${day.shadowAlpha})`;
-      ctx.shadowBlur = 14 + (1 - (day.elev ?? 0.6)) * 16;
-      ctx.shadowOffsetX = day.shadowX * 11;
-      ctx.shadowOffsetY = day.shadowY * 11;
       ctx.fillStyle = '#1d242c';
       this.roundRect(ctx, o.x, o.y, o.w, o.h, 4);
       ctx.fill();
@@ -1098,17 +980,13 @@ export class Renderer {
     const left = p.x - w / 2 + sway;
     const top = p.y + PLAYER_RADIUS * 0.55 - h - Math.abs(bob);
 
-    // --- zemin gölgesi: güneşin tersine uzanır -------------------------------
-    const day = this.day || { shadowX: 0.5, shadowY: 0.9, shadowAlpha: 0.42, elev: 0.6 };
-    const sx = day.shadowX * PLAYER_RADIUS * 0.9;
-    const sy = day.shadowY * PLAYER_RADIUS * 0.5;
-    const stretch = 1 + Math.min(1.6, Math.abs(day.shadowX) * 0.5);
+    // --- zemin izi -----------------------------------------------------------
+    // Güneş ve gölgeler kaldırıldı. Karakterin zeminden kopuk durmaması için
+    // altında yönü olmayan, hafif bir koyuluk bırakıyoruz.
     ctx.save();
-    ctx.fillStyle = `rgba(0,0,0,${day.shadowAlpha})`;
+    ctx.fillStyle = 'rgba(0,0,0,0.26)';
     ctx.beginPath();
-    ctx.ellipse(p.x + sx, p.y + 4 + sy,
-      PLAYER_RADIUS * 0.95 * stretch, PLAYER_RADIUS * 0.48,
-      Math.atan2(day.shadowY, day.shadowX), 0, Math.PI * 2);
+    ctx.ellipse(p.x, p.y + 5, PLAYER_RADIUS * 0.86, PLAYER_RADIUS * 0.40, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 

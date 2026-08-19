@@ -387,6 +387,18 @@ function startCountdown(ms) {
   if (cdTimer) clearInterval(cdTimer);
   overlay.classList.remove('hidden');
 
+  // İPTAL: hazır durumunu geri alır. Sunucu "herkes hazır değil" görünce
+  // geri sayımı durdurup lobiye döner — yani iptal kararı da sunucuda
+  // veriliyor, istemci sadece niyeti bildiriyor.
+  const iptal = $('btnCancelStart');
+  if (iptal) {
+    iptal.onclick = () => {
+      sfx.sfxUi();
+      net.send(C.SET_READY, { ready: false });
+      stopCountdown();
+    };
+  }
+
   const end = Date.now() + ms;
   const tick = () => {
     const left = Math.max(0, end - Date.now());
@@ -440,13 +452,14 @@ function scoreboardHtml(sb, title) {
       <span style="color:${TEAMS[2].color}">${TEAMS[2].name} ${sb.teamScore[2] || 0}</span></div>`;
   }
 
-  html += '<table class="sb-table"><tr><th>#</th><th>Oyuncu</th><th>Sınıf</th><th class="num">Öldürme</th><th class="num">Ölüm</th><th class="num">Hasar</th></tr>';
+  html += '<table class="sb-table"><tr><th>#</th><th>Oyuncu</th><th>Sınıf</th><th class="num">Öldürme</th><th class="num">Asist</th><th class="num">Ölüm</th><th class="num">Hasar</th></tr>';
   sb.rows.forEach((r, i) => {
     html += `<tr class="${r.id === state.me.id ? 'me ' : ''}${sb.teamScore ? 't' + r.team : ''}">
       <td>${sb.mode === 'br' && r.place ? '#' + r.place : i + 1}</td>
       <td>${esc(r.name)}${r.bot ? '<span class="sb-bot">BOT</span>' : ''}</td>
       <td>${esc(CLASSES[r.cls]?.name || '')}</td>
       <td class="num">${r.kills}</td>
+      <td class="num">${r.assists || 0}</td>
       <td class="num">${r.deaths}</td>
       <td class="num">${r.damage}</td>
     </tr>`;
@@ -925,9 +938,22 @@ function initUi() {
     if (!state.inMatch) return;
 
     // Esc: sohbet açıksa onu kapatır, değilse ayarlar panelini açar/kapatır.
-    if (e.code === 'Escape' && !input.typing) { e.preventDefault(); toggleSettings(); return; }
+    if (e.code === 'Escape' && !input.typing) {
+      e.preventDefault();
+      if (game.showScoreboard) { game.toggleScoreboard(false); return; }
+      toggleSettings();
+      return;
+    }
 
-    if (e.code === 'Tab') { e.preventDefault(); game.toggleScoreboard(true); return; }
+    // Tab AÇAR/KAPATIR — basılı tutmak gerekmiyor. Basılı tutma modelinde
+    // tabloyu kaydırıp alttaki oyuncuları okumak imkânsızdı: fareye/tekerleğe
+    // gitmek için tuşu bırakınca tablo kapanıyordu.
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      if (e.repeat) return;                       // tuşu basılı tutmak tekrar açıp kapatmasın
+      game.toggleScoreboard(!game.showScoreboard);
+      return;
+    }
 
     if (input.typing) {
       if (e.code === 'Escape') {
@@ -945,8 +971,10 @@ function initUi() {
       gameChatInput.focus();
     }
   });
+  // Tab artık bırakılınca kapanmıyor (açar/kapatır oldu). Esc ile de kapansın:
+  // tablo açıkken Esc'nin ayarları açması kafa karıştırıcıydı.
   window.addEventListener('keyup', (e) => {
-    if (e.code === 'Tab' && state.inMatch) { e.preventDefault(); game.toggleScoreboard(false); }
+    if (e.code === 'Tab' && state.inMatch) e.preventDefault();
   });
 
   // Dokunmatik skor düğmesi
@@ -1158,7 +1186,28 @@ async function preferOnlineIfChosen() {
     return false;                         // ulaşılamadı: kendi kopyamızla aç
   }
 
+  // Android'de bu satır iki farklı şey yapabilir ve farkı kod içinden
+  // göremiyoruz:
+  //
+  //   • capacitor.config.json'da allowNavigation listesinde olan bir adres →
+  //     uygulamanın KENDİ penceresinde açılır (istediğimiz bu).
+  //   • listede olmayan bir adres → Android bunu "dışarı çıkmak" sayar ve
+  //     CHROME'DA açar. Uygulama arkada kendi sayfasında kalır; kullanıcı da
+  //     "APK'yı açınca beni Chrome'a atıyor" der. Kullanıcıda tam da bu oldu.
+  //
+  // Adresi listeye ekledik, ama eski kurulumlarda liste yok ve tercih
+  // telefonda kayıtlı olduğu için her açılışta tekrarlanır. O yüzden bir
+  // emniyet supabı koyuyoruz: yönlendirme gerçekten olduysa bu sayfa zaten
+  // kapanır. Hâlâ buradaysak yönlendirme DIŞARI gitmiş demektir; tercihi
+  // siliyoruz ki bir daha olmasın ve oyun kendi kopyasıyla açılsın.
+  const oncekiUrl = location.href;
   location.replace(`${base}/`);
+  setTimeout(() => {
+    if (location.href !== oncekiUrl) return;        // sayfa değişti, sorun yok
+    store(UPDATE_PREF_KEY, '');
+    console.warn('[güncelleme] yönlendirme uygulama dışında açıldı; tercih temizlendi');
+    toast('Güncel sürüm tarayıcıda açıldı. Uygulama kendi kopyasıyla devam ediyor.');
+  }, 2500);
   return true;
 }
 

@@ -6,6 +6,7 @@
 
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
+import { SC_FIELDS } from '../shared/protocol.js';
 
 const BASE = process.env.BASE || 'http://localhost:3000';
 const OUT = '/tmp/shots';
@@ -47,6 +48,9 @@ async function createAndStart(page, { mode = 0, bots = 6 } = {}) {
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
+// Skor listesindeki alan sayısını sabit yazmıyoruz: protokole yeni bir
+// alan (asist) eklenince testler sessizce yanlış sayı hesaplıyordu.
+await page.addInitScript((n) => { window.__SC_FIELDS = n; }, SC_FIELDS);
   attach(page, 'cevrimdisi');
   await page.goto(BASE, { waitUntil: 'networkidle' });
 
@@ -85,7 +89,7 @@ async function createAndStart(page, { mode = 0, bots = 6 } = {}) {
       snaps: g.snaps.length,
       units: g.playersRender.length,
       rosterSize: g.roster.size,
-      scoreRows: (g.scores?.ps || []).length / 5,
+      scoreRows: (g.scores?.ps || []).length / window.__SC_FIELDS,
       ammo: g.you?.am,
       mag: g.you?.mg,
       time: Math.round(g.snaps.at(-1)?.t || 0),

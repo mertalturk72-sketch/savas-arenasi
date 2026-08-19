@@ -13,33 +13,77 @@ import {
   F_ALIVE, F_PROTECTED, F_MUZZLE, F_HIDDEN,
 } from '/shared/protocol.js';
 import { buildObstacleIndex, applyMovement, angleLerp } from '/shared/physics.js';
-import { Renderer, FX, daylight, matchHour } from './render.js';
+import { Renderer, FX } from './render.js';
 import { WALK_FRAMES } from './sprites.js';
 import * as sfx from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 
-// Ölüm ekranındaki kafatası. Dosya eklemiyoruz: SVG doğrudan kodda, böylece
-// çevrimdışı sürüm ve tek dosyalık paket için ek bir kaynak gerekmiyor.
-const SKULL_SVG = `
-<svg viewBox="0 0 64 64" width="100%" height="100%">
-  <defs>
-    <radialGradient id="skg" cx="42%" cy="34%" r="70%">
-      <stop offset="0%" stop-color="#ff8f87"/>
-      <stop offset="55%" stop-color="#d13b34"/>
-      <stop offset="100%" stop-color="#6b1512"/>
-    </radialGradient>
-  </defs>
-  <path fill="url(#skg)" d="M32 4c-13 0-22 9-22 21 0 6 2 10 5 13 1.6 1.6 2 2.6 2.2 4.5l.4 3.6c.2 1.7 1.6 2.9 3.3 2.9h3.4v5.2c0 1.5 1.2 2.7 2.7 2.7h9.9c1.5 0 2.7-1.2 2.7-2.7V49h3.4c1.7 0 3.1-1.2 3.3-2.9l.4-3.6c.2-1.9.6-2.9 2.2-4.5 3-3 5-7 5-13C54 13 45 4 32 4z"/>
-  <ellipse cx="22" cy="26" rx="7.5" ry="8.5" fill="#2b0a09"/>
-  <ellipse cx="42" cy="26" rx="7.5" ry="8.5" fill="#2b0a09"/>
-  <ellipse cx="24" cy="24" rx="2.4" ry="2.8" fill="#ff6f66" opacity=".55"/>
-  <ellipse cx="44" cy="24" rx="2.4" ry="2.8" fill="#ff6f66" opacity=".55"/>
-  <path d="M32 33l-3.4 7h6.8z" fill="#2b0a09"/>
-  <rect x="25" y="43" width="3.2" height="6" rx="1.4" fill="#2b0a09"/>
-  <rect x="30.4" y="43" width="3.2" height="6" rx="1.4" fill="#2b0a09"/>
-  <rect x="35.8" y="43" width="3.2" height="6" rx="1.4" fill="#2b0a09"/>
-</svg>`;
+// Maç sırasında sohbet yazıları ekranda görünsün mü? Kullanıcı görünmesin
+// dedi. Tek yerden açılıp kapanabilsin diye sabit olarak duruyor.
+const CHAT_IN_GAME = false;
+
+// ÖLDÜRÜNCE çıkan kuru kafa — piksel piksel çizilmiş.
+//
+// Harita 24x24'lük bir ızgara; her harf bir renk. Kareler SVG dikdörtgeni
+// olarak üretiliyor ve `shape-rendering="crispEdges"` sayesinde hangi boyutta
+// gösterilirse gösterilsin kenarlar keskin kalıyor. Yumuşak/gradyanlı bir
+// çizim piksel oyununun içinde yabancı duruyordu.
+//
+// Dosya eklemiyoruz: her şey kodun içinde, yani çevrimdışı sürüm ve tek
+// dosyalık paket için ek bir kaynak indirmek gerekmiyor.
+//
+//   K = siyah kontur   W = beyaz   G = açık gri   D = koyu gri
+const SKULL_PALETTE = { K: '#1a1a1e', W: '#ffffff', G: '#cecED2', D: '#9a9aa0' };
+const SKULL_PIXELS = [
+  '........KKKKKKKK........',
+  '......KKWWWWWWWWKK......',
+  '.....KWWWWWWWWWWWWK.....',
+  '....KWWWWWWWWWWWWWWK....',
+  '...KWWWWWWWWWWWWWWWWK...',
+  '...KGWWWWWWWWWWWWWWDK...',
+  '..KGGWWWWWWWWWWWWWWDDK..',
+  '..KGGWWWWWWWWWWWWWWDDK..',
+  '..KGWWKKKKWWWWKKKKWWDK..',
+  '..KGWKKKKKKWWKKKKKKWDK..',
+  '..KGWKKKKKKWWKKKKKKWDK..',
+  '..KGWKKKKKKWWKKKKKKWDK..',
+  '..KGWWKKKKWWWWKKKKWWDK..',
+  '..KGWWWWWWWKKWWWWWWWDK..',
+  '...KWWWWWWWKKWWWWWWWK...',
+  '...KWWWWWWKKKKWWWWWWK...',
+  '....KWWWWWWWWWWWWWWK....',
+  '.....KKWWWWWWWWWWKK.....',
+  '.......KWWWWWWWWK.......',
+  '.......KWKWKWKWKK.......',
+  '.......KWKWKWKWKK.......',
+  '.......KKKKKKKKKK.......',
+  '........KKKKKKKK........',
+  '........................',
+];
+
+function pixelSkullSvg() {
+  const n = SKULL_PIXELS.length;
+  let kareler = '';
+  for (let y = 0; y < n; y++) {
+    const satir = SKULL_PIXELS[y];
+    let x = 0;
+    while (x < satir.length) {
+      const c = satir[x];
+      if (c === '.') { x++; continue; }
+      // Yan yana aynı renkteki pikselleri tek dikdörtgende birleştir: hem
+      // daha az düğüm hem de aralarında saç teli kalınlığında boşluk kalmaz.
+      let uz = 1;
+      while (x + uz < satir.length && satir[x + uz] === c) uz++;
+      kareler += `<rect x="${x}" y="${y}" width="${uz}" height="1" fill="${SKULL_PALETTE[c]}"/>`;
+      x += uz;
+    }
+  }
+  return `<svg viewBox="0 0 ${SKULL_PIXELS[0].length} ${n}" width="100%" height="100%"
+    shape-rendering="crispEdges" aria-hidden="true">${kareler}</svg>`;
+}
+
+const SKULL_SVG = pixelSkullSvg();
 
 export class ClientGame {
   constructor(net, input) {
@@ -121,7 +165,6 @@ export class ClientGame {
     this.myId = payload.youId;
     this.pickups = payload.pickups.map((k) => ({ ...k }));
     // Maçın başladığı oyun saati (sunucu belirler). Işık ve gölgeler buradan.
-    this.startHour = typeof payload.startHour === 'number' ? payload.startHour : 12;
 
     for (const p of payload.players) {
       this.roster.set(p.id, { name: p.name, team: p.team, cls: p.cls, bot: p.bot, char: p.char });
@@ -307,7 +350,23 @@ export class ClientGame {
     }
   }
 
+  // Öldürme kuru kafası: ekranın solunda kısa süre görünür.
+  // Ölünce DEĞİL, öldürünce çıkar — öldüğünde zaten "ÖLDÜN" ekranı var.
+  showKillSkull() {
+    const el = $('killSkull');
+    if (!el) return;
+    if (!el.innerHTML) el.innerHTML = SKULL_SVG;
+    // Üst üste öldürmelerde animasyon baştan başlasın diye sınıfı sıfırlıyoruz.
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this._skullTimer);
+    this._skullTimer = setTimeout(() => el.classList.remove('show'), 1500);
+  }
+
   addKillfeed(ev) {
+    // Öldüren ben miyim? (Kendini öldürmek sayılmaz.)
+    if (ev.k && ev.k === this.myId && ev.v !== this.myId) this.showKillSkull();
     const wepName = ev.w === 'zone' ? 'alan' : (WEAPONS[ev.w]?.name || '');
     const kc = ev.kt === 1 ? '#ff8080' : ev.kt === 2 ? '#8fc4ff' : '#e8eef5';
     const vc = ev.vt === 1 ? '#ff8080' : ev.vt === 2 ? '#8fc4ff' : '#98a6b5';
@@ -356,6 +415,9 @@ export class ClientGame {
   }
 
   pushChat(msg) {
+    // Maç içinde sohbet yazıları GÖSTERİLMİYOR — istenmedi. Mesajlar lobide
+    // görünmeye devam ediyor; burada sadece ekrana basmıyoruz.
+    if (!CHAT_IN_GAME) return;
     const div = document.createElement('div');
     div.className = 'chat-line' + (msg.sys ? ' sys' : '');
     div.innerHTML = msg.sys ? esc(msg.text) : `<span class="cf">${esc(msg.from)}:</span> ${esc(msg.text)}`;
@@ -397,16 +459,18 @@ export class ClientGame {
       this.aim = sample.aim;
 
       const dt = Math.max(1, Math.min(MAX_INPUT_DT_MS, Math.round(stepMs)));
-      const packet = { seq: ++this.seq, dt, keys: sample.keys, aim: sample.aim };
+      const packet = { seq: ++this.seq, dt, keys: sample.keys, aim: sample.aim, power: sample.p };
 
       if (this.alive) {
         applyMovement(this.me, sample.keys, this.speed, dt / 1000, this.idx);
         this.pending.push(packet);
         if (this.pending.length > 180) this.pending.shift();
-        this.predictFire(sample.keys);
+        this.predictFire(sample.keys, sample.p);
       }
 
-      this.net.send(C.INPUT, { s: packet.seq, d: packet.dt, k: packet.keys, a: packet.aim });
+      const msg = { s: packet.seq, d: packet.dt, k: packet.keys, a: packet.aim };
+      if (packet.power !== undefined) msg.p = packet.power;   // dokunmatik menzil
+      this.net.send(C.INPUT, msg);
     }
 
     // Tahmin hatasını yumuşakça sıfırla
@@ -417,7 +481,7 @@ export class ClientGame {
   }
 
   // Ateş sesi/efekti gecidikmesin diye görsel-işitsel kısmı yerelde tahmin ediyoruz.
-  predictFire(keys) {
+  predictFire(keys, guc) {
     const wep = WEAPONS[this.weapon] || WEAPONS.rifle;
 
     // Bomba: tuşu TUTARKEN menzil dolar, BIRAKINCA atılır. Sunucu da aynı
@@ -428,7 +492,11 @@ export class ClientGame {
       const now0 = performance.now();
       if (basili) {
         if (!this.chargeStart) this.chargeStart = now0;
-        this.charge = Math.max(0, Math.min(1, (now0 - this.chargeStart) / wep.chargeMs));
+        // Dokunmatikte menzili çubuğun itilme miktarı belirliyor (input.js),
+        // bilgisayarda tutma süresi. Gösterge hangisi geçerliyse onu çizsin.
+        this.charge = (guc !== undefined)
+          ? Math.max(0, Math.min(1, guc / 100))
+          : Math.max(0, Math.min(1, (now0 - this.chargeStart) / wep.chargeMs));
         this.firePrev = true;
         return;
       }
@@ -542,16 +610,6 @@ export class ClientGame {
           };
         } else this.zone = s1.zone;
       }
-    }
-
-    // Günün saati: maçın başladığı saatten itibaren ilerler. Sunucu sadece
-    // başlangıç saatini gönderiyor; geri kalanını iki taraf da aynı formülle
-    // hesapladığı için ekstra ağ trafiği yok.
-    {
-      const total = (this.mode?.timeLimitMs || MATCH_MS) / 1000;
-      const left = this.scores ? Math.max(0, this.scores.left | 0) : total;
-      const elapsedMs = Math.max(0, (total - left) * 1000);
-      this.day = daylight(matchHour(this.startHour ?? 12, elapsedMs, total * 1000));
     }
 
     // Yürüyüş animasyonu: kat edilen mesafeye göre adım karesi ilerler.
@@ -682,7 +740,6 @@ export class ClientGame {
       this.el.respawn.classList.remove('hidden');
       const canRespawn = this.mode.respawn;
       this.el.respawn.innerHTML = `
-        <div class="rm-skull" aria-hidden="true">${SKULL_SVG}</div>
         <div class="rm-title">ÖLDÜN</div>
         <div class="rm-killer">${this.deathKiller ? esc(this.deathKiller) + ' seni indirdi' : ''}</div>
         <div class="rm-sub">${canRespawn
@@ -721,26 +778,27 @@ export class ClientGame {
       const info = this.roster.get(s.id) || { name: '?', team: 0, cls: 'komando' };
       return { name: info.name, team: info.team, cls: info.cls, bot: info.bot, ...s };
     });
-    rows.sort((a, b) => b.k - a.k || a.d - b.d || b.dm - a.dm);
+    rows.sort((a, b) => b.k - a.k || b.as - a.as || a.d - b.d || b.dm - a.dm);
 
-    let html = `<h3>${esc(this.mode.name)}</h3><div class="sb-sub">Tab tuşunu bırakınca kapanır</div>`;
+    let html = `<h3>${esc(this.mode.name)}</h3><div class="sb-sub">Kapatmak için tekrar Tab (ya da Esc) · liste uzunsa kaydır</div>`;
     if (this.teams && this.scores?.team) {
       html += `<div class="sb-teamline">
         <span style="color:${TEAMS[1].color}">${TEAMS[1].name} ${this.scores.team[1] || 0}</span>
         <span style="color:${TEAMS[2].color}">${TEAMS[2].name} ${this.scores.team[2] || 0}</span></div>`;
     }
-    html += '<table class="sb-table"><tr><th>Oyuncu</th><th>Sınıf</th><th class="num">Öldürme</th><th class="num">Ölüm</th><th class="num">Hasar</th><th class="num">Durum</th></tr>';
+    html += '<div class="sb-scroll"><table class="sb-table"><tr><th>Oyuncu</th><th>Sınıf</th><th class="num">Öldürme</th><th class="num">Asist</th><th class="num">Ölüm</th><th class="num">Hasar</th><th class="num">Durum</th></tr>';
     for (const r of rows) {
       html += `<tr class="${r.id === this.myId ? 'me ' : ''}${this.teams ? 't' + r.team : ''}">
         <td>${esc(r.name)}${r.bot ? '<span class="sb-bot">BOT</span>' : ''}</td>
         <td>${esc(CLASSES[r.cls]?.name || '')}</td>
         <td class="num">${r.k}</td>
+        <td class="num">${r.as}</td>
         <td class="num">${r.d}</td>
         <td class="num">${r.dm}</td>
         <td class="num">${r.a ? '<span class="sb-alive">yaşıyor</span>' : '<span class="sb-dead">öldü</span>'}</td>
       </tr>`;
     }
-    html += '</table>';
+    html += '</table></div>';
     this.el.scoreboard.innerHTML = html;
   }
 }
@@ -750,7 +808,7 @@ function decodeScores(sc) {
   const out = [];
   const a = sc?.ps || [];
   for (let i = 0; i + SC_FIELDS <= a.length; i += SC_FIELDS) {
-    out.push({ id: a[i], k: a[i + 1], d: a[i + 2], dm: a[i + 3], a: a[i + 4] });
+    out.push({ id: a[i], k: a[i + 1], d: a[i + 2], dm: a[i + 3], a: a[i + 4], as: a[i + 5] || 0 });
   }
   return out;
 }

@@ -44,13 +44,13 @@ export const S = {
 // snap.bs : her mermi için BS_FIELDS adet sayı
 //   [ id, x, y, açı*100, silahIndeksi ]
 // snap.sc.ps : her oyuncu için SC_FIELDS adet sayı
-//   [ id, öldürme, ölüm, hasar, ayaktaMı ]
+//   [ id, öldürme, ölüm, hasar, ayaktaMı, asist ]
 //
 // bayraklar: 1=hayatta, 2=doğuş koruması, 4=şarjör dolduruyor, 8=namlu alevi,
 //            16=çalıda gizli
 export const PS_FIELDS = 8;
 export const BS_FIELDS = 5;
-export const SC_FIELDS = 5;
+export const SC_FIELDS = 6;
 
 export const F_ALIVE = 1;
 export const F_PROTECTED = 2;

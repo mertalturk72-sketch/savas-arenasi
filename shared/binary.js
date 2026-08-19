@@ -270,13 +270,14 @@ export function encodeSnapshot(s) {
     if (bayrak & HAS_TEAM) { w.vu(sc.team[1] || 0); w.vu(sc.team[2] || 0); }
     w.u16(sc.alive); w.u16(sc.total); w.u16(sc.left);
     const sp = sc.ps || [];
-    w.vu(sp.length / 5);
-    for (let i = 0; i < sp.length; i += 5) {
+    w.vu(sp.length / 6);
+    for (let i = 0; i < sp.length; i += 6) {
       w.vu(sp[i]);          // id
       w.vu(sp[i + 1]);      // öldürme
       w.vu(sp[i + 2]);      // ölüm
       w.vu(sp[i + 3]);      // hasar
       w.u8(sp[i + 4]);      // ayakta mı
+      w.vu(sp[i + 5]);      // asist
     }
   }
 
@@ -441,13 +442,14 @@ export function decodeSnapshot(bytes) {
     sc.alive = r.u16(); sc.total = r.u16();
     const left = r.u16();
     const n = r.vu();
-    const sp = new Array(n * 5);
-    for (let i = 0, o = 0; i < n; i++, o += 5) {
+    const sp = new Array(n * 6);
+    for (let i = 0, o = 0; i < n; i++, o += 6) {
       sp[o] = r.vu();
       sp[o + 1] = r.vu();
       sp[o + 2] = r.vu();
       sp[o + 3] = r.vu();
       sp[o + 4] = r.u8();
+      sp[o + 5] = r.vu();
     }
     sc.ps = sp;
     sc.left = left;

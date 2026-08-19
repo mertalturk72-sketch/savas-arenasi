@@ -248,7 +248,13 @@
   </div>
 
   <div id="lobbyScoreboard" class="post-scoreboard hidden"></div>
-  <div id="countdownOverlay" class="countdown-overlay hidden"><div id="countdownNum">5</div><div class="cd-label">MAÇ BAŞLIYOR</div></div>
+  <div id="countdownOverlay" class="countdown-overlay hidden">
+    <div id="countdownNum">5</div>
+    <div class="cd-label">MAÇ BAŞLIYOR</div>
+    <!-- Geri sayım başladıktan sonra fikir değiştirebilmek için: hazır
+         durumunu geri alır, geri sayım durur. -->
+    <button id="btnCancelStart" class="cd-cancel" type="button">İPTAL</button>
+  </div>
 </section>
 
 <!-- ================= OYUN ================= -->
@@ -299,8 +305,10 @@
     <!-- Skor tablosu (Tab) -->
     <div id="scoreboard" class="scoreboard hidden"></div>
 
-    <!-- Oyun içi sohbet -->
-    <div class="game-chat">
+    <!-- Oyun içi sohbet: EKRANDA GÖSTERİLMİYOR (istenmedi).
+         Öğeler duruyor çünkü sohbet yazma kutusu (Enter) hâlâ çalışıyor;
+         sadece gelen mesajların ekrana basılması kapatıldı. -->
+    <div class="game-chat hidden">
       <div id="gameChatLog" class="game-chat-log"></div>
       <form id="gameChatForm" class="game-chat-form hidden" autocomplete="off">
         <input id="gameChatInput" maxlength="140" placeholder="Mesaj (Enter gönder, Esc iptal)">
@@ -336,6 +344,9 @@
       <p class="set-note">Çıkınca ana menüye dönersin. Maç arkadaşların için devam eder.</p>
     </div>
   </div>
+
+  <!-- Öldürünce ekranın solunda kısa süre beliren beyaz piksel kuru kafa -->
+  <div id="killSkull" class="kill-skull" aria-hidden="true"></div>
 
   <div id="matchEndOverlay" class="match-end hidden"></div>
 

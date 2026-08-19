@@ -104,23 +104,6 @@ olman** gerekir (bölüm 4'teki bulut sunucu ya da tünel adresi). `http://192.1
 adresinde tarayıcı önbelleği kurmaz; orada PWA kurulumu da çevrimdışı çalışmaz.
 Sunucusuz ve HTTPS'siz çevrimdışı oyun için **bölüm 0'daki tek dosyayı** kullan.
 
-### Gündüz ve gece
-
-Her maç **günün rastgele bir saatinde** başlar ve 5 dakikalık maç boyunca oyun
-saati 6 saat ilerler — öğlen başlayıp akşamüstü bitirebilirsin.
-
-* Güneş doğuda doğar, tepeden geçer, batıda batar.
-* **Gölgeler güneşin tam tersine düşer** ve güneş alçaldıkça uzar: şafakta ve
-  gün batımında upuzun, öğlen neredeyse yok. Hem binalar hem karakterler için.
-* Işık düz boya değil **çarpma (multiply)** ile uygulanır. Düz boya sürmek her
-  şeyi soluklaştırıp çimeni griye çeviriyordu; çarpma gerçek ışık gibi davranıp
-  renkleri korur.
-* Gece oyunun oynanabilir kalması için karakterin çevresinde yumuşak bir
-  aydınlık halka vardır.
-
-Ayarlar `shared/constants.js` içinde: `DAY_HOURS_PER_MATCH`, `SUNRISE_HOUR`,
-`SUNSET_HOUR`.
-
 ### Hız: sabit dünya katmanı
 
 Zemin ve binalar maç boyunca değişmez, ama her karede yeniden çizmek kare
@@ -162,6 +145,13 @@ bina başına bulanık gölge). Ölçüm yapıp üç şeyi düzelttik:
   uygulanıyor; hareket başlayıp bitince de yumuşakça açılıp sönüyor. Bu yüzden
   kareden kareye atlama görünmüyor.
 * **Adım izi.** Ayağın yere bastığı karelerde küçük bir toz bulutu çıkıyor.
+* **Gün döngüsü ve gölgeler kaldırıldı.** Eskiden her maç günün rastgele bir
+  saatinde geçiyor, sahneye çarpma ile renk bindiriliyor, binalar ve
+  karakterler güneşin tersine gölge düşürüyordu. İstenmediği için tamamı
+  çıkarıldı: sahne her zaman düz gündüz ışığında. İki yan fayda: parça
+  önbelleği artık güneş kaydıkça boşaltılmıyor ve bina başına bulanık gölge
+  çizimi tamamen kalktı. Karakterin altında yönü olmayan hafif bir iz kaldı,
+  yoksa zeminden kopuk duruyordu.
 
 ## APK: bir kere kur, güncellemeyi uygulamanın içinden al
 
@@ -192,6 +182,26 @@ sunucudan geliyorum" sonucuna varmak yanlıştır — arkasında oyun sunucusu y
 localhost"* ekranında takılıyordu. Doğru ölçüt `window.__BUNDLED__`
 (`isPackagedApp()`); paketlenmiş sürümde boş adres bulut sunucuya çözülür.
 `npm run test:browser` bu ortamı birebir taklit edip sınıyor.
+
+### Uygulama simgesi
+
+Simge **kodla üretiliyor** (`npm run icons` → `scripts/make-icon.mjs`): nişangâh
+halkası, dört çentik ve çapraz iki kılıç. Tek kaynaktan hem web/PWA simgeleri
+hem de Android'in istediği bütün yoğunluklar çıkıyor, dolayısıyla Chrome'daki
+simge ile APK'nınki birebir aynı.
+
+Neden gerekti: `npx cap add android` Android tarafına **kendi varsayılan
+Capacitor simgesini** koyuyor. Biz Android'e hiç simge vermediğimiz için
+telefonda alakasız bir ikon görünüyordu. Üretilen dosyalar `android-icons/`
+altında duruyor ve derleme sırasında `android/app/src/main/res/` içine
+kopyalanıyor.
+
+Üretilenler:
+
+* `public/icons/` — icon-192/512, maskable-192/512, apple-touch-icon, favicon
+* `android-icons/mipmap-*/` — ic_launcher, ic_launcher_round,
+  ic_launcher_foreground (uyarlanabilir simge ön planı, %25 güvenli pay)
+* `android-icons/values/ic_launcher_background.xml` — uyarlanabilir arka plan rengi
 
 ### APK nasıl derlenir
 
@@ -368,6 +378,12 @@ Takım Savaşı'nda üniforma takım rengini alır.
 
 ### Maç nasıl başlar?
 
+Herkes hazır deyince 5'ten geri sayım başlar. Geri sayım sırasında ekranın
+altında kırmızı bir **İPTAL** düğmesi durur: basınca hazır durumun geri alınır,
+sunucu "herkes hazır değil" görüp geri sayımı durdurur ve lobiye dönülür.
+Yani iptal kararı da sunucuda verilir; istemci sadece niyeti bildirir.
+
+
 Lobideki **herkes** (lobi sahibi dahil) HAZIRIM demeden maç başlamaz — zorla
 başlatma yok. Altta kaç kişinin hazır olduğu yazar (`2 / 4 kişi hazır`). Herkes
 hazır olunca ekranı kaplayan **5 · 4 · 3 · 2 · 1** geri sayımı başlar.
@@ -409,15 +425,54 @@ Bombacı diğer sınıflardan farklı çalışır: ateş tuşunu **basılı tuta
 menzil dolar, **bırakınca** bomba atılır. Nereye düşeceği ve patlama alanı
 ekranda canlı gösterilir — ayarlanabilir menzil, göstergesiz işkence olurdu.
 
-* Menzil 190–900 px arası, dolma süresi 850 ms.
+* Menzil 95–450 px arası. Bomba hızı 840 px/sn.
+* Şarjörde 3, yedekte 15 bomba.
 * Doğrudan isabet hasarı **yok** (`dmg: 0`); bütün iş patlamada.
-* Patlama 165 px yarıçapında, merkezde 74 hasar, kenarda dörtte biri.
+* Patlama 83 px yarıçapında, merkezde 37 hasar, kenarda dörtte biri.
 * Kurallar mermiyle aynı: dost ateşi geçmez, yeni doğan korunur ve
   **duvar arkası korur** — patlama duvarı delmez.
 * Kendi bombandan sen de zarar görürsün: yakına atmak risklidir.
 
+**Menzil telefonda nasıl ayarlanır?** Bilgisayarda tuşu ne kadar tuttuğun
+menzili belirler. Telefonda bu ÇALIŞMIYORDU: nişan çubuğunu tutmak aynı
+zamanda ateş tuşunu basılı tutmak demek, dolayısıyla nişan alırken geçen süre
+menzili kendiliğinden dolduruyor ve bomba hep en uzağa gidiyordu — oyuncunun
+elinde hiçbir kontrol kalmıyordu.
+
+Telefonda menzili artık **çubuğu ne kadar ittiğin** belirliyor: az it → yakına,
+sonuna kadar it → en uzağa. Ne kadar beklediğin önemli değil, hedef halkası
+parmakla birlikte kayıyor. İstemci bu değeri girdi paketinde `p` (0–100) olarak
+gönderiyor; sunucu 0–1 arasına kırpıyor, yani uydurma bir değer silahın azami
+menzilini aşamıyor.
+
+Bunu mümkün kılan asıl düzeltme kumandanın içinde: çubuğun `dx/dy` değerleri
+birim uzunluğa normalize ediliyordu, yani "ne kadar ittim" bilgisi atılıyordu.
+Artık büyüklük ayrıca (`mag`) saklanıyor. Parmağı kaldırınca bu değer bilerek
+sıfırlanmıyor — bomba tam o anda atılıyor ve menzilini bırakma anındaki itilme
+miktarı belirliyor.
+
 Botlar da aynı mekaniği kullanır (tutup bırakırlar); yetenekleri düştükçe
 tutma süresini şaşırırlar, yani kolay botlar bombayı ıskalar.
+
+### Skor tablosu (Tab)
+
+Tab tuşu tabloyu **açar ve kapatır** — basılı tutmak gerekmiyor. Eskiden basılı
+tutma modeliydi ve 20 kişilik bir lobide alttaki oyuncuları okumak imkânsızdı:
+kaydırmak için fareye gitmen gerekiyor, tuşu bırakınca tablo kapanıyordu.
+Liste artık kendi içinde kaydırılıyor, başlık satırı kaydırırken sabit kalıyor.
+Esc de kapatır.
+
+### Asist
+
+Bir oyuncuya son **9 saniye** içinde hasar veren herkes — öldüren ve kurbanın
+kendisi hariç — o oyuncu ölünce bir **asist** alır. Asist hem Tab tablosunda
+hem maç sonu tablosunda ayrı bir sütun olarak sayısıyla görünür.
+
+Süre sınırı bilinçli: maçın başında bir kez değdirdiğin biri dakikalar sonra
+başka bir yerde ölünce asist yazılmamalı. Takım modunda takım arkadaşına giden
+hasar (alan hasarı gibi) asist saymaz. Yeniden doğunca defter temizlenir.
+
+Ayar: `shared/constants.js` → `ASSIST_WINDOW_MS`.
 
 ### Can ve cephane
 
@@ -592,6 +647,9 @@ npm run test:binary      # ikili durum paketi: kodla→çöz→JSON ile birebir 
 npm run test:binary-net  # ikili paket ağ üzerinde çalışıyor mu + eski istemci bozuldu mu?
 npm run test:apk         # GERÇEK APK ortamı (https://localhost + Capacitor köprüsü)
 npm run test:grass       # zemin dokusu geç yüklenirse ekran güncelleniyor mu?
+npm run test:bomb        # bomba menzili telefonda ayarlanabiliyor mu + kuru kafa
+npm run test:assist      # asist sayacı + sohbetin gizliliği + geri sayım İPTAL
+npm run test:noday       # gün döngüsü ve gölgelerin gerçekten kaldırıldığı
 npm run test:load        # 20 gerçek WebSocket istemcisi, bant genişliği ölçümü
 npm run test:browser     # uçtan uca tarayıcı testleri (playwright gerekir)
 npm run test:bundle      # APK'nın içindeki sürüm — sunucusuz çalışıyor mu?

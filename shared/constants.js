@@ -89,6 +89,10 @@ export const MIN_CORRIDOR = 96;
 // --- Oyuncu ---------------------------------------------------------------
 export const PLAYER_RADIUS = 16;
 export const RESPAWN_MS = 3500;
+// Asist penceresi: bir oyuncuya vurduktan sonra bu süre içinde ölürse asist
+// alırsın. Kısa tutuluyor ki maçın başında değdirdiğin biri dakikalar sonra
+// ölünce asist yazılmasın.
+export const ASSIST_WINDOW_MS = 9000;
 export const SPAWN_PROTECT_MS = 1500;
 
 // --- Doğuş noktaları ------------------------------------------------------
@@ -115,14 +119,6 @@ export const AMMO_PACK_FRACTION = 0.5;   // yedek kapasitesinin yarısını dold
 // Kendi sunucun varsa burayı değiştir.
 export const UPDATE_SERVER = 'https://savas-arenasi.onrender.com';
 
-// --- Gündüz / gece --------------------------------------------------------
-// Her maç günün rastgele bir saatinde başlar ve maç boyunca saat ilerler.
-// DAY_MINUTES_PER_MATCH: 5 dakikalık maçta oyun saatinin kaç saat ilerleyeceği.
-// Işık, güneşin yüksekliğinden; gölgelerin yönü ve boyu güneşin konumundan
-// hesaplanır (bkz. public/js/render.js → daylight()).
-export const DAY_HOURS_PER_MATCH = 6;
-export const SUNRISE_HOUR = 6;
-export const SUNSET_HOUR = 20;
 
 // --- Sınıflar -------------------------------------------------------------
 export const CLASSES = {
@@ -256,14 +252,17 @@ export const WEAPONS = {
   // patlamada.
   bomba: {
     id: 'bomba', name: 'Bomba',
-    dmg: 0, fireMs: 620, speed: 560, spread: 0.02, pellets: 1,
-    mag: 3, reserve: 6, reloadMs: 2400, range: 900, bulletR: 8, auto: false,
+    // Menzil, hasar ve patlama alanı yarıya indirildi; buna karşılık bomba
+    // %50 daha hızlı gidiyor. Böylece bombacı "uzaktan tarla süpüren" değil,
+    // yakın mesafede hızlı iş gören bir sınıf oluyor.
+    dmg: 0, fireMs: 620, speed: 840, spread: 0.02, pellets: 1,
+    mag: 3, reserve: 15, reloadMs: 2400, range: 450, bulletR: 8, auto: false,
     throwable: true,
-    minRange: 190,        // hiç beklemeden bırakınca bu kadar gider
-    maxRange: 900,        // tam dolunca bu kadar gider
-    chargeMs: 850,        // menzilin dolması bu kadar sürer
-    blastR: 165,          // patlama yarıçapı
-    blastDmg: 74,         // merkezdeki hasar (kenarda %25'e iner)
+    minRange: 95,         // hiç beklemeden bırakınca bu kadar gider
+    maxRange: 450,        // tam dolunca bu kadar gider
+    chargeMs: 850,        // menzilin dolması bu kadar sürer (bilgisayarda)
+    blastR: 83,           // patlama yarıçapı
+    blastDmg: 37,         // merkezdeki hasar (kenarda %25'e iner)
   },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);

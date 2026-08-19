@@ -9,6 +9,7 @@ import {
   DEFAULT_CHAR,
   BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS,
   DEFAULT_BOT_LEVEL,
+  ASSIST_WINDOW_MS,
 } from '../constants.js';
 import { F_ALIVE, F_PROTECTED, F_RELOADING, F_MUZZLE, F_HIDDEN } from '../protocol.js';
 import { applyMovement, queryObstacles, clamp, lineBlocked } from '../physics.js';
@@ -29,13 +30,6 @@ export class Game {
     this.spawns = built.spawns;
     this.pickups = built.pickups;
     this.bushes = built.map.bushes || [];
-
-    // Maçın başladığı oyun saati. Her maç günün rastgele bir saatinde geçer:
-    // biri şafakta, biri öğlen, biri gece yarısı. Sunucu belirler, istemciye
-    // maç başında bir kez gider; sonrasında ikisi de aynı formülle ilerletir.
-    this.startHour = typeof opts.startHour === 'number'
-      ? opts.startHour
-      : Math.random() * 24;
 
     this.time = 0;              // maç başından beri geçen ms (tick tabanlı)
     this.over = false;
@@ -83,7 +77,10 @@ export class Game {
       nextFireAt: 0,
       prevKeys: 0,
       muzzle: -1e9,            // son atış zamanı (hiç ateş etmedi = çok eski)
-      kills: 0, deaths: 0, damage: 0, place: 0,
+      kills: 0, deaths: 0, damage: 0, assists: 0, place: 0,
+      // Bana son kim hasar verdi? saldıranId -> zaman.
+      // Öldüğümde öldüren DIŞINDA buradakiler asist alır.
+      hurtBy: new Map(),
       lastSeq: 0,
       inputQueue: [],
       inputBudgetMs: 250,
@@ -160,6 +157,7 @@ export class Game {
     p.protectUntil = this.time + SPAWN_PROTECT_MS;
     p.inputQueue.length = 0;
     if (p.brain) resetBot(p);
+    if (p.hurtBy) p.hurtBy.clear();
     if (!initial) this.globalEvents.push({ e: 'spawn', i: p.id });
   }
 
@@ -170,7 +168,15 @@ export class Game {
     const dt = clamp(Number(msg.d) || 0, 0, MAX_INPUT_DT_MS);
     if (dt <= 0) return;
     if (p.inputQueue.length > 40) p.inputQueue.shift();
-    p.inputQueue.push({ s: msg.s | 0, d: dt, k: msg.k | 0, a: Number(msg.a) || 0 });
+    const girdi = { s: msg.s | 0, d: dt, k: msg.k | 0, a: Number(msg.a) || 0 };
+    // p: bomba menzili doluluğu (0..100). Sadece dokunmatik istemciler
+    // gönderir; gelmezse sunucu tutma süresine bakar. Burada kırpıyoruz ki
+    // uydurma bir değer menzili silahın sınırının ötesine taşımasın.
+    if (msg.p !== undefined) {
+      const g = Number(msg.p);
+      if (Number.isFinite(g)) girdi.p = clamp(g, 0, 100);
+    }
+    p.inputQueue.push(girdi);
   }
 
   drainInputs(p, tickMs) {
@@ -216,9 +222,24 @@ export class Game {
       const oncekiBasili = !!(p.prevKeys & IN_FIRE);
       if (basili && !oncekiBasili) p.chargeStart = this.time;      // tutmaya başladı
       firing = !basili && oncekiBasili && p.chargeStart > 0;       // bıraktı
+      // Menzil doluluğu iki şekilde belirlenebilir:
+      //
+      //   • inp.p geldiyse (dokunmatik) → oyuncu nişan çubuğunu ne kadar
+      //     ittiyse o. Telefonda "tutma süresi" işe yaramıyordu: nişan almak
+      //     için çubuğu tutmak zorundasın, dolayısıyla menzil kendiliğinden
+      //     doluyor ve bomba hep en uzağa gidiyordu.
+      //   • gelmediyse (klavye/fare) → tuşu ne kadar tuttuğu.
+      //
+      // Değeri istemci söylüyor ama bir üstünlük sağlamıyor: 0..1 arasına
+      // kırpılıyor ve azami menzil yine silahın kendi sınırı.
       if (firing) {
-        const tuttu = Math.max(0, this.time - p.chargeStart);
-        const t = Math.max(0, Math.min(1, tuttu / wep.chargeMs));
+        let t;
+        if (typeof inp.p === 'number' && Number.isFinite(inp.p)) {
+          t = Math.max(0, Math.min(1, inp.p / 100));
+        } else {
+          const tuttu = Math.max(0, this.time - p.chargeStart);
+          t = Math.max(0, Math.min(1, tuttu / wep.chargeMs));
+        }
         atisMenzili = wep.minRange + t * (wep.maxRange - wep.minRange);
         p.chargeStart = 0;
       }
@@ -414,6 +435,12 @@ export class Game {
     if (attacker && attacker !== victim) {
       attacker.damage += Math.min(amount, amount + Math.min(0, victim.hp));
       attacker.privEvents.push({ e: 'hit', d: Math.round(amount), k: victim.hp <= 0 ? 1 : 0 });
+      // Asist defteri: takım arkadaşına verilen hasar (dost ateşi kapalı olsa
+      // da alan hasarı gibi durumlar) sayılmasın.
+      if (!(this.mode.teams && attacker.team === victim.team)) {
+        if (!victim.hurtBy) victim.hurtBy = new Map();
+        victim.hurtBy.set(attacker.id, this.time);
+      }
     }
     victim.privEvents.push({
       e: 'hurt',
@@ -429,6 +456,21 @@ export class Game {
     victim.hp = 0;
     victim.alive = false;
     victim.deaths++;
+
+    // ASİST: son ASSIST_WINDOW_MS içinde bu oyuncuya hasar vermiş herkes —
+    // öldüren ve kurbanın kendisi hariç — bir asist alır. Süre sınırı önemli:
+    // maçın başında bir kez vurup unuttuğun biri sonradan ölünce asist
+    // almamalı.
+    if (victim.hurtBy) {
+      for (const [id, t] of victim.hurtBy) {
+        if (this.time - t > ASSIST_WINDOW_MS) continue;
+        if (attacker && id === attacker.id) continue;
+        if (id === victim.id) continue;
+        const yardimci = this.players.get(id);
+        if (yardimci) yardimci.assists++;
+      }
+      victim.hurtBy.clear();
+    }
     victim.deadUntil = this.time + RESPAWN_MS;
     victim.inputQueue.length = 0;
 
@@ -577,7 +619,7 @@ export class Game {
   scoreboard() {
     const rows = [...this.players.values()].map((p) => ({
       id: p.id, name: p.name, bot: p.bot, team: p.team, cls: p.cls,
-      kills: p.kills, deaths: p.deaths, damage: Math.round(p.damage),
+      kills: p.kills, deaths: p.deaths, assists: p.assists || 0, damage: Math.round(p.damage),
       place: p.place || (p.alive ? 1 : 0),
     }));
     if (this.mode.id === 'br') {
@@ -617,7 +659,7 @@ export class Game {
       // Tam skor listesi saniyede iki kez gider.
       const sp = [];
       for (const p of this.players.values()) {
-        sp.push(p.id, p.kills, p.deaths, Math.round(p.damage), p.alive ? 1 : 0);
+        sp.push(p.id, p.kills, p.deaths, Math.round(p.damage), p.alive ? 1 : 0, p.assists);
       }
       base.sc = {
         team: this.mode.teams ? this.teamScore : null,
@@ -781,7 +823,6 @@ export class Game {
         id: q.id, name: q.name, team: q.team, cls: q.cls, char: q.char, bot: q.bot,
       })),
       pickups: this.pickups.map((k) => ({ id: k.id, x: k.x, y: k.y, kind: k.kind, active: k.active })),
-      startHour: this.startHour,
     };
   }
 }

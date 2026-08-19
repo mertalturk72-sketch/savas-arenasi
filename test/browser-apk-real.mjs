@@ -44,7 +44,7 @@ const browser = await chromium.launch({
 
 // Capacitor'ün yaptığı işin aynısı: www/ klasörünü https://localhost'tan ver
 // ve Capacitor köprüsünü sayfaya enjekte et.
-async function apkBaglami({ sunucuVar = true, sunucuUyuyor = false, depo = {} } = {}) {
+async function apkBaglami({ sunucuVar = true, sunucuUyuyor = false, depo = {}, disariAcilir = false } = {}) {
   const ctx = await browser.newContext({ ...devices['Pixel 5'] });
 
   await ctx.route('**://localhost/**', async (route) => {
@@ -74,6 +74,10 @@ async function apkBaglami({ sunucuVar = true, sunucuUyuyor = false, depo = {} } 
       });
       return;
     }
+    // Android'in "bu adres uygulamanın dışında, Chrome'da açayım" davranışını
+    // taklit ediyoruz: sayfa yönlendirmesi hiç gerçekleşmiyor, uygulama kendi
+    // sayfasında kalıyor. (Sürüm sorgusu yine çalışıyor; sadece SAYFA açılmıyor.)
+    if (disariAcilir) { await route.abort('aborted'); return; }
     await route.fulfill({
       status: 200, contentType: 'text/html; charset=utf-8',
       body: '<!doctype html><title>SUNUCU SURUMU</title><h1 id="s">SUNUCU</h1>',
@@ -92,7 +96,10 @@ async function apkBaglami({ sunucuVar = true, sunucuUyuyor = false, depo = {} } 
 async function menuyuAc(ctx) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`sayfa hatası: ${e.message}`));
-  await page.goto('https://localhost/');
+  // 'load' beklemiyoruz: güncelleme yönlendirmesi ağ katmanında iptal
+  // edildiğinde (Android'in adresi dışarıda açması senaryosu) yükleme olayı
+  // hiç tamamlanmıyor ve goto zaman aşımına düşüyordu.
+  await page.goto('https://localhost/', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#screenMenu.active', { timeout: 15000 });
   // Çevrimdışı motor dinamik import ile yükleniyor; mod birkaç yüz ms sonra
   // oturuyor. Ölçmeden önce oturmasını bekle.
@@ -237,6 +244,30 @@ async function guncellemeyiKapat(page) {
     .then(() => true).catch(() => false);
   console.log('5) Sunucu varken yönlendirme:', gitti ? `${page.url()} ✓` : 'OLMADI ✗');
   if (!gitti) errors.push('sunucu erişilebilirken güncel sürüme geçilmedi');
+  await ctx.close();
+}
+
+// ===== 6) Yönlendirme uygulama DIŞINDA açılırsa kendini toparlamalı ======
+// Eski kurulumlarda adres allowNavigation listesinde olmadığı için Android
+// güncel sürümü Chrome'da açıyor ve uygulama kendi sayfasında kalıyordu.
+// Tercih kayıtlı olduğu için bu HER AÇILIŞTA tekrarlanıyordu — kullanıcının
+// "APK'yı açınca beni Chrome'a atıyor" dediği şey buydu.
+// Doğru davranış: bir kez olur, tercih silinir, bir daha olmaz.
+{
+  const ctx = await apkBaglami({ disariAcilir: true, depo: { sa_online_surum: '1' } });
+  const page = await menuyuAc(ctx);
+  await page.waitForTimeout(6000);
+  const d = await page.evaluate(() => ({
+    url: location.href,
+    menu: document.getElementById('screenMenu').classList.contains('active'),
+    tercih: localStorage.getItem('sa_online_surum'),
+    mode: window.__net && window.__net.mode,
+  }));
+  console.log('6) Yönlendirme dışarı açıldı:', JSON.stringify(d));
+  if (!/^https:\/\/localhost\//.test(d.url)) errors.push(`uygulama kendi sayfasından ayrıldı: ${d.url}`);
+  if (!d.menu) errors.push('menü açılmadı');
+  if (d.tercih === '1') errors.push('tercih temizlenmedi — her açılışta Chrome\'a atmaya devam eder');
+  if (d.mode !== 'local') errors.push('çevrimdışına düşmedi');
   await ctx.close();
 }
 

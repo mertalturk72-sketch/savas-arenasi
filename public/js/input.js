@@ -28,8 +28,8 @@ export class Input {
 
     this.touch = {
       active: false,
-      move: { id: null, dx: 0, dy: 0 },
-      aim: { id: null, dx: 0, dy: 0, firing: false, aiming: false },
+      move: { id: null, dx: 0, dy: 0, mag: 0 },
+      aim: { id: null, dx: 0, dy: 0, mag: 0, firing: false, aiming: false },
     };
 
     this.onKeyDown = this.onKeyDown.bind(this);
@@ -74,6 +74,10 @@ export class Input {
         knob.style.transform = `translate(${nx * clamped}px, ${ny * clamped}px)`;
         slot.dx = len > 12 ? nx : 0;
         slot.dy = len > 12 ? ny : 0;
+        // dx/dy YÖN bilgisidir (birim uzunluk). Çubuğun ne kadar itildiğini
+        // ayrıca saklıyoruz: bomba menzili buna bağlı. Yönü normalize edip
+        // büyüklüğü atmak, "ne kadar ittiğim" bilgisini yok ediyordu.
+        slot.mag = radius > 0 ? Math.min(1, clamped / radius) : 0;
         if (isAimStick) {
           slot.aiming = len > 20;
           // Otomatik silah: basılı tuttukça ateş. Tek atışlı: sadece nişan al.
@@ -102,6 +106,9 @@ export class Input {
           // Tek atışlı silahta parmağı kaldırmak = ateş etmek
           if (isAimStick && !this.weaponAuto && !this.weaponThrowable && slot.aiming) this.firePulse = 3;
           slot.id = null; slot.dx = 0; slot.dy = 0;
+          // slot.mag BİLEREK sıfırlanmıyor: bomba tam da parmağı kaldırınca
+          // atılır ve menzili "bırakma anındaki itilme miktarı" belirler.
+          // Burada sıfırlarsak her bomba en yakına düşer.
           if (isAimStick) { slot.firing = false; slot.aiming = false; }
           el.classList.remove('aiming');
           knob.style.transform = '';
@@ -176,7 +183,7 @@ export class Input {
     document.getElementById('touchUI')?.classList.toggle('hidden', !on);
     if (!on) {
       for (const slot of [this.touch.move, this.touch.aim]) {
-        slot.id = null; slot.dx = 0; slot.dy = 0;
+        slot.id = null; slot.dx = 0; slot.dy = 0; slot.mag = 0;
         if ('firing' in slot) { slot.firing = false; slot.aiming = false; }
       }
       for (const id of ['stickMove', 'stickAim']) {
@@ -261,6 +268,27 @@ export class Input {
     }
     // Dokunmatikte nişan çubuğu bırakılınca son bakılan yön korunur.
 
-    return { keys, aim: Math.round(this.aim * 1000) / 1000 };
+    // --- Bomba menzili -----------------------------------------------------
+    // Bilgisayarda menzil TUTMA SÜRESİYLE dolar. Dokunmatikte bu çalışmıyordu:
+    // nişan çubuğunu tutmak aynı zamanda ateş tuşunu basılı tutmak demek, yani
+    // nişan alırken geçen süre menzili kendiliğinden dolduruyordu ve bomba hep
+    // en uzağa gidiyordu — oyuncunun elinde hiçbir kontrol kalmıyordu.
+    //
+    // Çözüm: dokunmatikte menzili SÜRE değil, çubuğu ne kadar ittiğin belirler.
+    // Az it → yakına, sonuna kadar it → en uzağa. Nişan alırken ne kadar
+    // beklediğin hiç önemli değil ve hedef halkası parmağınla birlikte kayar.
+    let guc;
+    if (this.touch.active && this.weaponThrowable) {
+      const uz = Math.max(0, Math.min(1, ta.mag || 0));
+      // Çubuğun ilk %25'i "yön verme" bölgesi; menzil ondan sonra artmaya
+      // başlar, yoksa hafifçe dokunmak bile bombayı fırlatırdı.
+      guc = Math.max(0, Math.min(1, (uz - 0.25) / 0.7));
+    }
+
+    const out = { keys, aim: Math.round(this.aim * 1000) / 1000 };
+    // p: 0..100 arası menzil doluluğu. Sadece dokunmatikte gönderiliyor;
+    // yoksa sunucu eskisi gibi tutma süresine bakar.
+    if (guc !== undefined) out.p = Math.round(guc * 100);
+    return out;
   }
 }

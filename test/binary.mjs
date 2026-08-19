@@ -193,14 +193,14 @@ sina({
   zn: { x: 2300, y: 1700, r: 1200, tx: 2000, ty: 1500, tr: 600, s: 1, w: 22, p: 2 },
   sc: {
     team: { 1: 13, 2: 7 }, alive: 12, total: 20, left: 300,
-    ps: [1, 3, 2, 450, 1, 100001, 0, 5, 0, 0],
+    ps: [1, 3, 2, 450, 1, 4, 100001, 0, 5, 0, 0, 0],
   },
 }, 'tüm olay tipleri');
 
 // Takımsız mod: sc.team null olmalı
 sina({
   ...bos,
-  sc: { team: null, alive: 1, total: 20, left: 0, ps: [1, 0, 0, 0, 1] },
+  sc: { team: null, alive: 1, total: 20, left: 0, ps: [1, 0, 0, 0, 1, 0] },
 }, 'takımsız skor');
 
 // Türkçe karakterli uzun isim (UTF-8 çok baytlı)

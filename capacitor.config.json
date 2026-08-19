@@ -6,6 +6,9 @@
     "allowMixedContent": true
   },
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "allowNavigation": [
+      "savas-arenasi.onrender.com"
+    ]
   }
 }
