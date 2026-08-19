@@ -496,18 +496,68 @@ bölgeleri çıkarıyor:
 * **Görüş kısıtı sunucudadır:** 1250 px'den uzak veya duvar arkasındaki düşmanlar
   istemciye hiç gönderilmez. Hem bant genişliği düşer hem duvar arkasını okuyan
   hile yazılamaz — veri istemcide yoktur.
-* **Kompakt biçim:** varlıklar düz sayı dizisi olarak gider. 20 oyunculu maçta
-  ölçülen trafik **istemci başına ~16 KB/sn (≈130 kbit/sn)**.
+* **İkili durum paketi:** aşağıya bakın. 20 oyunculu dolu bir maçta ölçülen
+  trafik **istemci başına 5,6 KB/sn (≈45 kbit/sn)**.
 * **Hile önleme:** girdi başına `dt` üst sınırı + saniyelik hareket bütçesi,
   mesaj hız sınırı, sunucu tarafı şarjör ve atış hızı denetimi.
+
+### İkili durum paketi (`shared/binary.js`)
+
+Sunucudan çıkan verinin **%100'ü** durum paketleridir. JSON olarak gidince
+baytların çoğu oyun bilgisi değil ambalaj olur: alan adları, tırnaklar,
+virgüller, sayıların tek tek rakamları. `1450` yazmak metinde 4 bayt tutar,
+ikilide 2. Bu fark doğrudan sunucu faturasına yazılıyor (Render Hobby planında
+aylık 5 GB dahil).
+
+Ölçülen kazanç — 20 kişilik dolu maç, 25 saniye, gerçek sunucu:
+
+| | JSON | İkili |
+|---|---|---|
+| Toplam | 10,17 MB | **2,76 MB** |
+| İstemci başına | 20,8 KB/sn | **5,6 KB/sn** |
+| Durum paketi sayısı | 10.000 | 10.000 |
+
+**3,69 kat küçülme.** Paket sayısı ve içeriği aynı — akıcılıktan hiçbir şey
+kaybedilmedi.
+
+Tasarım ilkesi: bu katman **sadece bir ambalajdır**. `coz(kodla(x))` her zaman
+`x` ile birebir aynı nesneyi verir. Hassasiyet düşürülmez, alan atılmaz. Oyun
+kodunun hiçbir yerinde "ikili mi geldi, JSON mu" sorusu sorulmaz.
+
+Kazanç nereden geliyor:
+
+* **Alan adları hiç gönderilmiyor** — sıra sabit, iki taraf da biliyor.
+* **Sayılar ikili** — konum 2 bayt, nişan açısı 2 bayt (0,0001 radyan, yani
+  eski JSON'dan 100 kat hassas).
+* **Numaralar fark olarak** — aynı karede görünen mermilerin numaraları ardışık
+  olduğu için fark tek bayta sığıyor (zigzag varint).
+* **Türetilebilir alanlar atlanıyor** — azami can sınıftan, şarjör silahtan
+  bellidir. Tek bit "tabloyla aynı" der; farklıysa değer açıkça yazılır, yani
+  tahmin yürütülmez.
+* **Bayrak + sınıf tek baytta** — oyuncu bayrakları 5 bit, sınıf 2 bit,
+  "azami can varsayılan mı" 1 bit.
+
+**Eski sürümler bozulmaz.** İstemci tanışma mesajında (`hello`) `bin: 1` diyerek
+ikili çözebildiğini bildirir. Demeyen eski istemcilere eskisi gibi JSON gider.
+`test/binary-net.mjs` bunu her iki yönde de sınar.
+
+**Güvenlik ağı.** Kodlayıcı beklenmedik bir değerle karşılaşırsa (menzil dışı
+sayı, tanınmayan olay tipi) hata fırlatır; `hub.send` bunu yakalayıp o paketi
+JSON olarak yollar. En kötü ihtimal "bant kazancı olmadı", asla "oyuncular
+ışınlandı" değildir.
+
+Çevrimdışı mod bu katmandan hiç geçmez: oyun sunucusu zaten tarayıcının
+içindedir, ağ yoktur.
 
 ---
 
 ## Testler
 
 ```bash
-npm test                 # fizik + 20 botla üç modun tam maç simülasyonu + WebSocket protokolü
+npm test                 # fizik + 20 botla üç modun tam maç simülasyonu + WebSocket protokolü + ikili paket
 npm run test:ws          # sadece WebSocket protokolü (ham TCP ile, kütüphanesiz)
+npm run test:binary      # ikili durum paketi: kodla→çöz→JSON ile birebir aynı mı?
+npm run test:binary-net  # ikili paket ağ üzerinde çalışıyor mu + eski istemci bozuldu mu?
 npm run test:load        # 20 gerçek WebSocket istemcisi, bant genişliği ölçümü
 npm run test:browser     # uçtan uca tarayıcı testleri (playwright gerekir)
 npm run test:bundle      # APK'nın içindeki sürüm — sunucusuz çalışıyor mu?
@@ -538,7 +588,9 @@ doğmaması, uykudan uyanan sunucuda sayfanın kendini toparlaması ve sonsuz
 tazeleme döngüsüne girmemesi, uyuyan sunucuya sabırla bağlanılması (3 saniyede
 pes edip çevrimdışına düşmemesi), yürüyüş döngüsündeki 8 karenin hepsinin ayrı
 olması, salınımın yumuşakça açılıp sönmesi, adım tozunun oluşup sönmesi,
-zeminin çimen olması ve duvarların düz blok değil bina gibi çizilmesi.
+zeminin çimen olması ve duvarların düz blok değil bina gibi çizilmesi,
+durum paketlerinin ikili gidip tarayıcıda birebir çözülmesi ve `bin` demeyen
+eski istemcilerin JSON almaya devam edip maça girebilmesi.
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 ayrı senaryoda sınanıyor: el
 sıkışma özeti, parçalı mesaj birleştirme, bayt bayt gelen çerçeveler, 16/64 bit

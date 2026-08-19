@@ -7,6 +7,7 @@ import {
 } from '../constants.js';
 import { C, S } from '../protocol.js';
 import { Lobby } from './lobby.js';
+import { encodeSnapshot } from '../binary.js';
 
 export class Hub {
   constructor() {
@@ -46,8 +47,28 @@ export class Hub {
     this.listDirty = true;
   }
 
+  // Bir mesajı istemciye yollar.
+  //
+  // Durum paketleri (snapshot) sunucudan çıkan verinin neredeyse tamamıdır ve
+  // saniyede 20 kez gider. İstemci "ben ikili anlıyorum" dediyse bunları JSON
+  // yerine ikili gönderiyoruz — aynı bilgi, ~3,7 kat az bayt.
+  //
+  // Diyemeyen (eski) istemciler eskisi gibi JSON alır: kimsenin oyunu bozulmaz.
+  // Kodlayıcı beklenmedik bir değerle karşılaşırsa hata fırlatır; o paketi
+  // sessizce bozuk göndermek yerine JSON'a düşüyoruz.
   send(client, type, payload) {
     if (!client || !client.ws || client.ws.readyState !== 1) return;
+    if (client.bin && type === S.SNAPSHOT) {
+      try {
+        client.ws.send(encodeSnapshot(payload));
+        return;
+      } catch (e) {
+        if (!this._binUyarildi) {
+          this._binUyarildi = true;
+          console.warn('[ikili] paket kodlanamadı, JSON’a düşülüyor:', e && e.message);
+        }
+      }
+    }
     try {
       client.ws.send(JSON.stringify({ ty: type, ...payload }));
     } catch { /* bağlantı kopmuş olabilir */ }
@@ -106,6 +127,9 @@ export class Hub {
       case C.HELLO: {
         const name = cleanName(msg.name) || client.name;
         client.name = name;
+        // İstemci ikili durum paketi çözebiliyorsa bunu burada söyler.
+        // Söylemeyen eski sürümler JSON almaya devam eder.
+        client.bin = msg.bin === 1 || msg.bin === true;
         this.send(client, S.WELCOME, {
           id: client.id,
           name,
@@ -114,6 +138,7 @@ export class Hub {
             modes: MODES,
             classes: CLASSES,
             version: PROTOCOL_VERSION,
+            bin: !!client.bin,
           },
         });
         this.send(client, S.LOBBY_LIST, { lobbies: this.lobbyList() });

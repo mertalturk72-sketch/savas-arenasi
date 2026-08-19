@@ -26,6 +26,7 @@ const PRECACHE = [
   '/shared/constants.js',
   '/shared/physics.js',
   '/shared/protocol.js',
+  '/shared/binary.js',
   '/shared/sim/hub.js',
   '/shared/sim/lobby.js',
   '/shared/sim/game.js',

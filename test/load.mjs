@@ -4,11 +4,14 @@
 
 import WebSocket from 'ws';
 import { C, S } from '../shared/protocol.js';
+import { decodeSnapshot } from '../shared/binary.js';
 import { MAX_PLAYERS, INPUT_RATE, IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE } from '../shared/constants.js';
 
 const URL = process.env.URL || 'ws://localhost:3000';
 const N = Number(process.env.N) || MAX_PLAYERS;
 const SECONDS = Number(process.env.SECONDS) || 20;
+// BIN=0 ile eski JSON yolunu ölçebiliyoruz (önce/sonra karşılaştırması için).
+const BIN = process.env.BIN !== '0';
 
 const clients = [];
 let lobbyId = null;
@@ -22,12 +25,17 @@ function makeClient(i) {
     const c = { i, ws, id: 0, inMatch: false, seq: 0, keys: 0, aim: 0, snaps: 0 };
     clients.push(c);
 
-    ws.on('open', () => ws.send(JSON.stringify({ ty: C.HELLO, name: `Yuk${i}` })));
+    ws.on('open', () => ws.send(JSON.stringify({ ty: C.HELLO, name: `Yuk${i}`, ...(BIN ? { bin: 1 } : {}) })));
 
-    ws.on('message', (data) => {
+    ws.on('message', (data, isBinary) => {
       bytesIn += data.length;
       let m;
-      try { m = JSON.parse(data); } catch { return; }
+      if (isBinary) {
+        try { m = decodeSnapshot(new Uint8Array(data)); }
+        catch (e) { errors.push(`istemci ${i}: ikili paket çözülemedi — ${e.message}`); return; }
+      } else {
+        try { m = JSON.parse(data); } catch { return; }
+      }
 
       switch (m.ty) {
         case S.WELCOME:
@@ -60,7 +68,7 @@ function makeClient(i) {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-console.log(`${N} istemci bağlanıyor…`);
+console.log(`${N} istemci bağlanıyor… (durum paketi: ${BIN ? 'İKİLİ' : 'JSON'})`);
 await Promise.all(Array.from({ length: N }, (_, i) => makeClient(i)));
 console.log('Bağlantılar tamam.');
 

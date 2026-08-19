@@ -8,6 +8,7 @@
 // kullanıldığını bilmez, bu yüzden çevrimdışı ve online oynanış birebir aynıdır.
 
 import { C } from '/shared/protocol.js';
+import { decodeSnapshot } from '/shared/binary.js';
 
 export class Net {
   constructor() {
@@ -105,6 +106,9 @@ class WsTransport {
 
     try {
       this.ws = new WebSocket(target);
+      // Durum paketleri ikili geliyor; varsayılan Blob yerine doğrudan
+      // ArrayBuffer isteyelim ki senkron çözebilelim.
+      this.ws.binaryType = 'arraybuffer';
     } catch {
       this.scheduleRetry();
       return;
@@ -120,6 +124,18 @@ class WsTransport {
 
     this.ws.onmessage = (e) => {
       let msg;
+      if (typeof e.data !== 'string') {
+        // İkili durum paketi. Çözülemezse paketi atıyoruz: bir sonraki
+        // paket 50 ms sonra geliyor, oyun kendini toparlar.
+        try {
+          msg = decodeSnapshot(new Uint8Array(e.data));
+        } catch (err) {
+          if (!this.binHata) { this.binHata = true; console.warn('ikili paket çözülemedi:', err); }
+          return;
+        }
+        this.net.emit(msg.ty, msg);
+        return;
+      }
       try { msg = JSON.parse(e.data); } catch { return; }
       // Gecikme ölçümü sunucuda yapılır; sonucu durum paketiyle geri alıyoruz.
       if (msg.ty === 'ping') { this.send(C.PONG, { t: msg.t }); return; }
@@ -147,6 +163,9 @@ class WsTransport {
   }
 
   send(type, payload) {
+    // Sunucuya ikili paket çözebildiğimizi tanışma mesajında söylüyoruz.
+    // Bu bir TAŞIMA yeteneğidir, oyun kuralı değil — o yüzden burada eklenir.
+    if (type === C.HELLO) payload = { ...payload, bin: 1 };
     const data = JSON.stringify({ ty: type, ...payload });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(data);
     else if (this.queue.length < 40) this.queue.push(data);

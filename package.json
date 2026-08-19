@@ -7,9 +7,9 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node test/smoke.js && node test/ws-protocol.mjs",
+    "test": "node test/smoke.js && node test/ws-protocol.mjs && node test/binary.mjs",
     "test:load": "node test/load.mjs",
-    "test:browser": "node test/browser.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-apkupdate.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-daynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
+    "test:browser": "node test/browser.mjs && node test/binary-net.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-apkupdate.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-daynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
     "build:www": "node scripts/build-www.mjs",
     "android:sync": "node scripts/build-www.mjs && npx cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
@@ -19,7 +19,10 @@
     "build:single": "node scripts/build-single.mjs",
     "test:single": "node scripts/build-single.mjs && node test/browser-single.mjs",
     "test:ws": "node test/ws-protocol.mjs",
-    "texture": "node scripts/make-texture.mjs"
+    "texture": "node scripts/make-texture.mjs",
+    "test:binary": "node test/binary.mjs",
+    "test:binary-net": "node test/binary-net.mjs",
+    "serve:www": "node scripts/serve-www.mjs"
   },
   "engines": {
     "node": ">=18"

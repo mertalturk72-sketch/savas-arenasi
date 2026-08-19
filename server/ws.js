@@ -89,10 +89,23 @@ export class WebSocket extends EventEmitter {
 
   // --- dışa açık API (ws paketinin kullandığımız alt kümesi) --------------
 
+  // Metin ya da ikili gönderir. İkili taraf sadece Buffer değil, herhangi bir
+  // TypedArray/ArrayBuffer kabul eder: durum paketlerini üreten kod tarayıcıda
+  // da çalıştığı için Buffer değil Uint8Array döndürüyor.
   send(data) {
     if (this.readyState !== OPEN) return;
-    const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf-8');
-    this._write(frame(Buffer.isBuffer(data) ? OP_BIN : OP_TEXT, payload));
+    if (ArrayBuffer.isView(data)) {
+      // subarray ile üretilmiş görünümlerde byteOffset sıfır olmayabilir;
+      // Buffer.from(view.buffer) demek tüm havuzu göndermek olurdu.
+      const payload = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+      this._write(frame(OP_BIN, payload));
+      return;
+    }
+    if (data instanceof ArrayBuffer) {
+      this._write(frame(OP_BIN, Buffer.from(data)));
+      return;
+    }
+    this._write(frame(OP_TEXT, Buffer.from(String(data), 'utf-8')));
   }
 
   ping(data = Buffer.alloc(0)) {
