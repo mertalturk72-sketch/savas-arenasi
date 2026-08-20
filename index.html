@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Savaş Arenası — bağlantı tanılama</title>
+<style>
+  body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',system-ui,sans-serif;
+         margin:0; padding:24px; line-height:1.5; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#8b98a7; font-size:13px; margin-bottom:18px; }
+  .row { background:#161b22; border:1px solid #30363d; border-radius:10px;
+         padding:14px 16px; margin-bottom:10px; }
+  .row h2 { font-size:14px; margin:0 0 6px; color:#8b98a7; font-weight:600;
+            text-transform:uppercase; letter-spacing:.06em; }
+  .val { font-size:22px; font-weight:700; }
+  .ok { color:#3fb950; } .bad { color:#f85149; } .wait { color:#d29922; }
+  .detail { color:#8b98a7; font-size:13px; margin-top:6px; word-break:break-all; }
+  input { width:100%; background:#0d1117; border:1px solid #30363d; color:#e6edf3;
+          border-radius:8px; padding:10px 12px; font-size:14px; margin-bottom:10px; }
+  button { background:#238636; color:#fff; border:none; border-radius:8px;
+           padding:11px 20px; font-size:15px; font-weight:600; cursor:pointer; }
+  #ozet { margin-top:18px; padding:14px 16px; border-radius:10px; font-size:15px; }
+  #ozet.ok { background:#0d2818; border:1px solid #238636; }
+  #ozet.bad { background:#2d1214; border:1px solid #f85149; }
+</style>
+</head>
+<body>
+
+<h1>Savaş Arenası — bağlantı tanılama</h1>
+<div class="sub">Bu dosya sunucuya bağlanmayı dener ve sonucu düz Türkçe yazar.
+Bittiğinde ekranın görüntüsünü gönder yeter.</div>
+
+<input id="adres" value="savas-arenasi.onrender.com">
+<button id="basla">TESTİ BAŞLAT</button>
+
+<div class="row"><h2>1 · Sayfa sunucusu (HTTPS)</h2>
+  <div id="v1" class="val wait">bekliyor…</div><div id="d1" class="detail"></div></div>
+
+<div class="row"><h2>2 · Oyun bağlantısı (WebSocket)</h2>
+  <div id="v2" class="val wait">bekliyor…</div><div id="d2" class="detail"></div></div>
+
+<div class="row"><h2>3 · Sunucudan gelen ilk mesaj</h2>
+  <div id="v3" class="val wait">bekliyor…</div><div id="d3" class="detail"></div></div>
+
+<div id="ozet"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function set(n, cls, text, detail) {
+  $('v' + n).className = 'val ' + cls;
+  $('v' + n).textContent = text;
+  if (detail !== undefined) $('d' + n).textContent = detail;
+}
+
+// WebSocket kapanış kodlarının insan diliyle karşılığı
+const KODLAR = {
+  1000: 'normal kapanış',
+  1001: 'karşı taraf gidiyor',
+  1002: 'protokol hatası',
+  1005: 'kod belirtilmedi',
+  1006: 'bağlantı anormal koptu (el sıkışma hiç tamamlanmadı)',
+  1011: 'sunucu içi hata',
+  1015: 'TLS/sertifika hatası',
+};
+
+let calisiyor = false;
+async function test() {
+  if (calisiyor) return;            // iki test aynı anda çalışmasın
+  calisiyor = true;
+  $('basla').disabled = true;
+  try { await testIc(); } finally { calisiyor = false; $('basla').disabled = false; }
+}
+
+async function testIc() {
+  for (let i = 1; i <= 3; i++) set(i, 'wait', 'bekliyor…', '');
+  $('ozet').className = '';
+  $('ozet').textContent = '';
+
+  const host = $('adres').value.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const httpUrl = 'https://' + host + '/health';
+  const wsUrl = 'wss://' + host;
+
+  // --- 1) HTTPS ------------------------------------------------------------
+  let httpOk = false;
+  try {
+    const r = await fetch(httpUrl, { cache: 'no-store' });
+    const t = await r.text();
+    httpOk = r.ok;
+    set(1, r.ok ? 'ok' : 'bad', r.ok ? 'ÇALIŞIYOR' : 'HATA ' + r.status, t.slice(0, 140));
+  } catch (e) {
+    // Dosyadan açıldığında tarayıcı bu isteği engelleyebilir; bu bir sunucu
+    // hatası DEĞİL, o yüzden ayrı yazıyoruz.
+    set(1, 'wait', 'ÖLÇÜLEMEDİ', 'Tarayıcı bu isteği engelledi (dosyadan açıldığı için). Sorun değil, asıl test 2. adım.');
+  }
+
+  // --- 2) WebSocket --------------------------------------------------------
+  await new Promise((resolve) => {
+    let ws;
+    let acildi = false;
+    let bitti = false;
+    const finish = () => { if (!bitti) { bitti = true; resolve(); } };
+
+    const zamanAsimi = setTimeout(() => {
+      if (!acildi) {
+        set(2, 'bad', 'ZAMAN AŞIMI', wsUrl + ' — 20 saniyede cevap vermedi');
+        try { ws.close(); } catch (e) {}
+        finish();
+      }
+    }, 20000);
+
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (e) {
+      set(2, 'bad', 'AÇILAMADI', String(e));
+      clearTimeout(zamanAsimi);
+      finish();
+      return;
+    }
+
+    ws.onopen = () => {
+      acildi = true;
+      clearTimeout(zamanAsimi);
+      set(2, 'ok', 'AÇILDI ✓', wsUrl);
+      // Sunucu bağlanınca kendi "hoş geldin" mesajını gönderir
+      setTimeout(() => {
+        if ($('v3').textContent === 'bekliyor…') {
+          set(3, 'bad', 'MESAJ GELMEDİ', 'Bağlantı açıldı ama sunucu konuşmuyor.');
+        }
+        try { ws.close(); } catch (e) {}
+        finish();
+      }, 4000);
+      try { ws.send(JSON.stringify({ ty: 'hello', name: 'Tanı' })); } catch (e) {}
+    };
+
+    ws.onmessage = (ev) => {
+      let ty = '?';
+      try { ty = JSON.parse(ev.data).ty || '?'; } catch (e) {}
+      set(3, 'ok', 'GELDİ ✓', 'mesaj türü: ' + ty + ' · ' + String(ev.data).slice(0, 120));
+      try { ws.close(); } catch (e) {}
+      clearTimeout(zamanAsimi);
+      finish();
+    };
+
+    ws.onclose = (e) => {
+      clearTimeout(zamanAsimi);
+      if (!acildi) {
+        const aciklama = KODLAR[e.code] || 'bilinmeyen kod';
+        set(2, 'bad', 'KAPANDI (' + e.code + ')', aciklama + (e.reason ? ' · ' + e.reason : '') + ' · ' + wsUrl);
+      }
+      finish();
+    };
+  });
+
+  // --- özet ----------------------------------------------------------------
+  const wsOk = $('v2').classList.contains('ok');
+  const ozet = $('ozet');
+  if (wsOk) {
+    ozet.className = 'ok';
+    ozet.textContent = 'Sunucuya bağlanılabiliyor. Sorun bu bilgisayarda/tarayıcıda değil, '
+      + 'oyunun içindeki bir ayarda olabilir.';
+  } else if (httpOk) {
+    ozet.className = 'bad';
+    ozet.textContent = 'Sunucunun web tarafı çalışıyor ama oyun bağlantısı (WebSocket) kurulamıyor. '
+      + 'Yukarıdaki kapanış kodunu Claude\'a gönder.';
+  } else {
+    ozet.className = 'bad';
+    ozet.textContent = 'Sunucuya hiç ulaşılamıyor. Yukarıdaki iki satırın görüntüsünü Claude\'a gönder.';
+  }
+}
+
+$('basla').onclick = test;
+test();
+</script>
+</body>
+</html>

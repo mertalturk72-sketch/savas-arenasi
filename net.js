@@ -1,0 +1,9596 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e13">
+<meta name="description" content="Lobili, 20 kişiye kadar çok oyunculu 2D savaş oyunu. Çevrimdışı botlara karşı da oynanır.">
+<title>Savaş Arenası</title>
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Savaş">
+
+<style>
+/* ===== Savaş Arenası — arayüz ===== */
+:root {
+  --bg: #0a0e13;
+  --bg2: #10161e;
+  --panel: #141c26;
+  --panel2: #1b2532;
+  --line: #26323f;
+  --text: #dfe7ef;
+  --muted: #8b98a7;
+  --accent: #ff8a3d;
+  --accent2: #ffb872;
+  --green: #48d17a;
+  --red: #ef4a4a;
+  --blue: #3f9bff;
+  --radius: 12px;
+  --font: 'Rajdhani', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, #1a2735 0%, transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, #241a12 0%, transparent 55%);
+}
+
+button, input, select { font-family: inherit; font-size: 15px; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+h1, h2, h3 { font-weight: 700; letter-spacing: .02em; }
+
+.hidden { display: none !important; }
+
+/* ===== Ekranlar ===== */
+.screen { position: fixed; inset: 0; display: none; overflow: auto; }
+.screen.active { display: block; }
+.screen.game { overflow: hidden; }
+
+/* ===== Bağlantı çubuğu ===== */
+.conn-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  background: #7a2020; color: #fff; text-align: center;
+  padding: 7px; font-weight: 600; font-size: 14px;
+}
+
+/* ===== Güncelleme penceresi =====
+   Eskiden ekranın en üstünde ince bir çubuktu; telefon çentiği/durum çubuğu
+   altında kalıp basılamıyordu. Artık ortada duran, kaçırılamayacak bir
+   pencere — güvenli alan boşlukları da hesaba katılıyor. */
+.update-overlay {
+  position: fixed; inset: 0; z-index: 400;
+  background: rgba(5, 9, 7, .88); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+}
+.update-card {
+  width: min(420px, 92vw); text-align: center;
+  background: linear-gradient(180deg, #17301f 0%, #101d15 100%);
+  border: 1px solid #2f7a4a; border-radius: 18px;
+  padding: 26px 22px 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+}
+.update-icon {
+  width: 62px; height: 62px; margin: 0 auto 12px;
+  border-radius: 50%; background: #2f7a4a; color: #eafff1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 700;
+}
+.update-card h1 {
+  font-size: clamp(24px, 6vw, 32px); letter-spacing: .06em;
+  color: #b9f5cf; margin-bottom: 8px;
+}
+.update-card p { color: #8fb99f; font-size: 14.5px; line-height: 1.5; margin-bottom: 20px; }
+.update-go {
+  display: block; width: 100%; padding: 16px; border: none; border-radius: 12px;
+  background: linear-gradient(180deg, #34c46e, #1f8f4b); color: #06210f;
+  font-size: 18px; font-weight: 800; letter-spacing: .06em; cursor: pointer;
+}
+.update-go:active { transform: translateY(1px); }
+.update-skip {
+  display: block; width: 100%; margin-top: 10px; padding: 12px;
+  background: transparent; border: 1px solid #2f5a41; border-radius: 10px;
+  color: #7fa78c; font-size: 14px; cursor: pointer;
+}
+.build-info {
+  text-align: center; color: #55606d; font-size: 11px; margin: 6px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Menü ===== */
+.menu-wrap { max-width: 1080px; margin: 0 auto; padding: 34px 20px 60px; }
+
+.brand { text-align: center; margin-bottom: 26px; }
+.brand h1 {
+  font-size: clamp(34px, 7vw, 62px);
+  letter-spacing: .10em;
+  background: linear-gradient(180deg, #fff 0%, var(--accent) 130%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 40px rgba(255,138,61,.15);
+}
+.tagline { color: var(--muted); margin-top: 6px; font-size: 16px; }
+.tagline b { color: var(--accent2); }
+
+.panel {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg2) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.panel-head h2 { font-size: 19px; text-transform: uppercase; letter-spacing: .06em; }
+
+.menu-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .menu-cols { grid-template-columns: 1fr; } }
+
+label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .05em; }
+label b { color: var(--accent2); }
+
+input[type=text], input:not([type]), input[type=range] { width: 100%; }
+input:not([type]), input[type=text] {
+  background: #0c1218; border: 1px solid var(--line); border-radius: 8px;
+  padding: 11px 13px; color: var(--text); outline: none;
+}
+input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); }
+
+input[type=range] {
+  -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px;
+  background: var(--line); margin: 10px 0 4px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); border: 3px solid #0c1218; cursor: pointer;
+}
+input[type=range]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 3px solid #0c1218; cursor: pointer;
+}
+
+.row { display: flex; gap: 8px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.check { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-size: 14px; margin-top: 14px; }
+.check input { width: auto; }
+
+button.primary {
+  background: linear-gradient(180deg, var(--accent) 0%, #d96a22 100%);
+  color: #16100a; font-weight: 700; border-radius: 9px; padding: 12px 18px;
+  letter-spacing: .06em; text-transform: uppercase;
+  transition: filter .12s, transform .08s;
+}
+button.primary:hover { filter: brightness(1.1); }
+button.primary:active { transform: translateY(1px); }
+button.big { width: 100%; margin-top: 16px; font-size: 17px; padding: 14px; }
+
+button.ghost {
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px;
+  color: var(--muted); background: #0e141b;
+}
+button.ghost:hover { color: var(--text); border-color: var(--accent); }
+button.ghost.small { padding: 6px 11px; font-size: 13px; }
+button.ghost.tiny { padding: 3px 8px; font-size: 11px; }
+
+/* Lobi listesi */
+.lobby-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.lobby-item {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 11px 13px; cursor: pointer; transition: border-color .12s, background .12s;
+}
+.lobby-item:hover { border-color: var(--accent); background: #202c3a; }
+.lobby-item .li-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-item .li-mode { font-size: 12px; color: var(--accent2); border: 1px solid #3a2a1c; background: #201810; padding: 3px 8px; border-radius: 20px; }
+.lobby-item .li-count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+.lobby-item .li-state { font-size: 11px; padding: 3px 8px; border-radius: 20px; }
+.li-state.playing { background: #3a1c1c; color: #ff9b9b; }
+.li-state.waiting { background: #163021; color: #7ee9a6; }
+.empty { color: var(--muted); text-align: center; padding: 26px 10px; font-size: 14px; }
+
+.join-code { display: flex; gap: 8px; margin-top: 14px; }
+.join-code input { text-transform: uppercase; letter-spacing: .22em; text-align: center; font-weight: 700; }
+.join-code button { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 0 16px; white-space: nowrap; }
+.join-code button:hover { border-color: var(--accent); }
+
+/* Mod seçici */
+.mode-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mode-card {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 11px 10px; text-align: left; transition: all .12s;
+}
+.mode-card:hover { border-color: #46586c; }
+.mode-card.sel { border-color: var(--accent); background: #241a12; box-shadow: 0 0 0 1px var(--accent) inset; }
+.mode-card .mc-name { font-weight: 700; font-size: 14px; }
+.mode-card .mc-desc { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+.mode-picker.compact .mc-desc { display: none; }
+
+.hint { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+.hint b { color: var(--text); }
+
+/* Bağlantı modu seçici */
+.conn-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.conn-tab {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 12px; text-align: left; transition: all .12s;
+}
+.conn-tab:hover { border-color: #46586c; }
+.conn-tab.sel { border-color: var(--accent); background: #241a12; box-shadow: 0 0 0 1px var(--accent) inset; }
+.conn-tab .ct-title { display: block; font-weight: 700; font-size: 15px; }
+.conn-tab .ct-sub { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+
+.server-row { display: flex; gap: 8px; margin-top: 10px; }
+.server-row input { flex: 1; font-size: 14px; }
+.server-row button { white-space: nowrap; }
+
+.conn-status { margin-top: 9px; font-size: 12px; color: var(--muted); min-height: 16px; }
+.conn-status.ok { color: #7ee9a6; }
+.conn-status.bad { color: #ff9b9b; }
+
+#btnPlayOffline { margin-top: 9px; }
+
+.insecure-warn {
+  margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(255, 176, 64, .10); border: 1px solid rgba(255, 176, 64, .35);
+  color: #ffd9a0; font-size: 12.5px; line-height: 1.5;
+}
+.insecure-warn b { color: #ffbe5c; }
+.insecure-warn code {
+  background: rgba(0, 0, 0, .35); padding: 1px 5px; border-radius: 5px; font-size: 12px;
+}
+
+.offline-note { color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: 10px; }
+.offline-note b { color: var(--accent2); }
+
+/* ===== Lobi odası ===== */
+.lobby-wrap {
+  max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px;
+  display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start;
+}
+@media (max-width: 900px) { .lobby-wrap { grid-template-columns: 1fr; } }
+
+.lobby-sub { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.code { font-weight: 700; letter-spacing: .25em; color: var(--accent2); background: #201810; border: 1px solid #3a2a1c; padding: 3px 10px; border-radius: 6px; }
+.pill { font-size: 12px; color: var(--muted); border: 1px solid var(--line); padding: 3px 9px; border-radius: 20px; }
+
+/* Davet linki */
+.invite-row {
+  background: #16211a; border: 1px solid #2b5b3c; border-radius: 10px;
+  padding: 12px; margin-bottom: 14px;
+}
+.invite-label { font-size: 13px; color: #8fe0a0; margin-bottom: 8px; font-weight: 600; }
+.invite-box { display: flex; gap: 8px; }
+.invite-box input {
+  flex: 1; font-size: 13px; background: #0c1218; border: 1px solid #2b5b3c;
+  border-radius: 8px; padding: 10px 12px; color: var(--text);
+}
+.invite-box button { white-space: nowrap; padding: 10px 16px; }
+.invite-note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+.invite-note b { color: #ffb872; }
+
+.host-controls { border: 1px dashed var(--line); border-radius: 9px; padding: 12px; margin-bottom: 14px; }
+.hc-row { margin-bottom: 10px; }
+.hc-row label { margin-top: 0; }
+
+.team-picker { display: flex; gap: 8px; margin-bottom: 14px; }
+.team-btn { flex: 1; border-radius: 8px; padding: 10px; font-weight: 700; border: 1px solid var(--line); }
+.team-btn.t1 { background: #2a1414; color: #ff9b9b; border-color: #4a2020; }
+.team-btn.t2 { background: #10202f; color: #9ecbff; border-color: #1d3a55; }
+.team-btn:hover { filter: brightness(1.25); }
+
+.section-title { font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: .08em; margin: 16px 0 8px; }
+
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 7px; }
+.roster-item {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  font-size: 14px;
+}
+.roster-item.me { border-color: var(--accent); }
+.roster-item.t1 { border-left: 3px solid var(--red); }
+.roster-item.t2 { border-left: 3px solid var(--blue); }
+.roster-item .r-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.roster-item .r-cls { font-size: 11px; color: var(--muted); }
+.roster-item .r-dot { width: 9px; height: 9px; border-radius: 50%; background: #3a4553; flex: none; }
+.roster-item .r-dot.ready { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.roster-item .r-host { font-size: 12px; }
+.roster-item .r-kick { color: var(--muted); font-size: 15px; line-height: 1; padding: 0 2px; }
+.roster-item .r-kick:hover { color: var(--red); }
+
+.class-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 620px) { .class-picker { grid-template-columns: repeat(2, 1fr); } }
+.class-card {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 11px 10px; text-align: left; transition: all .12s;
+}
+.class-card:hover { border-color: #46586c; }
+.class-card.sel { border-color: var(--accent); background: #241a12; }
+.class-card .cc-name { font-weight: 700; font-size: 14px; }
+.class-card .cc-desc { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.35; min-height: 30px; }
+.class-card .cc-stats { font-size: 11px; color: var(--accent2); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+/* Karakter seçimi */
+.char-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.char-card {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  transition: all .12s;
+}
+.char-card:hover { border-color: #46586c; transform: translateY(-2px); }
+.char-card.sel { border-color: var(--accent); background: #241a12; box-shadow: 0 0 0 1px var(--accent) inset; }
+.char-card canvas { image-rendering: pixelated; width: 56px; height: 63px; }
+.char-card .cc-label { font-size: 11px; color: var(--muted); }
+.char-card.sel .cc-label { color: var(--accent2); }
+
+/* Hazır durumu */
+.ready-status {
+  text-align: center; font-size: 15px; font-weight: 700; color: var(--muted);
+  margin-bottom: 10px; letter-spacing: .04em;
+}
+.ready-status.all { color: var(--green); }
+
+/* Geri sayım perdesi */
+.countdown-overlay {
+  position: fixed; inset: 0; z-index: 150;
+  background: rgba(6,9,13,.82); backdrop-filter: blur(3px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+}
+.countdown-overlay #countdownNum {
+  font-size: clamp(80px, 22vw, 190px); font-weight: 700; line-height: 1;
+  color: var(--accent); text-shadow: 0 0 60px rgba(255,138,61,.45);
+  font-variant-numeric: tabular-nums;
+}
+.countdown-overlay #countdownNum.pop { animation: cdPop .45s cubic-bezier(.2,.9,.3,1); }
+@keyframes cdPop {
+  0% { transform: scale(1.6); opacity: 0; }
+  40% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.countdown-overlay .cd-label {
+  font-size: 15px; letter-spacing: .3em; color: var(--muted); text-transform: uppercase;
+}
+
+.lobby-actions { margin-top: 18px; }
+button.ready {
+  width: 100%; padding: 14px; border-radius: 9px; font-weight: 700; font-size: 16px;
+  background: #16281d; border: 1px solid #2b6b45; color: #8ef0b3; text-transform: uppercase; letter-spacing: .06em;
+}
+button.ready.on { background: var(--green); color: #06210f; border-color: var(--green); }
+
+.countdown {
+  margin-top: 12px; text-align: center; font-size: 22px; font-weight: 700; color: var(--accent2);
+  letter-spacing: .06em;
+}
+
+/* Sohbet */
+.lobby-chat { display: flex; flex-direction: column; height: 560px; }
+.chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; font-size: 14px; padding-right: 4px; }
+.chat-line { line-height: 1.4; word-break: break-word; }
+.chat-line .cf { font-weight: 700; color: var(--accent2); }
+.chat-line.sys { color: var(--muted); font-style: italic; font-size: 13px; }
+.chat-form { display: flex; gap: 8px; margin-top: 10px; }
+.chat-form button { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 0 14px; }
+.chat-form button:hover { border-color: var(--accent); }
+
+/* Maç sonu tablosu (lobide) */
+.post-scoreboard {
+  position: fixed; inset: 0; background: rgba(6,9,13,.94); z-index: 120;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+
+/* ===== Oyun ===== */
+#canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+body.touch #canvas { cursor: none; }
+.hud { position: absolute; inset: 0; pointer-events: none; font-variant-numeric: tabular-nums; }
+
+.hud-bottom-left { position: absolute; left: 20px; bottom: 20px; }
+.hp-wrap { display: flex; align-items: center; gap: 10px; }
+.hp-bar { width: 240px; height: 20px; background: #1b0f0f; border: 1px solid #3a2020; border-radius: 4px; overflow: hidden; }
+.hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #2f9e5c, #55d98a); transition: width .12s, background .2s; }
+.hp-fill.mid { background: linear-gradient(90deg, #b8821f, #ffc857); }
+.hp-fill.low { background: linear-gradient(90deg, #a82626, #ff6b5c); }
+.hp-text { font-size: 26px; font-weight: 700; min-width: 54px; text-shadow: 0 2px 6px #000; }
+.ammo-wrap { margin-top: 8px; display: flex; align-items: baseline; gap: 4px; text-shadow: 0 2px 6px #000; }
+.ammo { font-size: 30px; font-weight: 700; }
+.ammo.low { color: var(--red); }
+/* Cephane: "şarjördeki / yedek" — 30 / 60 */
+.ammo-sep { font-size: 17px; color: var(--muted); margin: 0 2px; }
+.reserve { font-size: 17px; color: var(--muted); font-weight: 600; }
+.reserve.empty { color: #ff7a6b; }
+.weapon-name { margin-left: 12px; font-size: 14px; color: var(--accent2); text-transform: uppercase; letter-spacing: .08em; }
+.reload-bar { width: 240px; height: 5px; background: #23303d; border-radius: 3px; margin-top: 7px; overflow: hidden; }
+.reload-bar div { height: 100%; width: 0; background: var(--accent); }
+
+.hud-top-center { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
+.match-info { display: flex; align-items: center; gap: 16px; background: rgba(10,14,19,.72); border: 1px solid var(--line); border-radius: 10px; padding: 8px 18px; backdrop-filter: blur(6px); }
+.match-info .mi-time-only {
+  font-size: 30px; font-weight: 700; letter-spacing: .04em;
+  font-variant-numeric: tabular-nums; color: #e8eef5;
+}
+.match-info .mi-time-only.urgent { color: #ff6b6b; animation: pulseTime 1s ease-in-out infinite; }
+@keyframes pulseTime { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+.match-info .mi-score { font-size: 24px; font-weight: 700; }
+.match-info .mi-score.t1 { color: var(--red); }
+.match-info .mi-score.t2 { color: var(--blue); }
+.match-info .mi-time { font-size: 19px; color: var(--muted); }
+.match-info .mi-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+
+/* Ayarlar düğmesi — mini haritanın solunda, sağ üst köşede */
+.settings-btn {
+  position: absolute; top: 14px; right: 226px;
+  width: 44px; height: 44px; padding: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; line-height: 1; color: var(--fg);
+  background: rgba(10,14,19,.72); border: 1px solid var(--line);
+  border-radius: 10px; cursor: pointer; pointer-events: auto;
+  transition: background .15s, transform .15s;
+}
+.settings-btn:hover { background: rgba(30,40,52,.9); transform: rotate(35deg); }
+.settings-btn:active { transform: scale(.94); }
+
+.settings-overlay {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6,9,13,.78); backdrop-filter: blur(3px);
+  pointer-events: auto;
+}
+.settings-panel {
+  width: min(360px, 88vw);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.55);
+}
+.settings-panel h2 { margin: 0 0 14px; font-size: 20px; text-align: center; }
+.settings-panel button { width: 100%; margin: 8px 0 0; }
+.set-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px; font-size: 14px; color: var(--muted);
+}
+.set-row b { color: var(--accent2); }
+.set-row input[type="range"] { flex: 0 0 150px; margin: 0; }
+.set-row input[type="checkbox"] { width: 20px; height: 20px; margin: 0; }
+.leave-btn {
+  background: rgba(255,107,107,.14); border: 1px solid rgba(255,107,107,.5);
+  color: #ff9b9b; font-weight: 800; border-radius: 10px; padding: 12px;
+  cursor: pointer;
+}
+.leave-btn:hover { background: rgba(255,107,107,.24); }
+.set-note { margin: 12px 0 0; font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.45; }
+
+.minimap {
+  position: absolute; top: 14px; right: 14px;
+  width: 200px; height: 150px;
+  background: rgba(10,14,19,.72); border: 1px solid var(--line); border-radius: 8px;
+}
+
+.killfeed { position: absolute; top: 176px; right: 14px; width: 300px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.kf-item {
+  background: rgba(10,14,19,.78); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 10px; font-size: 13px; animation: kfIn .18s ease-out;
+}
+.kf-item .kf-k { font-weight: 700; }
+.kf-item .kf-w { color: var(--accent2); margin: 0 6px; }
+.kf-item .kf-v { color: var(--muted); }
+@keyframes kfIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+
+.net-info { position: absolute; top: 14px; left: 14px; font-size: 12px; color: var(--muted); background: rgba(10,14,19,.6); padding: 5px 9px; border-radius: 6px; }
+
+.center-msg {
+  position: absolute; top: 26%; left: 50%; transform: translateX(-50%);
+  font-size: 30px; font-weight: 700; text-align: center; text-shadow: 0 3px 14px #000;
+  pointer-events: none; opacity: 0; transition: opacity .25s;
+}
+.center-msg.show { opacity: 1; }
+
+.respawn-msg {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  background: rgba(20,4,4,.45); text-align: center;
+}
+@media (max-width: 620px) {
+}
+.respawn-msg .rm-title { font-size: 46px; font-weight: 700; color: #ff6b6b; letter-spacing: .06em; text-shadow: 0 4px 20px #000; }
+.respawn-msg .rm-sub { font-size: 20px; color: #e8d6d6; }
+.respawn-msg .rm-killer { font-size: 16px; color: var(--muted); }
+
+.dmg-dirs { position: absolute; inset: 0; }
+.dmg-dir {
+  position: absolute; left: 50%; top: 50%; width: 90px; height: 90px;
+  margin: -45px 0 0 -45px; pointer-events: none;
+}
+.dmg-dir::after {
+  content: ''; position: absolute; left: 50%; top: -110px; width: 66px; height: 16px;
+  margin-left: -33px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255,70,70,.95), rgba(255,70,70,0) 70%);
+}
+
+.scoreboard {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(9,13,18,.94); border: 1px solid var(--line); border-radius: 12px;
+  padding: 20px 24px; min-width: 620px; max-width: 92vw; max-height: 86vh;
+  /* Panelin kendisi büyümesin; sadece satır listesi kaysın. Böylece başlık ve
+     takım skoru hep görünür kalıyor. */
+  display: flex; flex-direction: column; overflow: hidden;
+}
+/* Oyuncu listesi: 20 kişilik lobide alttakiler ekrandan taşıyordu.
+   Artık liste kendi içinde kaydırılıyor; başlık satırı da yapışık duruyor. */
+.sb-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.sb-scroll .sb-table th {
+  position: sticky; top: 0; z-index: 1;
+  background: rgba(9,13,18,.98);
+}
+/* İnce, göze batmayan kaydırma çubuğu */
+.sb-scroll::-webkit-scrollbar { width: 10px; }
+.sb-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,.04); border-radius: 6px; }
+.sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,138,61,.45); border-radius: 6px; }
+.sb-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,138,61,.7); }
+.scoreboard h3 { text-align: center; margin-bottom: 4px; font-size: 20px; letter-spacing: .06em; }
+.scoreboard .sb-sub { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+.sb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sb-table th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.sb-table td { padding: 7px 8px; border-bottom: 1px solid #1a2430; }
+/* Tab tablosunda durum: yaşayan yeşil, ÖLEN KIRMIZI. */
+.sb-alive { color: #4fd18b; font-weight: 600; }
+.sb-dead  { color: #ff5a52; font-weight: 700; letter-spacing: .04em; }
+.sb-table tr.me td { background: rgba(255,138,61,.10); }
+.sb-table tr.t1 td:first-child { border-left: 3px solid var(--red); }
+.sb-table tr.t2 td:first-child { border-left: 3px solid var(--blue); }
+.sb-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sb-bot { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px; }
+.sb-teamline { display: flex; justify-content: center; gap: 26px; margin-bottom: 12px; font-size: 24px; font-weight: 700; }
+
+.game-chat { position: absolute; left: 20px; bottom: 130px; width: 380px; }
+.game-chat-log { display: flex; flex-direction: column; gap: 3px; font-size: 13px; max-height: 150px; overflow: hidden; }
+.game-chat-log .chat-line { background: rgba(10,14,19,.6); padding: 3px 8px; border-radius: 5px; width: fit-content; max-width: 100%; }
+.game-chat-form { margin-top: 6px; pointer-events: auto; }
+.game-chat-form input { background: rgba(10,14,19,.9); border: 1px solid var(--accent); border-radius: 6px; padding: 8px 10px; width: 100%; }
+
+.match-end {
+  position: absolute; inset: 0; background: rgba(6,9,13,.93);
+  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px;
+}
+.match-end .me-inner { max-width: 760px; width: 100%; }
+.match-end h2 { text-align: center; font-size: 38px; letter-spacing: .06em; margin-bottom: 4px; }
+.match-end .me-sub { text-align: center; color: var(--muted); margin-bottom: 18px; }
+.match-end .me-next { text-align: center; color: var(--accent2); margin-top: 16px; }
+
+/* Çalıda gizlenme rozeti */
+.hide-hint {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: 76px;
+  background: rgba(20,45,26,.85); border: 1px solid #3a7040; color: #8fe0a0;
+  padding: 5px 14px; border-radius: 20px;
+  font-size: 13px; font-weight: 700; letter-spacing: .10em;
+  box-shadow: 0 0 18px rgba(58,112,64,.35);
+}
+body.touch .hide-hint { top: 62px; font-size: 11px; padding: 4px 11px; }
+
+/* ===== Dokunmatik kumanda ===== */
+.touch-ui { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
+
+.stick {
+  position: absolute;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  left: calc(18px + env(safe-area-inset-left));
+  width: 132px; height: 132px;
+  border: 2px solid rgba(255,255,255,.18); border-radius: 50%;
+  pointer-events: auto; touch-action: none;
+  background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.07), rgba(255,255,255,.02));
+}
+.stick.right { left: auto; right: calc(18px + env(safe-area-inset-right)); }
+/* Tek atışlı silahta nişan alırken: "bırakınca ateşlenecek" hissi */
+.stick.aiming { border-color: rgba(255,150,90,.75); background: rgba(255,140,80,.10); }
+.stick.aiming .knob { background: rgba(255,170,110,.55); }
+.stick .knob {
+  position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  border-radius: 50%; background: rgba(255,255,255,.26);
+  box-shadow: 0 2px 12px rgba(0,0,0,.4);
+}
+.stick-label {
+  position: absolute; left: 0; right: 0; bottom: -18px; text-align: center;
+  font-size: 9px; letter-spacing: .12em; color: rgba(255,255,255,.35);
+}
+
+.touch-btn {
+  position: absolute; border-radius: 50%; pointer-events: auto; touch-action: none;
+  background: rgba(255,255,255,.12); color: #fff;
+  border: 2px solid rgba(255,255,255,.18);
+  display: flex; align-items: center; justify-content: center;
+}
+.touch-btn.reload {
+  right: calc(166px + env(safe-area-inset-right));
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  width: 68px; height: 68px; font-size: 27px;
+}
+.touch-btn.score {
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(172px + env(safe-area-inset-bottom));
+  width: 46px; height: 46px; font-size: 19px;
+}
+
+/* Dokunmatik cihazda HUD'u köşelerden çek: alt köşeler çubuklara ait */
+body.touch .hud-bottom-left {
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+body.touch .hp-wrap { justify-content: center; }
+body.touch .hp-bar { width: 150px; height: 14px; }
+body.touch .hp-text { font-size: 19px; min-width: 40px; }
+body.touch .ammo-wrap { justify-content: center; margin-top: 4px; }
+body.touch .ammo { font-size: 21px; }
+body.touch .ammo-sep, body.touch .reserve { font-size: 13px; }
+body.touch .weapon-name { font-size: 11px; margin-left: 8px; }
+body.touch .reload-bar { width: 150px; margin: 5px auto 0; }
+body.touch .minimap { width: 128px; height: 96px; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }
+body.touch .settings-btn {
+  width: 40px; height: 40px; font-size: 20px;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(144px + env(safe-area-inset-right));
+}
+body.touch .killfeed { top: calc(112px + env(safe-area-inset-top)); right: 8px; width: 200px; }
+body.touch .kf-item { font-size: 10px; padding: 3px 6px; }
+body.touch .match-info { padding: 5px 11px; gap: 11px; }
+body.touch .match-info .mi-score { font-size: 16px; }
+body.touch .match-info .mi-time { font-size: 14px; }
+body.touch .match-info .mi-label { font-size: 9px; }
+body.touch .net-info { font-size: 10px; top: calc(6px + env(safe-area-inset-top)); left: calc(6px + env(safe-area-inset-left)); }
+body.touch .game-chat { display: none; }
+body.touch .scoreboard { min-width: 0; width: 94vw; padding: 12px; font-size: 12px; }
+body.touch .sb-table td, body.touch .sb-table th { padding: 4px 5px; }
+body.touch .respawn-msg .rm-title { font-size: 30px; }
+body.touch .respawn-msg .rm-sub { font-size: 15px; }
+body.touch .center-msg { font-size: 21px; top: 18%; }
+
+/* Masaüstünde dokunmatik kumandayı gösterme */
+body:not(.touch) .touch-ui { display: none !important; }
+
+/* Kurulum satırı */
+.install-row { display: flex; gap: 8px; justify-content: center; margin: 4px 0 6px; flex-wrap: wrap; }
+.install-row button, .install-row .dl { flex: 0 1 auto; padding: 11px 18px; margin: 0; width: auto; }
+.install-row .dl {
+  display: inline-flex; align-items: center; justify-content: center;
+  text-decoration: none; border-radius: 10px; font: inherit; font-weight: 700;
+  border: 1px solid rgba(126, 233, 166, .45); background: rgba(126, 233, 166, .10);
+  color: #9df5bd; cursor: pointer;
+}
+.install-row .dl:hover { background: rgba(126, 233, 166, .18); }
+.download-note {
+  text-align: center; color: var(--muted); font-size: 12.5px;
+  line-height: 1.5; margin: 0 auto 14px; max-width: 560px;
+}
+.download-note b { color: var(--accent2); }
+
+/* Dar ekranlarda menüyü sıkıştır */
+@media (max-height: 520px) {
+  .menu-wrap { padding: 14px 14px 30px; }
+  .brand { margin-bottom: 12px; }
+  .brand h1 { font-size: 30px; }
+  .tagline { font-size: 13px; }
+  .panel { padding: 13px; margin-bottom: 11px; }
+  .lobby-list { max-height: 180px; }
+}
+@media (max-width: 520px) {
+  .mode-picker { grid-template-columns: 1fr; }
+  .conn-tabs { grid-template-columns: 1fr; }
+  .lobby-wrap { padding: 14px; }
+}
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  background: #2a1414; border: 1px solid #58201f; color: #ffb4b4;
+  padding: 11px 18px; border-radius: 9px; z-index: 300; font-weight: 600;
+  animation: toastIn .2s ease-out;
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translateX(-50%); } }
+
+/* Kaydırma çubuğu */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: #0c1218; }
+::-webkit-scrollbar-thumb { background: #2b3846; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4b5c; }
+
+/* --- Bot zorluk seçici --------------------------------------------------- */
+.level-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.level-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 6px;
+  border-radius: 10px;
+  border: 1px solid #2a323c;
+  background: #161b22;
+  color: #c9d1d9;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .15s, background .15s, transform .1s;
+}
+.level-btn:hover { background: #1c232c; }
+.level-btn:active { transform: scale(.97); }
+.level-btn .lv-name { font-weight: 700; font-size: 14px; letter-spacing: .3px; }
+.level-btn .lv-desc { font-size: 11px; color: #7d8796; line-height: 1.25; }
+.level-btn.sel { background: #1d2630; }
+.level-btn.lv-kolay.sel  { border-color: #56d364; box-shadow: 0 0 0 1px #56d36455, 0 0 14px #56d36433; }
+.level-btn.lv-kolay.sel  .lv-name { color: #7ee787; }
+.level-btn.lv-orta.sel   { border-color: #e3b341; box-shadow: 0 0 0 1px #e3b34155, 0 0 14px #e3b34133; }
+.level-btn.lv-orta.sel   .lv-name { color: #ffd479; }
+.level-btn.lv-zor.sel    { border-color: #f85149; box-shadow: 0 0 0 1px #f8514955, 0 0 14px #f8514933; }
+.level-btn.lv-zor.sel    .lv-name { color: #ff8f87; }
+
+
+/* --- Kazanma ekranı ------------------------------------------------------ */
+.win-overlay {
+  position: fixed; inset: 0; z-index: 380;
+  pointer-events: none;                 /* altındaki skor tablosuna basılabilsin */
+  /* Yazı önce TAM ORTADA tek başına duruyor (2 sn). Skor tablosu açılırken
+     yazı sönüp yukarı kayıyor — ikisi üst üste binip okunmaz hale gelmiyor. */
+  display: flex; align-items: center; justify-content: center;
+}
+.win-confetti { position: absolute; inset: 0; width: 100%; height: 100%; }
+.win-text {
+  position: relative;
+  font-size: clamp(34px, 8.5vw, 104px);
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: #ffd23f;
+  text-shadow:
+    0 0 18px rgba(255,196,0,.85),
+    0 0 46px rgba(255,150,0,.55),
+    0 6px 0 #b46b00,
+    0 10px 30px rgba(0,0,0,.75);
+  -webkit-text-stroke: 2px #7a4600;
+  padding: 0 16px;
+  text-align: center;
+}
+.win-overlay.replay .win-text {
+  animation: winPop .7s cubic-bezier(.2,1.7,.4,1) both, winFloat 2.6s ease-in-out .7s infinite;
+}
+@keyframes winPop {
+  0%   { opacity: 0; transform: scale(.3) rotate(-8deg); }
+  60%  { opacity: 1; transform: scale(1.12) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes winFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-10px) scale(1.03); }
+}
+/* Skor tablosu açılırken yazı sönüp yukarı çekiliyor. */
+.win-overlay.fade .win-text {
+  animation: none;
+  opacity: 0;
+  transform: translateY(-26vh) scale(.72);
+  transition: opacity .55s ease, transform .55s cubic-bezier(.4,0,.2,1);
+}
+
+/* =========================================================================
+   ARAYÜZ VURGUSU
+   Amaç: oyun "canlı" hissettirsin — ama okunabilirlik ve hız bozulmasın.
+   Kural olarak sadece GPU'nun ucuz yaptığı şeyleri kullanıyoruz (transform,
+   opacity, filter). Konum/boyut animasyonu yok, telefonda kasmasın.
+   Hareketi kapatan kullanıcı için en altta prefers-reduced-motion var.
+   ========================================================================= */
+
+/* --- Canlı arka plan ----------------------------------------------------- */
+/* Menü ve lobi ekranının arkasında yavaşça nefes alan iki renk kütlesi.
+   body'nin kendi gradyanının üstüne, içeriğin altına giriyor. */
+#screenMenu::before,
+#screenLobby::before {
+  content: '';
+  position: fixed; inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(52vw 52vw at 18% 12%, rgba(255,138,61,.14), transparent 62%),
+    radial-gradient(48vw 48vw at 84% 78%, rgba(63,155,255,.12), transparent 62%),
+    radial-gradient(38vw 38vw at 60% 25%, rgba(126,231,135,.07), transparent 60%);
+  animation: bgDrift 26s ease-in-out infinite alternate;
+}
+@keyframes bgDrift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
+}
+
+/* --- Başlık -------------------------------------------------------------- */
+.brand h1 {
+  background: linear-gradient(180deg, #fff 0%, #ffd7ae 42%, var(--accent) 118%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 46px rgba(255,138,61,.28);
+  animation: brandGlow 4.5s ease-in-out infinite;
+}
+@keyframes brandGlow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(255,138,61,.18)); }
+  50%      { filter: drop-shadow(0 0 26px rgba(255,160,80,.45)); }
+}
+/* Başlığın altında ince, parlayan bir çizgi */
+.brand::after {
+  content: '';
+  pointer-events: none;
+  display: block;
+  width: min(320px, 60%);
+  height: 2px;
+  margin: 14px auto 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 14px rgba(255,138,61,.6);
+}
+
+/* --- Paneller ------------------------------------------------------------ */
+.panel {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(28,38,50,.92) 0%, rgba(16,22,30,.94) 100%);
+  border: 1px solid #2c3a49;
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter: blur(2px);
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+/* Panelin üstünde ince turuncu vurgu şeridi */
+.panel::before {
+  content: '';
+  pointer-events: none;              /* tıklamaları engellemesin */
+  position: absolute; left: 14px; right: 14px; top: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,138,61,.75), transparent);
+  opacity: .55;
+}
+.panel-head h2 {
+  background: linear-gradient(180deg, #fff, #c8d4e2);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* --- Düğmeler ------------------------------------------------------------ */
+button.primary {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 6px 18px rgba(255,120,40,.28),
+    inset 0 1px 0 rgba(255,255,255,.35);
+}
+button.primary::after {           /* üstünden geçen parıltı */
+  content: '';
+  pointer-events: none;
+  position: absolute; top: 0; bottom: 0; left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
+  transform: skewX(-18deg);
+  animation: shine 3.6s ease-in-out infinite;
+}
+@keyframes shine {
+  0%, 62% { left: -60%; }
+  86%     { left: 130%; }
+  100%    { left: 130%; }
+}
+button.primary:hover { filter: brightness(1.12); transform: translateY(-1px); }
+button.primary:active { transform: translateY(1px); filter: brightness(.96); }
+
+button.ghost { transition: border-color .15s, background .15s, transform .08s; }
+button.ghost:hover { border-color: var(--accent); background: rgba(255,138,61,.08); }
+button.ghost:active { transform: translateY(1px); }
+
+/* --- Seçim kartları ------------------------------------------------------ */
+.mode-card, .class-card, .char-card {
+  position: relative;
+  transition: border-color .15s, background .15s, transform .12s, box-shadow .15s;
+}
+.mode-card:hover, .class-card:hover, .char-card:hover { transform: translateY(-2px); }
+.mode-card.sel, .class-card.sel {
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 0 22px rgba(255,138,61,.22);
+}
+.mode-card.sel::after, .class-card.sel::after {
+  content: '';
+  pointer-events: none;
+  position: absolute; left: 0; top: 10%; bottom: 10%;
+  width: 3px; border-radius: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.char-card.sel { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 20px rgba(255,138,61,.25); }
+
+/* --- Lobi kodu ----------------------------------------------------------- */
+.code-chip, #lobbyCode { text-shadow: 0 0 12px rgba(255,138,61,.5); }
+
+/* --- Oyun içi HUD -------------------------------------------------------- */
+.hp-fill { box-shadow: 0 0 14px rgba(80,220,140,.35) inset; }
+.hp-fill.low { animation: hpAlarm 1s ease-in-out infinite; }
+@keyframes hpAlarm {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.55); }
+}
+
+/* Hareket duyarlılığı: kullanıcı animasyon istemiyorsa hepsi kapansın. */
+@media (prefers-reduced-motion: reduce) {
+  #screenMenu::before, #screenLobby::before,
+  .brand h1, button.primary::after, .hp-fill.low,
+  .win-overlay.replay .win-text {
+    animation: none !important;
+  }
+}
+
+/* Öldürünce ekranın solunda beliren beyaz piksel kuru kafa.
+   Ölüm ekranında DEĞİL — orada zaten "ÖLDÜN" yazısı var. Kısa sürer ve
+   oyunun görüşünü kapatmaz: sola yaslı, yarı saydam, tıklamayı geçirir. */
+.kill-skull {
+  position: fixed;
+  left: 26px;
+  top: 50%;
+  width: 128px;
+  height: 128px;
+  transform: translateY(-50%) scale(.6);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 60;
+  /* Etrafında ışık/hâle YOK — istenmedi. Sadece koyu bir kontur gölgesi
+     kalıyor ki açık zeminde de kuru kafa okunabilsin. */
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .75));
+  transition: opacity .28s ease, transform .28s ease;
+}
+.kill-skull.show {
+  opacity: .92;
+  transform: translateY(-50%) scale(1);
+  animation: killSkullPop .42s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+@keyframes killSkullPop {
+  0%   { transform: translateY(-50%) scale(.45) rotate(-8deg); opacity: 0; }
+  55%  { transform: translateY(-50%) scale(1.12) rotate(2deg); opacity: .95; }
+  100% { transform: translateY(-50%) scale(1) rotate(0); opacity: .92; }
+}
+@media (max-width: 820px) {
+  .kill-skull { left: 10px; width: 84px; height: 84px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kill-skull.show { animation: none; }
+}
+
+/* Geri sayım sırasında altta duran kırmızı İPTAL düğmesi.
+   Sayının altında, parmakla rahat basılacak boyutta. */
+.countdown-overlay .cd-cancel {
+  margin-top: 26px;
+  padding: 14px 42px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fff;
+  background: linear-gradient(180deg, #e8443c, #b52a24);
+  border: 2px solid #ff8078;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+  transition: transform .12s ease, filter .12s ease;
+}
+.countdown-overlay .cd-cancel:hover { filter: brightness(1.12); }
+.countdown-overlay .cd-cancel:active { transform: translateY(2px) scale(.98); }
+@media (max-width: 820px) {
+  .countdown-overlay .cd-cancel { margin-top: 18px; padding: 12px 34px; font-size: 17px; }
+}
+
+</style>
+
+<!-- Ücretsiz bulut sunucu 15 dk boştaysa uykuya geçer. Uyanma anına denk gelen
+     ilk istek yarım dönebilir (CSS ya da JS gelmez) ve sayfa biçimsiz/ölü
+     görünür. Aşağıdaki küçük stil, o durumda bile ekranın okunur kalmasını
+     sağlar; devamındaki betik durumu fark edip sayfayı kendiliğinden tazeler. -->
+<style id="bootStyle">
+  html, body { background: #0a0e13; color: #dfe7ef; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #bootMsg { position: fixed; inset: 0; z-index: 9999; background: #0a0e13;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 24px; }
+  #bootMsg.show { display: flex; }
+  #bootMsg h1 { font-size: 21px; letter-spacing: .05em; font-weight: 700; }
+  #bootMsg p { color: #8b98a7; font-size: 14px; max-width: 430px; line-height: 1.55; }
+  #bootMsg button { background: #ff8a3d; color: #16100a; font-weight: 700;
+    border: none; border-radius: 9px; padding: 12px 22px; font-size: 15px; cursor: pointer; }
+  .boot-spin { width: 38px; height: 38px; border: 3px solid #26323f; border-top-color: #ff8a3d;
+    border-radius: 50%; animation: bootSpin .9s linear infinite; }
+  @keyframes bootSpin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="bootMsg">
+  <div class="boot-spin"></div>
+  <h1>Sunucu uyanıyor…</h1>
+  <p id="bootText">Ücretsiz sunucu bir süre boş kalınca uykuya geçiyor. Birkaç saniye sürer, sayfa kendiliğinden tazelenecek.</p>
+  <button id="bootRetry" style="display:none">Yeniden dene</button>
+</div>
+
+<!-- Paketlenmiş sürümde (APK / tek dosya) sunucuda yeni sürüm çıkınca.
+     Ekranın en üstünde ince bir çubuk olarak duruyordu; telefon çentiği
+     altında kalıp basılamıyordu. Artık ortada, tam ekran ve büyük. -->
+<div id="updateOverlay" class="update-overlay hidden">
+  <div class="update-card">
+    <div class="update-icon">⬆</div>
+    <h1>GÜNCELLEME VAR</h1>
+    <p id="updateText">Sunucuda yeni bir sürüm hazır.</p>
+    <button id="btnGetUpdate" class="update-go">GÜNCELLE</button>
+    <button id="btnSkipUpdate" class="update-skip">Şimdi değil</button>
+  </div>
+</div>
+
+<!-- ================= BAĞLANTI DURUMU ================= -->
+<div id="connBar" class="conn-bar hidden"><span id="connText">Bağlanıyor…</span></div>
+
+<!-- ================= ANA MENÜ ================= -->
+<section id="screenMenu" class="screen active">
+  <div class="menu-wrap">
+    <header class="brand">
+      <h1>SAVAŞ ARENASI</h1>
+      <p class="tagline">Lobi kur, arkadaşlarını çağır — her lobide en fazla <b>20</b> savaşçı.</p>
+    </header>
+
+    <div class="panel identity">
+      <label for="nameInput">Savaşçı adın</label>
+      <div class="row">
+        <input id="nameInput" maxlength="16" placeholder="Adın" autocomplete="off">
+        <button id="btnRandomName" class="ghost" title="Rastgele ad">🎲</button>
+      </div>
+
+      <label>Nasıl oynayacaksın?</label>
+      <div class="conn-tabs">
+        <button id="tabLocal" class="conn-tab">
+          <span class="ct-title">Çevrimdışı</span>
+          <span class="ct-sub">Botlara karşı · internet gerekmez</span>
+        </button>
+        <button id="tabOnline" class="conn-tab">
+          <span class="ct-title">Online</span>
+          <span class="ct-sub">Arkadaşlarınla aynı sunucuda</span>
+        </button>
+      </div>
+
+      <div id="serverRow" class="server-row hidden">
+        <input id="serverInput" placeholder="sunucu adresi (boş = bu sayfanın sunucusu)" autocomplete="off" spellcheck="false">
+        <button id="btnConnect" class="ghost">Bağlan</button>
+      </div>
+      <div id="connStatus" class="conn-status"></div>
+      <button id="btnPlayOffline" class="ghost small hidden">Beklemeden çevrimdışı oyna</button>
+      <div id="insecureWarn" class="insecure-warn hidden"></div>
+    </div>
+
+    <div class="menu-cols">
+      <div class="panel" id="browsePanel">
+        <div class="panel-head">
+          <h2>Açık Lobiler</h2>
+          <button id="btnRefresh" class="ghost small">Yenile</button>
+        </div>
+        <div id="lobbyList" class="lobby-list">
+          <div class="empty">Yükleniyor…</div>
+        </div>
+        <div class="join-code">
+          <input id="codeInput" maxlength="5" placeholder="LOBİ KODU" autocomplete="off">
+          <button id="btnJoinCode">Kodla Katıl</button>
+        </div>
+      </div>
+
+      <div class="panel" id="offlinePanel">
+        <div class="panel-head"><h2>Çevrimdışı Mod</h2></div>
+        <p class="offline-note">
+          Oyun sunucusu doğrudan bu cihazın içinde çalışıyor. İnternet, kurulum ya da
+          başka bir bilgisayar gerekmiyor — uçakta bile oynanır.
+        </p>
+        <p class="offline-note">
+          Sağdaki panelden modu ve bot sayısını seç, <b>LOBİYİ KUR</b> de, sonra
+          <b>MAÇI BAŞLAT</b>. Arkadaşlarınla oynamak istersen yukarıdan <b>Online</b>'a geç.
+        </p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Lobi Kur</h2></div>
+        <label for="lobbyNameInput">Lobi adı</label>
+        <input id="lobbyNameInput" maxlength="24" placeholder="Lobimin adı" autocomplete="off">
+
+        <label>Oyun modu</label>
+        <div id="modePicker" class="mode-picker"></div>
+
+        <div class="two">
+          <div>
+            <label for="maxPlayersInput">Kapasite: <b id="maxPlayersVal">20</b></label>
+            <input type="range" id="maxPlayersInput" min="2" max="20" value="20">
+          </div>
+          <div>
+            <label for="botCountInput">Bot: <b id="botCountVal">7</b></label>
+            <input type="range" id="botCountInput" min="0" max="19" value="7">
+          </div>
+        </div>
+
+        <label>Bot zorluğu</label>
+        <div id="botLevelPicker" class="level-picker"></div>
+
+        <label class="check"><input type="checkbox" id="privateInput"> Gizli lobi (listede görünmez, kodla girilir)</label>
+        <button id="btnCreate" class="primary big">LOBİYİ KUR</button>
+      </div>
+    </div>
+
+    <div class="install-row">
+      <button id="btnInstall" class="primary hidden">📲 Uygulama olarak kur</button>
+      <button id="btnUpdate" class="ghost dl hidden">🔄 Güncelle</button>
+      <button id="btnFullscreen" class="ghost">⛶ Tam ekran</button>
+    </div>
+    <p id="downloadNote" class="download-note hidden">
+      Oyun eski sürümde takılı kaldıysa <b>Güncelle</b>'ye bas: kayıtlı kopya
+      silinir ve sunucudaki en yeni sürüm baştan indirilir.
+    </p>
+
+    <div id="buildInfo" class="build-info hidden"></div>
+
+    <footer class="hint">
+      <b>Bilgisayar:</b> WASD hareket · Fare nişan · Sol tık ateş · R şarjör · Tab skor · Enter sohbet<br>
+      <b>Telefon:</b> sol çubuk hareket · sağ çubuk nişan (keskin tüfek ve pompalıda bırakınca ateşlenir) · ⟳ şarjör
+    </footer>
+  </div>
+</section>
+
+<!-- ================= LOBİ ODASI ================= -->
+<section id="screenLobby" class="screen">
+  <div class="lobby-wrap">
+    <div class="panel lobby-main">
+      <div class="panel-head">
+        <div>
+          <h2 id="lobbyTitle">Lobi</h2>
+          <div class="lobby-sub">
+            Kod: <span id="lobbyCode" class="code">-----</span>
+            <button id="btnCopyCode" class="ghost tiny">kopyala</button>
+            <span id="lobbyModeLabel" class="pill"></span>
+            <span id="lobbyCountLabel" class="pill"></span>
+          </div>
+        </div>
+        <button id="btnLeave" class="ghost">Çık</button>
+      </div>
+
+      <div id="inviteRow" class="invite-row hidden">
+        <div class="invite-label">Arkadaşlarını çağır — bu linki gönder:</div>
+        <div class="invite-box">
+          <input id="inviteLink" readonly>
+          <button id="btnCopyLink" class="primary">Linki Kopyala</button>
+        </div>
+        <div class="invite-note" id="inviteNote"></div>
+      </div>
+
+      <div id="hostControls" class="host-controls hidden">
+        <div class="hc-row">
+          <label>Mod</label>
+          <div id="lobbyModePicker" class="mode-picker compact"></div>
+        </div>
+        <div class="hc-row two">
+          <div>
+            <label>Kapasite: <b id="lobbyMaxVal">20</b></label>
+            <input type="range" id="lobbyMaxInput" min="2" max="20" value="20">
+          </div>
+          <div>
+            <label>Bot: <b id="lobbyBotVal">0</b></label>
+            <input type="range" id="lobbyBotInput" min="0" max="19" value="0">
+          </div>
+        </div>
+        <div class="hc-row">
+          <label>Bot zorluğu</label>
+          <div id="lobbyLevelPicker" class="level-picker"></div>
+        </div>
+      </div>
+
+      <div id="teamPicker" class="team-picker hidden">
+        <button data-team="1" class="team-btn t1">Kızıl Tugay'a geç</button>
+        <button data-team="2" class="team-btn t2">Mavi Filo'ya geç</button>
+      </div>
+
+      <h3 class="section-title">Oyuncular <span id="rosterCount"></span></h3>
+      <div id="roster" class="roster"></div>
+
+      <h3 class="section-title">Sınıfını seç</h3>
+      <div id="classPicker" class="class-picker"></div>
+
+      <h3 class="section-title">Karakterini seç</h3>
+      <div id="charPicker" class="char-picker"></div>
+
+      <div class="lobby-actions">
+        <div id="readyStatus" class="ready-status"></div>
+        <button id="btnReady" class="ready">HAZIRIM</button>
+      </div>
+    </div>
+
+    <div class="panel lobby-chat">
+      <div class="panel-head"><h2>Sohbet</h2></div>
+      <div id="chatLog" class="chat-log"></div>
+      <form id="chatForm" class="chat-form" autocomplete="off">
+        <input id="chatInput" maxlength="140" placeholder="Mesaj yaz…">
+        <button type="submit">Gönder</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="lobbyScoreboard" class="post-scoreboard hidden"></div>
+  <div id="countdownOverlay" class="countdown-overlay hidden">
+    <div id="countdownNum">5</div>
+    <div class="cd-label">MAÇ BAŞLIYOR</div>
+    <!-- Geri sayım başladıktan sonra fikir değiştirebilmek için: hazır
+         durumunu geri alır, geri sayım durur. -->
+    <button id="btnCancelStart" class="cd-cancel" type="button">İPTAL</button>
+  </div>
+</section>
+
+<!-- ================= OYUN ================= -->
+<section id="screenGame" class="screen game">
+  <canvas id="canvas"></canvas>
+
+  <div class="hud">
+    <!-- Sol alt: can / şarjör -->
+    <div class="hud-bottom-left">
+      <div class="hp-wrap">
+        <div class="hp-bar"><div id="hpFill" class="hp-fill"></div></div>
+        <div id="hpText" class="hp-text">100</div>
+      </div>
+      <div class="ammo-wrap">
+        <span id="ammoText" class="ammo">30</span><span class="ammo-sep">/</span><span id="reserveText" class="reserve">60</span>
+        <span id="weaponName" class="weapon-name">Tüfek</span>
+      </div>
+      <div id="reloadBar" class="reload-bar hidden"><div id="reloadFill"></div></div>
+    </div>
+
+    <!-- Üst orta: skor / süre -->
+    <div class="hud-top-center">
+      <div id="matchInfo" class="match-info"></div>
+    </div>
+
+    <!-- Sağ üst: ayarlar -->
+    <button id="btnSettings" class="settings-btn" title="Ayarlar (Esc)" aria-label="Ayarlar">⚙</button>
+
+    <!-- Sağ üst: mini harita -->
+    <canvas id="minimap" class="minimap"></canvas>
+
+    <!-- Sağ orta: öldürme akışı -->
+    <div id="killfeed" class="killfeed"></div>
+
+    <!-- Sol üst: ping -->
+    <div id="netInfo" class="net-info"></div>
+
+    <!-- Çalıda gizlenme -->
+    <div id="hideHint" class="hide-hint hidden">🌿 GİZLİSİN</div>
+
+    <!-- Merkez uyarılar -->
+    <div id="centerMsg" class="center-msg"></div>
+    <div id="respawnMsg" class="respawn-msg hidden"></div>
+
+    <!-- Hasar yönü göstergeleri -->
+    <div id="dmgDirs" class="dmg-dirs"></div>
+
+    <!-- Skor tablosu (Tab) -->
+    <div id="scoreboard" class="scoreboard hidden"></div>
+
+    <!-- Oyun içi sohbet: EKRANDA GÖSTERİLMİYOR (istenmedi).
+         Öğeler duruyor çünkü sohbet yazma kutusu (Enter) hâlâ çalışıyor;
+         sadece gelen mesajların ekrana basılması kapatıldı. -->
+    <div class="game-chat hidden">
+      <div id="gameChatLog" class="game-chat-log"></div>
+      <form id="gameChatForm" class="game-chat-form hidden" autocomplete="off">
+        <input id="gameChatInput" maxlength="140" placeholder="Mesaj (Enter gönder, Esc iptal)">
+      </form>
+    </div>
+
+    <!-- Dokunmatik kontroller -->
+    <div id="touchUI" class="touch-ui hidden">
+      <div id="stickMove" class="stick"><div class="knob"></div><span class="stick-label">HAREKET</span></div>
+      <div id="stickAim" class="stick right"><div class="knob"></div><span class="stick-label">NİŞAN</span></div>
+      <button id="btnTouchReload" class="touch-btn reload">⟳</button>
+      <button id="btnTouchScore" class="touch-btn score">☰</button>
+    </div>
+  </div>
+
+  <!-- Ayarlar penceresi -->
+  <div id="settingsOverlay" class="settings-overlay hidden">
+    <div class="settings-panel">
+      <h2>Ayarlar</h2>
+
+      <label class="set-row">
+        <span>Ses</span>
+        <input type="checkbox" id="setSound" checked>
+      </label>
+      <label class="set-row">
+        <span>Ses seviyesi <b id="setVolumeVal">70</b></span>
+        <input type="range" id="setVolume" min="0" max="100" value="70">
+      </label>
+
+      <button id="setFullscreen" class="ghost">⛶ Tam ekran</button>
+      <button id="setResume" class="primary big">DEVAM ET</button>
+      <button id="setLeave" class="leave-btn">MAÇTAN ÇIK</button>
+      <p class="set-note">Çıkınca ana menüye dönersin. Maç arkadaşların için devam eder.</p>
+    </div>
+  </div>
+
+  <!-- Öldürünce ekranın solunda kısa süre beliren beyaz piksel kuru kafa -->
+  <div id="killSkull" class="kill-skull" aria-hidden="true"></div>
+
+  <div id="matchEndOverlay" class="match-end hidden"></div>
+
+  <!-- Kazanma ekranı: konfeti + büyük sarı KAZANDIN -->
+  <div id="winOverlay" class="win-overlay hidden">
+    <canvas id="winConfetti" class="win-confetti"></canvas>
+    <div class="win-text">KAZANDIN</div>
+  </div>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+// --- Açılış bekçisi -------------------------------------------------------
+// Sayfa gerçekten ayağa kalktı mı diye bakar. Kalkmadıysa (uykudaki sunucudan
+// yarım gelen CSS/JS yüzünden) sayfayı en fazla 3 kez kendiliğinden tazeler,
+// olmazsa kullanıcıya anlaşılır bir mesaj ve düğme gösterir. Dosyadan açılan
+// tek dosyalık sürümde ağ yok, bu yüzden hiç çalışmaz.
+(function () {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+
+  var KEY = 'sa_boot_retry';
+  var tries = 0;
+  try { tries = Number(sessionStorage.getItem(KEY) || 0); } catch (e) { /* yok say */ }
+
+  // style.css yüklendiyse .hidden kuralı yürürlüktedir — en ucuz sınama bu.
+  function stylesLoaded() {
+    var probe = document.createElement('div');
+    probe.className = 'hidden';
+    document.body.appendChild(probe);
+    var ok = getComputedStyle(probe).display === 'none';
+    probe.parentNode.removeChild(probe);
+    return ok;
+  }
+
+  function giveUp() {
+    document.getElementById('bootText').textContent =
+      'Sunucuya ulaşılamadı. Birkaç saniye sonra "Yeniden dene" düğmesine bas — '
+      + 'ücretsiz sunucu uyanırken bu olabiliyor.';
+    var b = document.getElementById('bootRetry');
+    b.style.display = '';
+    b.onclick = function () {
+      try { sessionStorage.removeItem(KEY); } catch (e) { /* yok say */ }
+      location.reload();
+    };
+    document.getElementById('bootMsg').classList.add('show');
+  }
+
+  // Sağlıklı olduğunu anlar anlamaz bırak; beklemeyi sadece bozuk durumda yap.
+  window.addEventListener('load', function () {
+    var deadline = Date.now() + 5000;
+    var timer = setInterval(function () {
+      if (stylesLoaded() && window.__bootOk === true) {
+        clearInterval(timer);
+        try { sessionStorage.removeItem(KEY); } catch (e) { /* yok say */ }
+        return;
+      }
+      if (Date.now() < deadline) return;
+      clearInterval(timer);
+      if (tries >= 3) { giveUp(); return; }
+      try { sessionStorage.setItem(KEY, String(tries + 1)); } catch (e) { /* yok say */ }
+      document.getElementById('bootMsg').classList.add('show');
+      setTimeout(function () { location.reload(); }, 1200);
+    }, 350);
+  });
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  // Tek dosya sürümü: tüm modüller burada, hiçbir dış istek yok.
+  var __defs = {};
+  var __cache = {};
+  function __req(id) {
+    if (__cache[id]) return __cache[id].__exp;
+    var m = __defs[id];
+    if (!m) throw new Error('Modül bulunamadı: ' + id);
+    var box = { __exp: {} };
+    __cache[id] = box;
+    m(box.__exp, __req);
+    return box.__exp;
+  }
+  // Paketlenmiş sürüm: içinde sunucu yok, doğrudan çevrimdışı başlar.
+  window.__SINGLE_FILE__ = true;
+  window.__BUNDLED__ = true;
+  // Bu paketin içerik damgası: sunucudaki sürümle karşılaştırmak için.
+  window.__BUILD__ = "5af5dfe0027f";
+  // Zemin dokusu dosyadan okunamaz (dış istek yok), gömülü hâlini veriyoruz.
+  window.__GRASS_URL = "data:image/jpeg;base64,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";
+
+  __defs["/js/main.js"] = function (__exp, __req) {
+// Uygulama kabuğu: ekran yönetimi, menü/lobi arayüzü ve olay bağlantıları.
+
+const { MODES, CLASSES, TEAMS, MAX_PLAYERS, WEAPONS, MAX_NAME_LEN, CHARACTERS, UPDATE_SERVER, BOT_LEVELS, DEFAULT_BOT_LEVEL } = __req("/shared/constants.js");
+const { getCharacterSprites, drawWeaponOnPreview } = __req("/js/sprites.js");
+const spritesModule = __req("/js/sprites.js");
+const { C, S } = __req("/shared/protocol.js");
+const { Net } = __req("/js/net.js");
+const { Input } = __req("/js/input.js");
+const { ClientGame, esc } = __req("/js/game.js");
+const renderModule = __req("/js/render.js");
+const sfx = __req("/js/audio.js");
+
+const $ = (id) => document.getElementById(id);
+
+const RANDOM_NAMES = [
+  'Yıldırım', 'Çakal', 'Pusu', 'Gölge', 'Karakartal', 'Doludizgin', 'Zırhlı',
+  'Kanka', 'Efsane', 'Fırtına', 'Sessiz', 'Keskin', 'Bozkurt', 'Alperen',
+];
+
+const state = {
+  screen: 'menu',
+  me: { id: 0, name: '' },
+  lobby: null,
+  lobbies: [],
+  createMode: 'ffa',
+  createBotLevel: DEFAULT_BOT_LEVEL,
+  inMatch: false,
+  netMode: 'local',      // 'local' | 'online'
+};
+
+const net = new Net();
+const input = new Input($('canvas'));
+const game = new ClientGame(net, input);
+
+// ============================================================ yardımcılar
+function show(screen) {
+  state.screen = screen;
+  for (const id of ['screenMenu', 'screenLobby', 'screenGame']) {
+    $(id).classList.toggle('active', id === `screen${cap(screen)}`);
+  }
+}
+function cap(s) { return s[0].toUpperCase() + s.slice(1); }
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
+}
+
+function store(key, val) {
+  try {
+    if (val === undefined) return localStorage.getItem(key) || '';
+    localStorage.setItem(key, val);
+  } catch { /* gizli sekmede localStorage kapalı olabilir */ }
+  return val || '';
+}
+function savedName() { return store('sa_name'); }
+function saveName(n) { store('sa_name', n); }
+
+// --- Bağlantı modu -------------------------------------------------------
+function setConnStatus(text, kind = '') {
+  const el = $('connStatus');
+  el.textContent = text;
+  el.className = `conn-status ${kind}`;
+}
+
+async function useLocal(save = true) {
+  state.netMode = 'local';
+  if (save) store('sa_mode', 'local');
+  $('tabLocal').classList.add('sel');
+  $('tabOnline').classList.remove('sel');
+  $('serverRow').classList.add('hidden');
+  $('browsePanel').classList.add('hidden');
+  $('offlinePanel').classList.remove('hidden');
+  $('connBar').classList.add('hidden');
+  setConnStatus('Çevrimdışı — oyun bu cihazda çalışıyor.', 'ok');
+  state.lobby = null;
+  await net.connectLocal();
+}
+
+// Boş sunucu adresi "bu sayfanın sunucusu" demektir. Ama paketlenmiş sürümde
+// (tek dosya / APK) sayfanın bir sunucusu YOKTUR — o durumda boş adres,
+// bağlanılamayan boş bir adrese dönüşüyordu ve ekranda "adresine
+// ulaşılamıyor — 3. deneme" gibi adresi olmayan bir mesaj çıkıyordu.
+// Paketlenmiş sürümde boş adres artık bulut sunucuya çözülüyor.
+// Sayfanın kendi oyun sunucusu var mı?
+//
+// Protokole bakmak YETMİYOR: APK içindeki sayfa Capacitor tarafından
+// `https://localhost` üzerinden servis ediliyor, yani gerçek bir sunucudan
+// geliyormuş gibi görünüyor — ama arkasında oyun sunucusu yok. Bu yüzden
+// APK'da Online'a basınca oyun kendi kendine bağlanmaya çalışıp
+// "Bağlanılıyor: localhost" ekranında takılıyordu.
+//
+// Doğru ölçüt paketlenmiş olup olmadığı: paket sürümlerinde __BUNDLED__ var.
+function isPackagedApp() {
+  return !!window.__BUNDLED__
+    || !!window.Capacitor
+    || location.protocol === 'file:'
+    || location.protocol === 'capacitor:';
+}
+
+// Adres uygulamanın KENDİ adresini mi gösteriyor?
+// Capacitor, APK'nın dosyalarını `https://localhost` üzerinden veriyor. Orada
+// oyun sunucusu yoktur — ama eski sürümlerde bu adres "sunucu" diye kaydedilmiş
+// olabiliyordu ve webview verisi APK güncellemesinde silinmediği için kayıtlı
+// kalıyordu. Sonuç: "localhost adresine ulaşılamıyor".
+function ownAddress(u) {
+  const s = String(u).replace(/^[a-z]+:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+  const host = s.replace(/:\d+$/, '');
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true;
+  return !!location.host && s === location.host.toLowerCase();
+}
+
+function resolveServerUrl(url) {
+  const u = (url || '').trim();
+  if (!isPackagedApp()) return u;
+  // Paketlenmiş sürümde "boş adres" ya da "kendi adresim" diye bir sunucu
+  // yoktur; her iki durumda da bulut sunucuya bağlanıyoruz.
+  if (!u || ownAddress(u)) return UPDATE_SERVER;
+  return u;
+}
+
+function useOnline(rawUrl, save = true) {
+  const url = resolveServerUrl(rawUrl);
+  state.netMode = 'online';
+  // Adresi HEMEN kaydetmiyoruz: çalışmayan bir adres kaydedilirse tarayıcıda
+  // kalıcı olarak takılı kalır ve kullanıcı bir daha hiçbir sunucuya
+  // bağlanamaz. Kayıt, bağlantı gerçekten kurulunca (_open) yapılıyor.
+  if (save) { store('sa_mode', 'online'); state.pendingServer = url || ''; }
+  $('tabOnline').classList.add('sel');
+  $('tabLocal').classList.remove('sel');
+  $('serverRow').classList.remove('hidden');
+  $('browsePanel').classList.remove('hidden');
+  $('offlinePanel').classList.add('hidden');
+  setConnStatus(`Bağlanılıyor: ${url || location.host}`);
+  state.lobby = null;
+  wakeServer(url);
+  net.connectRemote(url);
+}
+
+// "sunucu.com" / "wss://sunucu.com" → "https://sunucu.com"
+function normalizeHttp(u) {
+  let x = (u || '').trim().replace(/\/+$/, '');
+  if (x.startsWith('wss://')) return `https://${x.slice(6)}`;
+  if (x.startsWith('ws://')) return `http://${x.slice(5)}`;
+  if (x.startsWith('http://') || x.startsWith('https://')) return x;
+  const local = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(x);
+  return `${local ? 'http' : 'https'}://${x}`;
+}
+
+function randomName() {
+  return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)] + Math.floor(10 + Math.random() * 90);
+}
+
+// ============================================================ menü kurulumu
+function buildModePicker(container, selected, onPick) {
+  container.innerHTML = '';
+  for (const id of Object.keys(MODES)) {
+    const m = MODES[id];
+    const btn = document.createElement('button');
+    btn.className = 'mode-card' + (id === selected ? ' sel' : '');
+    btn.innerHTML = `<div class="mc-name">${esc(m.name)}</div><div class="mc-desc">${esc(m.desc)}</div>`;
+    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    container.appendChild(btn);
+  }
+}
+
+// Bot zorluk seçici (kolay / orta / zor). Hem menüde hem lobide aynı bileşen.
+function buildLevelPicker(container, selected, onPick) {
+  container.innerHTML = '';
+  for (const id of Object.keys(BOT_LEVELS)) {
+    const lv = BOT_LEVELS[id];
+    const btn = document.createElement('button');
+    btn.className = 'level-btn lv-' + id + (id === selected ? ' sel' : '');
+    btn.type = 'button';
+    btn.innerHTML = `<span class="lv-name">${esc(lv.name)}</span><span class="lv-desc">${esc(lv.desc)}</span>`;
+    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    container.appendChild(btn);
+  }
+}
+
+function buildClassPicker(container, selected, onPick) {
+  container.innerHTML = '';
+  for (const id of Object.keys(CLASSES)) {
+    const c = CLASSES[id];
+    const w = WEAPONS[c.weapon];
+    const btn = document.createElement('button');
+    btn.className = 'class-card' + (id === selected ? ' sel' : '');
+    btn.innerHTML = `
+      <div class="cc-name" style="color:${c.color}">${esc(c.name)}</div>
+      <div class="cc-desc">${esc(c.desc)}</div>
+      <div class="cc-stats">${c.hp} can · ${w.name} · ${Math.round(c.speed)} hız</div>`;
+    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    container.appendChild(btn);
+  }
+}
+
+// Karakter seçimi: her karakteri küçük bir tuvalde canlı çizip gösteriyoruz.
+function buildCharPicker(container, selected, teamColor, weaponId, onPick) {
+  container.innerHTML = '';
+  for (const id of Object.keys(CHARACTERS)) {
+    const ch = CHARACTERS[id];
+    const btn = document.createElement('button');
+    btn.className = 'char-card' + (id === selected ? ' sel' : '');
+    btn.title = ch.name;
+
+    const cv = document.createElement('canvas');
+    cv.width = 64; cv.height = 72;
+    const cx = cv.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    const set = getCharacterSprites({
+      jacket: teamColor || ch.jacket, hair: ch.hair, skin: ch.skin,
+      accent: ch.accent, eye: ch.eye, style: ch.style,
+    });
+    cx.drawImage(set.down[1], 0, 0, 64, 72);
+    // karakteri silahıyla göster
+    drawWeaponOnPreview(cx, 0, 0, 2, weaponId, ch.skin);
+
+    const label = document.createElement('span');
+    label.className = 'cc-label';
+    label.textContent = ch.name;
+
+    btn.appendChild(cv);
+    btn.appendChild(label);
+    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    container.appendChild(btn);
+  }
+}
+
+function renderLobbyList() {
+  const el = $('lobbyList');
+  if (!state.lobbies.length) {
+    el.innerHTML = '<div class="empty">Henüz açık lobi yok — ilk lobiyi sen kur!</div>';
+    return;
+  }
+  el.innerHTML = '';
+  for (const l of state.lobbies) {
+    const div = document.createElement('div');
+    div.className = 'lobby-item';
+    const stateLabel = l.state === 'waiting' ? 'bekliyor' : l.state === 'playing' ? 'maçta' : l.state === 'countdown' ? 'başlıyor' : 'skor';
+    div.innerHTML = `
+      <span class="li-name">${esc(l.name)}</span>
+      <span class="li-mode">${esc(MODES[l.mode]?.short || l.mode)}</span>
+      <span class="li-count">${l.players}/${l.max}</span>
+      <span class="li-state ${l.state === 'playing' ? 'playing' : 'waiting'}">${stateLabel}</span>`;
+    div.onclick = () => {
+      if (l.players >= l.max) { toast('Lobi dolu.'); return; }
+      sfx.sfxUi();
+      net.send(C.LOBBY_JOIN, { id: l.id });
+    };
+    el.appendChild(div);
+  }
+}
+
+// ============================================================ lobi odası
+function renderLobby() {
+  const l = state.lobby;
+  if (!l) return;
+  const isHost = l.hostId === state.me.id;
+  const mode = MODES[l.mode] || MODES.ffa;
+  const meMember = l.members.find((m) => m.id === state.me.id);
+
+  $('lobbyTitle').textContent = l.name;
+  $('lobbyCode').textContent = l.code;
+
+  // Davet linki — sadece gerçek bir sunucuya bağlıyken anlamlı
+  const inviteRow = $('inviteRow');
+  if (state.netMode === 'online' && (net.url || !isPackagedApp())) {
+    const base = net.url ? normalizeHttp(net.url) : location.origin;
+    const link = `${base}/?lobi=${l.code}`;
+    inviteRow.classList.remove('hidden');
+    $('inviteLink').value = link;
+
+    const local = /^https?:\/\/(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(base);
+    $('inviteNote').innerHTML = local
+      ? 'Bu adres <b>sadece aynı wifi ağındaki</b> cihazlarda açılır. Arkadaşın başka yerdeyse ya da mobil veri kullanıyorsa açılmaz — README\'deki tünel ya da bulut sunucu adımlarını uygula.'
+      : 'Bu link her yerden açılır. Tıklayan doğrudan bu lobiye girer.';
+  } else {
+    inviteRow.classList.add('hidden');
+  }
+  $('lobbyModeLabel').textContent = mode.name;
+  $('lobbyCountLabel').textContent = `${l.members.length}/${l.maxPlayers} oyuncu` + (l.botCount ? ` + ${l.botCount} bot` : '');
+
+  // Host kontrolleri
+  $('hostControls').classList.toggle('hidden', !isHost);
+  if (isHost) {
+    buildModePicker($('lobbyModePicker'), l.mode, (m) => net.send(C.SET_SETTINGS, { mode: m }));
+    const maxIn = $('lobbyMaxInput'), botIn = $('lobbyBotInput');
+    if (document.activeElement !== maxIn) maxIn.value = l.maxPlayers;
+    if (document.activeElement !== botIn) botIn.value = l.botCount;
+    $('lobbyMaxVal').textContent = l.maxPlayers;
+    $('lobbyBotVal').textContent = l.botCount;
+    botIn.max = Math.max(0, l.maxPlayers - 1);
+    buildLevelPicker($('lobbyLevelPicker'), l.botLevel || DEFAULT_BOT_LEVEL,
+      (lv) => net.send(C.SET_SETTINGS, { botLevel: lv }));
+  }
+
+  // Takım seçimi
+  $('teamPicker').classList.toggle('hidden', !mode.teams);
+
+  // Oyuncu listesi
+  const roster = $('roster');
+  roster.innerHTML = '';
+  for (const m of l.members) {
+    const div = document.createElement('div');
+    div.className = `roster-item ${m.id === state.me.id ? 'me ' : ''}${mode.teams ? 't' + m.team : ''}`;
+    const cls = CLASSES[m.cls]?.name || '';
+    div.innerHTML = `
+      <span class="r-dot ${m.ready || m.host ? 'ready' : ''}"></span>
+      <span class="r-name">${esc(m.name)}${m.host ? ' <span class="r-host">👑</span>' : ''}</span>
+      <span class="r-cls">${esc(cls)}</span>`;
+    if (isHost && m.id !== state.me.id) {
+      const kick = document.createElement('button');
+      kick.className = 'r-kick';
+      kick.textContent = '✕';
+      kick.title = 'At';
+      kick.onclick = () => net.send(C.KICK, { id: m.id });
+      div.appendChild(kick);
+    }
+    roster.appendChild(div);
+  }
+  $('rosterCount').textContent = `(${l.members.length}/${l.maxPlayers})`;
+
+  // Sınıf seçimi
+  buildClassPicker($('classPicker'), meMember?.cls || 'komando', (c) => net.send(C.SET_CLASS, { cls: c }));
+
+  // Karakter seçimi
+  buildCharPicker(
+    $('charPicker'),
+    meMember?.char,
+    mode.teams ? TEAMS[meMember?.team || 1]?.color : null,
+    CLASSES[meMember?.cls || 'komando'].weapon,
+    (ch) => net.send(C.SET_CHAR, { char: ch }),
+  );
+
+  // Hazır butonu — lobi sahibi dahil herkes basar
+  const btnReady = $('btnReady');
+  btnReady.classList.toggle('on', !!meMember?.ready);
+  btnReady.textContent = meMember?.ready ? 'HAZIRIM ✓' : 'HAZIRIM';
+  btnReady.classList.remove('hidden');
+
+  // Kaç kişi hazır?
+  const total = l.members.length;
+  const ready = l.readyCount ?? 0;
+  const status = $('readyStatus');
+  if (l.state === 'countdown') {
+    status.textContent = 'Herkes hazır!';
+    status.className = 'ready-status all';
+  } else if (l.state === 'playing') {
+    status.textContent = 'Maç sürüyor…';
+    status.className = 'ready-status';
+  } else {
+    status.textContent = `${ready} / ${total} kişi hazır`;
+    status.className = 'ready-status' + (ready === total && total > 0 ? ' all' : '');
+  }
+
+  // Geri sayım
+  if (l.state === 'countdown') startCountdown(l.countdownLeft);
+  else stopCountdown();
+
+  // Maç sonu tablosu.
+  // Aynı tabloyu İKİ KEZ göstermiyoruz: maç bitince tam ekran tablo çıkıyor
+  // (matchEndOverlay), "LOBİYE DÖN" deyince de lobide ikinci bir kopyası
+  // beliriyordu — kullanıcı aynı ekranı tekrar görmüş oluyordu. Burası artık
+  // sadece maçı KAÇIRANLAR için: lobiye maç sonu evresinde katılan biri
+  // sonucu görebilsin diye.
+  const sb = l.lastScoreboard;
+  if (l.state === 'post' && sb && sb.matchId !== state.seenScoreboard) {
+    showPostScoreboard(sb, l.postLeft);
+  } else {
+    $('lobbyScoreboard').classList.add('hidden');
+  }
+}
+
+let cdTimer = null;
+let cdLastShown = -1;
+
+function startCountdown(ms) {
+  const overlay = $('countdownOverlay');
+  const num = $('countdownNum');
+  if (cdTimer) clearInterval(cdTimer);
+  overlay.classList.remove('hidden');
+
+  // İPTAL: hazır durumunu geri alır. Sunucu "herkes hazır değil" görünce
+  // geri sayımı durdurup lobiye döner — yani iptal kararı da sunucuda
+  // veriliyor, istemci sadece niyeti bildiriyor.
+  const iptal = $('btnCancelStart');
+  if (iptal) {
+    iptal.onclick = () => {
+      sfx.sfxUi();
+      net.send(C.SET_READY, { ready: false });
+      stopCountdown();
+    };
+  }
+
+  const end = Date.now() + ms;
+  const tick = () => {
+    const left = Math.max(0, end - Date.now());
+    const n = Math.ceil(left / 1000);
+    if (n !== cdLastShown) {
+      cdLastShown = n;
+      num.textContent = n > 0 ? n : 'BAŞLA!';
+      // her sayıda kısa bir vuruş: animasyonu yeniden tetikle
+      num.classList.remove('pop');
+      void num.offsetWidth;
+      num.classList.add('pop');
+      if (n > 0) sfx.sfxUi();
+    }
+    if (left <= 0) { clearInterval(cdTimer); cdTimer = null; }
+  };
+  tick();
+  cdTimer = setInterval(tick, 100);
+}
+
+function stopCountdown() {
+  if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+  cdLastShown = -1;
+  $('countdownOverlay').classList.add('hidden');
+}
+
+function renderChat(lines) {
+  const log = $('chatLog');
+  log.innerHTML = '';
+  for (const m of lines) appendChat(m, false);
+  log.scrollTop = log.scrollHeight;
+}
+
+function appendChat(msg, scroll = true) {
+  const log = $('chatLog');
+  const div = document.createElement('div');
+  div.className = 'chat-line' + (msg.sys ? ' sys' : '');
+  div.innerHTML = msg.sys ? esc(msg.text) : `<span class="cf">${esc(msg.from)}:</span> ${esc(msg.text)}`;
+  log.appendChild(div);
+  while (log.children.length > 120) log.removeChild(log.firstChild);
+  if (scroll) log.scrollTop = log.scrollHeight;
+}
+
+// ============================================================ skor tabloları
+function scoreboardHtml(sb, title) {
+  const mode = MODES[sb.mode] || MODES.ffa;
+  let html = `<div class="me-inner"><h2>${esc(title)}</h2><div class="me-sub">${esc(mode.name)}</div>`;
+
+  if (sb.teamScore) {
+    html += `<div class="sb-teamline">
+      <span style="color:${TEAMS[1].color}">${TEAMS[1].name} ${sb.teamScore[1] || 0}</span>
+      <span style="color:${TEAMS[2].color}">${TEAMS[2].name} ${sb.teamScore[2] || 0}</span></div>`;
+  }
+
+  html += '<table class="sb-table"><tr><th>#</th><th>Oyuncu</th><th>Sınıf</th><th class="num">Öldürme</th><th class="num">Asist</th><th class="num">Ölüm</th><th class="num">Hasar</th></tr>';
+  sb.rows.forEach((r, i) => {
+    html += `<tr class="${r.id === state.me.id ? 'me ' : ''}${sb.teamScore ? 't' + r.team : ''}">
+      <td>${sb.mode === 'br' && r.place ? '#' + r.place : i + 1}</td>
+      <td>${esc(r.name)}${r.bot ? '<span class="sb-bot">BOT</span>' : ''}</td>
+      <td>${esc(CLASSES[r.cls]?.name || '')}</td>
+      <td class="num">${r.kills}</td>
+      <td class="num">${r.assists || 0}</td>
+      <td class="num">${r.deaths}</td>
+      <td class="num">${r.damage}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+// Maçı BEN mi kazandım? Takım modunda takımım, diğerlerinde birinci sıra.
+function didIWin(sb) {
+  if (!sb || !sb.rows || !sb.rows.length) return false;
+  const ben = sb.rows.find((r) => r.id === state.me.id);
+  if (!ben) return false;
+  if (sb.teamScore) {
+    const t1 = sb.teamScore[1] || 0, t2 = sb.teamScore[2] || 0;
+    if (t1 === t2) return false;
+    return ben.team === (t1 > t2 ? 1 : 2);
+  }
+  if (sb.winner && sb.winner.id) return sb.winner.id === state.me.id;
+  return sb.rows[0].id === state.me.id;
+}
+
+// Kazanınca ekranın ortasında sarı "KAZANDIN" + konfeti.
+// Konfeti tek bir canvas'a çiziliyor; DOM'a yüzlerce parçacık eklemek
+// telefonu zorlardı.
+let konfetiRaf = 0;
+let winTabloTimer = 0;
+let winYaziTimer = 0;
+function showWinScreen() {
+  const el = $('winOverlay');
+  const cv = $('winConfetti');
+  if (!el || !cv) return;
+  el.classList.remove('hidden');
+  el.classList.remove('replay', 'fade');
+  void el.offsetWidth;            // animasyonu baştan başlat
+  el.classList.add('replay');
+  // Yazı 2 saniye tek başına kalsın, sonra sönsün; konfeti biraz daha sürer.
+  clearTimeout(winYaziTimer);
+  winYaziTimer = setTimeout(() => el.classList.add('fade'), WIN_SOLO_MS);
+
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = cv.width = Math.floor(window.innerWidth * dpr);
+  const H = cv.height = Math.floor(window.innerHeight * dpr);
+  const ctx = cv.getContext('2d');
+  const RENK = ['#ffd479', '#ffb02e', '#7ee787', '#7fb0d8', '#ff8f87', '#c39bff', '#fff3d0'];
+  const N = Math.min(220, Math.round(window.innerWidth / 6));
+  const parts = Array.from({ length: N }, () => ({
+    x: Math.random() * W,
+    y: -Math.random() * H * 0.6,
+    w: (5 + Math.random() * 7) * dpr,
+    h: (8 + Math.random() * 12) * dpr,
+    vy: (90 + Math.random() * 190) * dpr,
+    vx: (Math.random() - 0.5) * 90 * dpr,
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 7,
+    c: RENK[Math.floor(Math.random() * RENK.length)],
+    sway: Math.random() * Math.PI * 2,
+  }));
+
+  let last = performance.now();
+  // Konfeti, skor tablosu açılırken bitiyor: tablo okunurken ekranda kâğıt
+  // yağmuru olmasın. Son yarım saniyede sönerek kayboluyor.
+  const bitis = last + WIN_SOLO_MS;
+  cancelAnimationFrame(konfetiRaf);
+  const adim = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+    for (const p of parts) {
+      p.sway += dt * 3;
+      p.x += (p.vx + Math.sin(p.sway) * 40 * dpr) * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      if (p.y > H + 40) { p.y = -30; p.x = Math.random() * W; }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.c;
+      ctx.globalAlpha = now > bitis - 550 ? Math.max(0, (bitis - now) / 550) : 1;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    if (now < bitis) konfetiRaf = requestAnimationFrame(adim);
+    else { ctx.clearRect(0, 0, W, H); el.classList.add('hidden'); }
+  };
+  konfetiRaf = requestAnimationFrame(adim);
+}
+
+function hideWinScreen() {
+  cancelAnimationFrame(konfetiRaf);
+  clearTimeout(winYaziTimer);
+  clearTimeout(winTabloTimer);
+  const el = $('winOverlay');
+  if (el) el.classList.add('hidden');
+}
+
+function winnerText(sb) {
+  if (!sb) return 'Maç bitti';
+  if (sb.teamScore) {
+    const t1 = sb.teamScore[1] || 0, t2 = sb.teamScore[2] || 0;
+    if (t1 === t2) return 'Berabere!';
+    return `${t1 > t2 ? TEAMS[1].name : TEAMS[2].name} kazandı!`;
+  }
+  if (sb.winner?.name) return `${sb.winner.name} kazandı!`;
+  const top = sb.rows[0];
+  return top ? `${top.name} kazandı!` : 'Maç bitti';
+}
+
+function showPostScoreboard(sb, leftMs) {
+  const el = $('lobbyScoreboard');
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="panel" style="max-width:820px;width:100%">
+    ${scoreboardHtml(sb, winnerText(sb))}
+    <div class="me-next">Lobi ${Math.ceil((leftMs || 0) / 1000)} saniye içinde açılıyor…</div>
+    <button id="btnClosePost" class="ghost small" style="margin-top:12px">Kapat</button>
+  </div></div>`;
+  $('btnClosePost').onclick = () => {
+    if (sb && sb.matchId) state.seenScoreboard = sb.matchId;
+    el.classList.add('hidden');
+  };
+}
+
+// ============================================================ ağ olayları
+// Ücretsiz bulut sunucu (Render) 15 dk boştaysa uyur; uyanması 1 dakikayı
+// bulabilir. Mobil veride WebSocket el sıkışması da yavaştır. Eskiden 3 saniye
+// sonra çevrimdışına düşüyorduk — telefondan sunucuya hiç bağlanamamanın
+// sebebi buydu. Artık sabırla bekliyoruz ve çevrimdışına geçmeyi kullanıcıya
+// bırakıyoruz; kendiliğinden geçiş yalnızca çok uzun süre sonra oluyor.
+const CONNECT_PATIENCE_MS = 45000;
+
+let autoFallbackTimer = null;
+function cancelAutoFallback() {
+  if (autoFallbackTimer) { clearTimeout(autoFallbackTimer); autoFallbackTimer = null; }
+  const b = $('btnPlayOffline');
+  if (b) b.classList.add('hidden');
+}
+
+// Uyuyan servisi WebSocket değil, sıradan bir HTTP isteği uyandırır.
+// Bağlanmadan önce /health'e dokunuyoruz ki sunucu ayağa kalkmaya başlasın.
+function wakeServer(url) {
+  let base;
+  try {
+    base = url ? normalizeHttp(url) : location.origin;
+  } catch { return; }
+  if (!/^https?:\/\//.test(base)) return;
+  fetch(`${base}/health`, { cache: 'no-store' }).catch(() => { /* uyanıyor olabilir */ });
+}
+
+net.on('_open', () => {
+  cancelAutoFallback();
+  $('connBar').classList.add('hidden');
+  if (state.netMode === 'online') {
+    // Ancak GERÇEKTEN bağlanınca adresi kaydediyoruz.
+    if (state.pendingServer !== undefined) {
+      store('sa_server', state.pendingServer);
+      state.pendingServer = undefined;
+    }
+    setConnStatus(`Bağlandı: ${net.url || location.host}`, 'ok');
+  }
+  const name = $('nameInput').value.trim() || savedName() || randomName();
+  net.send(C.HELLO, { name });
+});
+
+net.on('_close', () => {
+  if (state.netMode !== 'online') return;
+  $('connBar').classList.remove('hidden');
+  $('connText').textContent = 'Bağlantı koptu — yeniden bağlanılıyor…';
+  setConnStatus('Bağlantı koptu.', 'bad');
+  if (state.inMatch) {
+    game.stop();
+    state.inMatch = false;
+    show('menu');
+  }
+});
+
+// Hangi adrese bağlanmaya çalışıyoruz? Boşsa sayfanın kendi sunucusu.
+function currentTarget() {
+  return net.url || location.host || UPDATE_SERVER;
+}
+
+// Bağlantı hiç kurulamayacak durumda (mesela adres yok): kullanıcıyı sonsuz
+// "deneniyor" ekranında bırakmayalım, sebebini söyleyip çevrimdışına dönelim.
+net.on('_error', (d) => {
+  if (state.netMode !== 'online') return;
+  toast(`Bağlanılamadı: ${d.message}. Çevrimdışı moda geçiliyor.`);
+  cancelAutoFallback();
+  useLocal(false);
+});
+
+net.on('_retry', (d) => {
+  if (state.netMode !== 'online') return;
+  // Her denemede sunucuyu HTTP ile de dürtüyoruz: uykudaysa uyanma yolu budur.
+  wakeServer(net.url);
+
+  // Kayıtlı ÖZEL bir adres tutmuyorsa, sayfanın kendi sunucusuna dön.
+  //
+  // Neden: kullanıcı daha önce kutuya bir adres yazdıysa (mesela ev ağındaki
+  // 192.168.x.x) o adres tarayıcıda saklı kalıyor ve bulut sunucudan açılan
+  // sayfa bile o ölü adrese bağlanmaya çalışıyordu. Ekranda sadece "sunucu
+  // uyanıyor" yazdığı için sebebi görmek imkânsızdı.
+  // Paketlenmiş sürümde sayfanın sunucusu olmadığı için buraya düşmemeli.
+  const servedFromServer = !isPackagedApp()
+    && (location.protocol === 'http:' || location.protocol === 'https:');
+  if (d.attempt >= 3 && net.url && servedFromServer) {
+    toast('Kayıtlı sunucu adresine ulaşılamadı — bu sayfanın sunucusuna geçiliyor.');
+    $('serverInput').value = '';
+    useOnline('');
+    return;
+  }
+
+  $('connBar').classList.remove('hidden');
+  $('connText').textContent = d.attempt <= 2
+    ? `Bağlanılıyor: ${currentTarget()}`
+    : `${currentTarget()} adresine ulaşılamıyor — ${d.attempt}. deneme.`;
+  setConnStatus(
+    `Bağlanmaya çalışılıyor: ${currentTarget()} (${d.attempt}. deneme). `
+    + 'Ücretsiz sunucu uykudaysa 1 dakikaya kadar sürebilir.',
+  );
+  const b = $('btnPlayOffline');
+  if (b) b.classList.remove('hidden');
+});
+
+net.on(S.WELCOME, (m) => {
+  state.me.id = m.id;
+  state.me.name = m.name;
+  $('nameInput').value = m.name;
+  saveName(m.name);
+
+  // Davet linkiyle gelindiyse doğrudan lobiye gir
+  if (state.pendingJoinCode) {
+    const code = state.pendingJoinCode;
+    state.pendingJoinCode = null;
+    net.send(C.LOBBY_JOIN, { code });
+  }
+});
+
+net.on(S.LOBBY_LIST, (m) => {
+  state.lobbies = m.lobbies || [];
+  if (state.screen === 'menu') renderLobbyList();
+});
+
+net.on(S.LOBBY_STATE, (m) => {
+  const wasInLobby = !!state.lobby;
+  state.lobby = m.lobby;
+  if (!state.inMatch) {
+    if (!wasInLobby) { show('lobby'); renderChat(m.lobby.chat || []); }
+    renderLobby();
+  } else {
+    // Maç sırasında gelen lobi güncellemesi: sadece veriyi sakla
+    if (m.lobby.state === 'post') { /* maç sonu ekranı MATCH_END ile açılıyor */ }
+  }
+});
+
+net.on(S.LOBBY_LEFT, (m) => {
+  state.lobby = null;
+  state.inMatch = false;
+  game.stop();
+  closeSettings();
+  show('menu');
+  renderLobbyList();
+  if (m.reason) toast(m.reason);
+  net.send(C.LOBBY_LIST, {});
+});
+
+net.on(S.CHAT, (m) => {
+  if (state.inMatch) game.pushChat(m);
+  else appendChat(m);
+  if (state.lobby) {
+    state.lobby.chat = (state.lobby.chat || []).concat(m).slice(-40);
+  }
+});
+
+net.on(S.ERROR, (m) => toast(m.message || 'Bir hata oluştu'));
+
+net.on(S.MATCH_START, (m) => {
+  stopCountdown();
+  state.inMatch = true;
+  $('matchEndOverlay').classList.add('hidden');
+  closeSettings();
+  show('game');
+  sfx.unlockAudio();
+  game.start(m);
+});
+
+net.on(S.SNAPSHOT, (m) => game.onSnapshot(m));
+
+// Kazanma anında KAZANDIN yazısının tek başına kaldığı süre.
+const WIN_SOLO_MS = 2000;
+
+net.on(S.MATCH_END, (m) => {
+  if (!state.inMatch) return;
+  closeSettings();
+  // Bu tabloyu gördük; lobide ikinci kez gösterilmesin.
+  state.seenScoreboard = m.scoreboard && m.scoreboard.matchId;
+
+  const kazandim = didIWin(m.scoreboard);
+
+  const tabloyuGoster = () => {
+    if (!state.inMatch) return;          // bu arada lobiye dönmüş olabilir
+    const el = $('matchEndOverlay');
+    el.classList.remove('hidden');
+    el.innerHTML = scoreboardHtml(m.scoreboard, winnerText(m.scoreboard))
+      + `<div class="me-next">Lobiye dönülüyor…</div>
+         <button id="btnBackLobby" class="primary big">LOBİYE DÖN</button></div>`;
+    $('btnBackLobby').onclick = backToLobby;
+  };
+
+  if (kazandim) {
+    // Önce sadece KAZANDIN (+ konfeti). Skor tablosu 2 saniye sonra geliyor —
+    // ikisi aynı anda çıkınca yazı tabloyu örtüyordu.
+    showWinScreen();
+    sfx.sfxWin();
+    clearTimeout(winTabloTimer);
+    winTabloTimer = setTimeout(tabloyuGoster, WIN_SOLO_MS);
+  } else {
+    tabloyuGoster();
+  }
+
+  // Otomatik lobiye dönüş: kazananda tablo 2 sn geç açıldığı için o kadar
+  // ek süre tanıyoruz, tabloya bakacak vakit kalsın.
+  const bekle = Math.max(3000, (m.nextIn || 10000) - 1500) + (kazandim ? WIN_SOLO_MS : 0);
+  setTimeout(() => { if (state.inMatch) backToLobby(); }, bekle);
+});
+
+function backToLobby() {
+  hideWinScreen();
+  if (!state.inMatch) return;
+  state.inMatch = false;
+  game.stop();
+  $('matchEndOverlay').classList.add('hidden');
+  show('lobby');
+  if (state.lobby) { renderLobby(); renderChat(state.lobby.chat || []); }
+}
+
+// ============================================================ arayüz olayları
+function initUi() {
+  // İsim
+  const nameInput = $('nameInput');
+  nameInput.value = savedName() || randomName();
+  nameInput.maxLength = MAX_NAME_LEN;
+  nameInput.addEventListener('change', () => {
+    const n = nameInput.value.trim().slice(0, MAX_NAME_LEN);
+    if (!n) { nameInput.value = state.me.name; return; }
+    saveName(n);
+    net.send(C.RENAME, { name: n });
+    state.me.name = n;
+  });
+  $('btnRandomName').onclick = () => {
+    nameInput.value = randomName();
+    nameInput.dispatchEvent(new Event('change'));
+    sfx.sfxUi();
+  };
+
+  // Lobi kurma paneli
+  const rebuildCreateModes = () => buildModePicker($('modePicker'), state.createMode, (m) => {
+    state.createMode = m;
+    rebuildCreateModes();
+  });
+  rebuildCreateModes();
+
+  const maxIn = $('maxPlayersInput'), botIn = $('botCountInput');
+  maxIn.max = MAX_PLAYERS;
+  const syncCreateSliders = () => {
+    $('maxPlayersVal').textContent = maxIn.value;
+    botIn.max = Math.max(0, Number(maxIn.value) - 1);
+    if (Number(botIn.value) > Number(botIn.max)) botIn.value = botIn.max;
+    $('botCountVal').textContent = botIn.value;
+  };
+  maxIn.addEventListener('input', syncCreateSliders);
+  botIn.addEventListener('input', syncCreateSliders);
+  const seviyeSec = (lv) => {
+    state.createBotLevel = lv;
+    buildLevelPicker($('botLevelPicker'), lv, seviyeSec);
+  };
+  buildLevelPicker($('botLevelPicker'), state.createBotLevel, seviyeSec);
+  syncCreateSliders();
+
+  $('btnCreate').onclick = () => {
+    sfx.unlockAudio(); sfx.sfxUi();
+    net.send(C.LOBBY_CREATE, {
+      name: $('lobbyNameInput').value.trim(),
+      mode: state.createMode,
+      maxPlayers: Number(maxIn.value),
+      botCount: Number(botIn.value),
+      botLevel: state.createBotLevel,
+      private: $('privateInput').checked,
+    });
+  };
+
+  // Bağlantı modu sekmeleri
+  $('tabLocal').onclick = () => { sfx.unlockAudio(); sfx.sfxUi(); cancelAutoFallback(); useLocal(); };
+  $('tabOnline').onclick = () => {
+    // Paketlenmiş sürümde "boş = bu sayfanın sunucusu" diye bir şey yok;
+    // kutuyu bulut sunucuyla dolduruyoruz ki kullanıcı nereye bağlandığını görsün.
+    // Kutuda boş ya da kendi adresi varsa bulut sunucuyu yaz — kullanıcı ne
+    // yazdığını görsün, sessizce başka yere bağlanmayalım.
+    if (isPackagedApp()) $('serverInput').value = resolveServerUrl($('serverInput').value);
+    sfx.unlockAudio(); sfx.sfxUi(); cancelAutoFallback();
+    useOnline($('serverInput').value.trim());
+  };
+  $('btnConnect').onclick = () => { cancelAutoFallback(); useOnline($('serverInput').value.trim()); };
+
+  // Bağlantı beklenirken çıkan "beklemeden çevrimdışı oyna" düğmesi
+  $('btnPlayOffline').onclick = () => {
+    sfx.sfxUi();
+    cancelAutoFallback();
+    useLocal();
+  };
+  $('serverInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('btnConnect').click(); }
+  });
+
+  $('btnRefresh').onclick = () => { net.send(C.LOBBY_LIST, {}); sfx.sfxUi(); };
+  $('btnJoinCode').onclick = () => {
+    const code = $('codeInput').value.trim().toUpperCase();
+    if (!code) { toast('Lobi kodunu gir.'); return; }
+    sfx.unlockAudio();
+    net.send(C.LOBBY_JOIN, { code });
+  };
+  $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoinCode').click(); });
+
+  // Lobi odası
+  $('btnLeave').onclick = () => { net.send(C.LOBBY_LEAVE, {}); sfx.sfxUi(); };
+  $('btnReady').onclick = () => {
+    const me = state.lobby?.members.find((m) => m.id === state.me.id);
+    net.send(C.SET_READY, { ready: !me?.ready });
+    sfx.sfxUi();
+  };
+  $('btnCopyLink').onclick = async () => {
+    const link = $('inviteLink').value;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('Link kopyalandı — arkadaşına gönder');
+    } catch {
+      $('inviteLink').select();
+      toast('Kopyalanamadı — elle seçip kopyala');
+    }
+  };
+
+  $('btnCopyCode').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(state.lobby?.code || '');
+      toast('Kod kopyalandı');
+    } catch { toast('Kopyalanamadı — elle seç'); }
+  };
+  document.querySelectorAll('.team-btn').forEach((b) => {
+    b.onclick = () => { net.send(C.SET_TEAM, { team: Number(b.dataset.team) }); sfx.sfxUi(); };
+  });
+
+  $('lobbyMaxInput').addEventListener('change', (e) => net.send(C.SET_SETTINGS, { maxPlayers: Number(e.target.value) }));
+  $('lobbyMaxInput').addEventListener('input', (e) => { $('lobbyMaxVal').textContent = e.target.value; });
+  $('lobbyBotInput').addEventListener('change', (e) => net.send(C.SET_SETTINGS, { botCount: Number(e.target.value) }));
+  $('lobbyBotInput').addEventListener('input', (e) => { $('lobbyBotVal').textContent = e.target.value; });
+
+  // Sohbet
+  $('chatForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = $('chatInput').value.trim();
+    if (!v) return;
+    net.send(C.LOBBY_CHAT, { text: v });
+    $('chatInput').value = '';
+  });
+
+  const gameChatForm = $('gameChatForm'), gameChatInput = $('gameChatInput');
+  gameChatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = gameChatInput.value.trim();
+    if (v) net.send(C.LOBBY_CHAT, { text: v });
+    gameChatInput.value = '';
+    gameChatForm.classList.add('hidden');
+    input.typing = false;
+  });
+
+  // Oyun içi kısayollar
+  window.addEventListener('keydown', (e) => {
+    if (!state.inMatch) return;
+
+    // Esc: sohbet açıksa onu kapatır, değilse ayarlar panelini açar/kapatır.
+    if (e.code === 'Escape' && !input.typing) {
+      e.preventDefault();
+      if (game.showScoreboard) { game.toggleScoreboard(false); return; }
+      toggleSettings();
+      return;
+    }
+
+    // Tab AÇAR/KAPATIR — basılı tutmak gerekmiyor. Basılı tutma modelinde
+    // tabloyu kaydırıp alttaki oyuncuları okumak imkânsızdı: fareye/tekerleğe
+    // gitmek için tuşu bırakınca tablo kapanıyordu.
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      if (e.repeat) return;                       // tuşu basılı tutmak tekrar açıp kapatmasın
+      game.toggleScoreboard(!game.showScoreboard);
+      return;
+    }
+
+    if (input.typing) {
+      if (e.code === 'Escape') {
+        gameChatInput.value = '';
+        gameChatForm.classList.add('hidden');
+        input.typing = false;
+        gameChatInput.blur();
+      }
+      return;
+    }
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      gameChatForm.classList.remove('hidden');
+      input.typing = true;
+      gameChatInput.focus();
+    }
+  });
+  // Tab artık bırakılınca kapanmıyor (açar/kapatır oldu). Esc ile de kapansın:
+  // tablo açıkken Esc'nin ayarları açması kafa karıştırıcıydı.
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Tab' && state.inMatch) e.preventDefault();
+  });
+
+  // Dokunmatik skor düğmesi
+  input.onScoreboard = (on) => { if (state.inMatch) game.toggleScoreboard(on); };
+
+  // Telefonda kaydırma/zoom jestleri oyunu bozmasın
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('dblclick', (e) => {
+    if (state.inMatch) e.preventDefault();
+  }, { passive: false });
+
+  // İlk kullanıcı etkileşiminde sesi aç (tarayıcı kısıtı)
+  const unlock = () => { sfx.unlockAudio(); window.removeEventListener('pointerdown', unlock); };
+  window.addEventListener('pointerdown', unlock);
+}
+
+// ============================================================ oyun içi ayarlar
+// Maç sırasında sağ üstteki ⚙ düğmesi. Buradan sesi ayarlamak, tam ekrana
+// geçmek ve maçtan çıkmak mümkün. Panel açıkken tuşlar oyuna gitmez —
+// yoksa menüde gezerken karakter yürümeye devam ederdi.
+function closeSettings() {
+  const ov = $('settingsOverlay');
+  if (ov && !ov.classList.contains('hidden')) toggleSettings(false);
+}
+
+function toggleSettings(open) {
+  const ov = $('settingsOverlay');
+  const willOpen = open === undefined ? ov.classList.contains('hidden') : open;
+  ov.classList.toggle('hidden', !willOpen);
+  input.setMenuOpen(willOpen);
+  if (willOpen) sfx.sfxUi();
+}
+
+function requestFullscreen() {
+  try {
+    if (document.fullscreenElement) return document.exitFullscreen();
+    return document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => { /* masaüstünde desteklenmez */ });
+      }
+    });
+  } catch { toast('Tam ekran bu tarayıcıda desteklenmiyor.'); return Promise.resolve(); }
+}
+
+function initSettings() {
+  const soundOn = store('sa_sound') !== '0';
+  const vol = Number(store('sa_volume') || 70);
+
+  $('setSound').checked = soundOn;
+  $('setVolume').value = vol;
+  $('setVolumeVal').textContent = vol;
+  sfx.setEnabled(soundOn);
+  sfx.setVolume(vol / 100);
+
+  $('btnSettings').onclick = () => toggleSettings(true);
+  $('setResume').onclick = () => toggleSettings(false);
+  $('settingsOverlay').onclick = (e) => { if (e.target.id === 'settingsOverlay') toggleSettings(false); };
+
+  $('setSound').onchange = (e) => {
+    const on = e.target.checked;
+    sfx.setEnabled(on);
+    store('sa_sound', on ? '1' : '0');
+    if (on) sfx.sfxUi();
+  };
+
+  $('setVolume').oninput = (e) => {
+    const v = Number(e.target.value);
+    $('setVolumeVal').textContent = v;
+    sfx.setVolume(v / 100);
+    store('sa_volume', String(v));
+  };
+
+  $('setFullscreen').onclick = () => { requestFullscreen(); };
+
+  $('setLeave').onclick = () => {
+    toggleSettings(false);
+    net.send(C.LOBBY_LEAVE, {});
+    sfx.sfxUi();
+  };
+}
+
+// ============================================================ PWA / kurulum
+let deferredInstall = null;
+
+// Tarayıcılar service worker'ı yalnızca güvenli kaynaklarda (https:// ya da
+// localhost) çalıştırır. Ev ağındaki http://192.168.x.x adresinde çevrimdışı
+// önbellek HİÇ kurulmaz; PC kapanınca sayfa ölü bir anlık görüntüye döner.
+// Kullanıcı bunu bilmeden "çevrimdışı çalışmıyor" diye takılıyor — açıkça yaz.
+function isSecureOrigin() {
+  if (location.protocol === 'https:') return true;
+  if (location.protocol === 'file:' || location.protocol === 'capacitor:') return true;
+  return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+}
+
+function showInsecureWarning() {
+  const el = $('insecureWarn');
+  if (!el) return;
+  const servedOverHttp = location.protocol === 'http:';
+  if (!servedOverHttp || isSecureOrigin()) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = '<b>Bu sayfa <code>http://</code> ile açıldı.</b> Tarayıcılar güvensiz '
+    + 'adreslerde çevrimdışı önbelleği kurmaz — yani bilgisayar kapanınca bu sayfa '
+    + '<b>açılmaz</b> ("şu zamandan kalma veri" yazar). İnternetsiz oynamak için '
+    + '<b>savas-arenasi.html</b> dosyasını telefona indirip onu aç: sunucu, internet '
+    + 've kurulum gerekmez.';
+}
+
+// "Güncelle" düğmesi.
+//
+// Neden gerekli: oyun https üzerinden açıldığında kendini tarayıcıya
+// kaydediyor (service worker) ki internetsiz de açılabilsin. Bu iyi bir şey
+// ama sunucuya yeni sürüm yüklenince tarayıcı bir süre eski kopyayı
+// göstermeye devam edebiliyor — "neden değişmedi?" sorusunun sebebi bu.
+// Bu düğme kayıtlı kopyayı ve tüm önbellekleri silip sayfayı sıfırdan yükler.
+// ============================================================ paket güncelleme
+//
+// Paketlenmiş sürüm (APK ya da tek dosya) oyunun tamamını içinde taşır; bu
+// yüzden internetsiz çalışır ama kendiliğinden yenilenmez. Burada açılışta
+// sunucudaki sürüm damgasına bakıp yeni sürüm çıkmışsa kullanıcıya haber
+// veriyoruz. "GÜNCELLE" denince uygulama sunucudaki güncel sürüme geçiyor ve
+// bu tercih hatırlanıyor — bir daha APK kurmak gerekmiyor.
+//
+// İnternet yoksa hiçbir şey olmaz: oyun içindeki kopyayla sessizce açılır.
+const UPDATE_PREF_KEY = 'sa_online_surum';
+const UPDATE_SKIP_KEY = 'sa_surum_atla';
+
+function isPackaged() {
+  return typeof window.__BUILD__ === 'string' && window.__BUILD__.length > 0;
+}
+
+function serverBase() {
+  // Kullanıcı kendi sunucusunu yazdıysa ona bak, yoksa varsayılana.
+  // Paketlenmiş sürümde uygulamanın KENDİ adresi (localhost) asla sunucu
+  // olamaz; eski bir sürümden kalmış olsa bile yok sayıyoruz.
+  const custom = store('sa_server');
+  try {
+    if (custom && !(isPackagedApp() && ownAddress(custom))) return normalizeHttp(custom);
+  } catch { /* bozuk adres: varsayılana düş */ }
+  return UPDATE_SERVER;
+}
+
+function showBuildInfo() {
+  const el = $('buildInfo');
+  if (!el) return;
+  if (!isPackaged()) return;
+  el.classList.remove('hidden');
+  el.textContent = `sürüm ${window.__BUILD__}`;
+}
+
+async function checkForUpdate() {
+  if (!isPackaged()) return;                 // sunucudan açıldıysa zaten günceldir
+  if (navigator.onLine === false) return;    // internet yok, sessizce geç
+
+  const base = serverBase();
+  let uzak;
+  try {
+    const res = await fetch(`${base}/surum.json`, { cache: 'no-store' });
+    if (!res.ok) return;
+    uzak = await res.json();
+  } catch { return; }                        // sunucuya ulaşılamadı: sorun değil
+
+  if (!uzak || typeof uzak.surum !== 'string') return;
+  if (uzak.surum === window.__BUILD__) return;              // zaten güncel
+  if (store(UPDATE_SKIP_KEY) === uzak.surum) return;        // bu sürümü atladı
+
+  markUpdateAvailable();
+  const bar = $('updateOverlay');
+  $('updateText').textContent =
+    `Sunucuda yeni bir sürüm hazır (${uzak.surum.slice(0, 6)}). `
+    + 'Güncelleyince oyunun en yeni hâline geçersin — yeniden kurmana gerek yok.';
+  bar.classList.remove('hidden');
+  $('btnGetUpdate').onclick = () => { guncellemeyiUygula(base, uzak.surum); };
+  $('btnSkipUpdate').onclick = () => {
+    store(UPDATE_SKIP_KEY, uzak.surum);
+    bar.classList.add('hidden');
+  };
+}
+
+// Uygulamanın KENDİNİ güncellemesi (APK'yı yeniden kurmadan).
+//
+// Oyunun tamamı web dosyalarından ibaret; APK bu dosyaları içinde taşıyor.
+// Capgo eklentisi sunucudan yeni dosya paketini (paket.zip) indirip
+// uygulamanın web katmanının yerine koyabiliyor. Yani GÜNCELLE deyince
+// uygulama kendini yeniliyor, Android'in "yükle" ekranı çıkmıyor.
+//
+// Eklentiye JS tarafından import etmiyoruz: derleyici/paketleyici
+// kullanmadığımız için native eklentiye köprü üzerinden erişiyoruz. Eklenti
+// yoksa (tarayıcı, tek dosya sürümü, eski APK) eski davranışa düşüyoruz:
+// sunucudaki web sürümüne git.
+function selfUpdater() {
+  try {
+    const p = window.Capacitor && window.Capacitor.Plugins;
+    return (p && p.CapacitorUpdater) || null;
+  } catch { return null; }
+}
+
+async function guncellemeyiUygula(base, surum) {
+  const btn = $('btnGetUpdate');
+  const yaz = (t) => { if ($('updateText')) $('updateText').textContent = t; };
+  const up = selfUpdater();
+
+  if (!up) {
+    // Eklenti yok: eski yol. Sunucudaki güncel sürüme geç ve bunu hatırla.
+    store(UPDATE_PREF_KEY, '1');
+    location.href = `${base}/`;
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ İNDİRİLİYOR…'; }
+  yaz('Yeni sürüm indiriliyor. Bu bir kereliğine birkaç saniye sürer.');
+  try {
+    const paket = await up.download({ url: `${base}/paket.zip?s=${encodeURIComponent(surum)}`, version: surum });
+    yaz('İndirildi, uygulama yenileniyor…');
+    // set() uygulamayı yeni paketle yeniden başlatır. Yeni sürüm açılınca
+    // notifyAppReady() çağrılmazsa eklenti eski sürüme geri döner — bu bizim
+    // güvenlik ağımız (bkz. initSelfUpdate).
+    await up.set(paket);
+  } catch (e) {
+    console.warn('[güncelleme] paket kurulamadı:', e);
+    yaz('Güncelleme indirilemedi. İnternetini kontrol edip tekrar dene.');
+    if (btn) { btn.disabled = false; btn.textContent = 'GÜNCELLE'; }
+  }
+}
+
+// Yeni paket açıldıktan sonra "ben sağ salim açıldım" demek zorundayız;
+// demezsek eklenti bunu bozuk sürüm sayıp eskiye döner. Bozuk bir paketin
+// telefonu kilitlememesi için bu davranış bilerek açık bırakıldı.
+function initSelfUpdate() {
+  const up = selfUpdater();
+  if (!up) return;
+  try { up.notifyAppReady(); } catch { /* önemli değil */ }
+}
+
+// Daha önce "GÜNCELLE" dendiyse ve internet varsa, uygulama açılışta doğrudan
+// sunucudaki güncel sürüme gider. İnternet yoksa içindeki kopyayla açılır.
+// KRİTİK: burada uygulamanın kendi sayfasının ÜSTÜNE yazıyoruz. Gittiğimiz
+// adres açılmazsa (sunucu uykuda, adres bozuk, mobil veri kapalı) kullanıcının
+// elinde çalışan bir uygulama değil, tarayıcının hata sayfası kalır — ve geri
+// dönüş yolu yoktur, çünkü kendi sayfamızı kapatmışızdır. Kullanıcıda tam da
+// bu oldu: "localhost adresine ulaşılamıyor".
+//
+// O yüzden yönlendirmeden ÖNCE sunucunun gerçekten cevap verdiğini
+// doğruluyoruz. Cevap yoksa hiçbir şey yapmıyoruz: uygulama kendi içindeki
+// kopyayla normal şekilde açılır, oyun oynanır.
+async function preferOnlineIfChosen() {
+  if (!isPackaged()) return false;
+  if (store(UPDATE_PREF_KEY) !== '1') return false;
+  if (navigator.onLine === false) return false;
+
+  const base = serverBase();
+  if (!base || ownAddress(base)) { store(UPDATE_PREF_KEY, ''); return false; }
+
+  try {
+    const iptal = new AbortController();
+    const zaman = setTimeout(() => iptal.abort(), 12000);
+    const r = await fetch(`${base}/surum.json?t=${Date.now()}`, { cache: 'no-store', signal: iptal.signal });
+    clearTimeout(zaman);
+    if (!r.ok) return false;
+    await r.json();                       // gerçekten bizim sunucumuz mu?
+  } catch {
+    return false;                         // ulaşılamadı: kendi kopyamızla aç
+  }
+
+  // Android'de bu satır iki farklı şey yapabilir ve farkı kod içinden
+  // göremiyoruz:
+  //
+  //   • capacitor.config.json'da allowNavigation listesinde olan bir adres →
+  //     uygulamanın KENDİ penceresinde açılır (istediğimiz bu).
+  //   • listede olmayan bir adres → Android bunu "dışarı çıkmak" sayar ve
+  //     CHROME'DA açar. Uygulama arkada kendi sayfasında kalır; kullanıcı da
+  //     "APK'yı açınca beni Chrome'a atıyor" der. Kullanıcıda tam da bu oldu.
+  //
+  // Adresi listeye ekledik, ama eski kurulumlarda liste yok ve tercih
+  // telefonda kayıtlı olduğu için her açılışta tekrarlanır. O yüzden bir
+  // emniyet supabı koyuyoruz: yönlendirme gerçekten olduysa bu sayfa zaten
+  // kapanır. Hâlâ buradaysak yönlendirme DIŞARI gitmiş demektir; tercihi
+  // siliyoruz ki bir daha olmasın ve oyun kendi kopyasıyla açılsın.
+  const oncekiUrl = location.href;
+  location.replace(`${base}/`);
+  setTimeout(() => {
+    if (location.href !== oncekiUrl) return;        // sayfa değişti, sorun yok
+    store(UPDATE_PREF_KEY, '');
+    console.warn('[güncelleme] yönlendirme uygulama dışında açıldı; tercih temizlendi');
+    toast('Güncel sürüm tarayıcıda açıldı. Uygulama kendi kopyasıyla devam ediyor.');
+  }, 2500);
+  return true;
+}
+
+// GÜNCELLE düğmesi artık HER ZAMAN durmuyor: sadece gerçekten güncelleme
+// varken çıkıyor. Sürekli duran bir "güncelle" düğmesi hem menüyü kalabalık
+// yapıyor hem de "acaba eski sürümde miyim?" diye tedirgin ediyordu.
+//
+// "Güncelleme var" iki yerden anlaşılıyor:
+//   • paket sürümde  → sunucudaki damga bizimkinden farklı (checkForUpdate)
+//   • tarayıcıda     → service worker yeni bir sürüm indirip beklemeye geçti
+function showUpdateButton() {
+  const btn = $('btnUpdate');
+  const note = $('downloadNote');
+  if (!btn) return;
+  btn.classList.add('hidden');
+  if (note) note.classList.add('hidden');
+  btn.onclick = () => { forceUpdate(); };
+}
+
+// Güncelleme bulundu: düğmeyi göster.
+function markUpdateAvailable() {
+  const btn = $('btnUpdate');
+  const note = $('downloadNote');
+  if (!btn) return;
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+  btn.classList.remove('hidden');
+  if (note) note.classList.remove('hidden');
+}
+
+async function forceUpdate() {
+  const btn = $('btnUpdate');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Güncelleniyor…'; }
+  setConnStatus('Kayıtlı kopya siliniyor, en yeni sürüm indiriliyor…');
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+    }
+  } catch { /* devam */ }
+
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => {})));
+    }
+  } catch { /* devam */ }
+
+  // Tarayıcının kendi önbelleğini de atlamak için adrese tek seferlik bir
+  // damga ekliyoruz; sayfa açılınca damgayı adres çubuğundan temizliyoruz.
+  const u = new URL(location.href);
+  u.searchParams.set('g', Date.now().toString(36));
+  location.replace(u.toString());
+}
+
+// Güncelleme damgasını adres çubuğunda bırakma (link paylaşılırsa kirletmesin).
+function cleanUpdateStamp() {
+  try {
+    const u = new URL(location.href);
+    if (!u.searchParams.has('g')) return;
+    u.searchParams.delete('g');
+    history.replaceState(null, '', u.pathname + (u.search || '') + u.hash);
+  } catch { /* önemsiz */ }
+}
+
+// Paketlenmiş sürümde (APK / tek dosya) daha önce kurulmuş bir service
+// worker varsa onu SÖK ve önbelleklerini sil.
+//
+// NEDEN: Capacitor uygulamanın dosyalarını `https://localhost` üzerinden
+// veriyor. Burası "güvenli kaynak" sayıldığı için service worker kayıt
+// oluyordu. Sonuç: kullanıcı yeni APK'yı kursa bile ilk açılışta ESKİ
+// sürümün önbellekten gelen dosyaları çalışıyordu — yani düzelttiğimiz
+// hatalar telefonda düzelmiş görünmüyordu.
+//
+// APK'nın service worker'a ihtiyacı da yok: bütün dosyalar zaten uygulamanın
+// içinde, internetsiz açılması için ek bir önbellek katmanına gerek yok.
+// Webview verisi APK güncellemesinde silinmediği için sökme işini burada,
+// her açılışta yapıyoruz.
+async function dropServiceWorker() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      if (regs.length) {
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+        console.info('[paket] eski service worker söküldü');
+      }
+    }
+  } catch { /* önemli değil */ }
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => {})));
+    }
+  } catch { /* önemli değil */ }
+}
+
+function initPwa() {
+  // Service worker: TARAYICIDAN açılan sürümün internetsiz çalışmasını sağlar.
+  // Paketlenmiş sürümde (APK / tek dosya) kaydedilmez — yukarıdaki açıklamaya
+  // bakın. Ayrıca file:// ve http://192.168… üzerinde kayıt zaten hata verir.
+  if (isPackagedApp()) {
+    dropServiceWorker();
+  } else if ('serviceWorker' in navigator && isSecureOrigin() && location.protocol !== 'file:'
+      && location.protocol !== 'capacitor:') {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        if (!reg) return;
+        // Zaten beklemede bir sürüm varsa (önceki ziyaretten kalma)
+        if (reg.waiting && navigator.serviceWorker.controller) markUpdateAvailable();
+        reg.addEventListener('updatefound', () => {
+          const yeni = reg.installing;
+          if (!yeni) return;
+          yeni.addEventListener('statechange', () => {
+            // 'installed' + zaten bir kontrolcü varsa: bu bir GÜNCELLEME.
+            // Kontrolcü yoksa ilk kurulumdur, güncelleme değil.
+            if (yeni.state === 'installed' && navigator.serviceWorker.controller) {
+              markUpdateAvailable();
+            }
+          });
+        });
+      }).catch((err) => {
+        console.warn('Service worker kaydolmadı:', err);
+      });
+    });
+  }
+  initSelfUpdate();
+  showInsecureWarning();
+  showUpdateButton();
+  showBuildInfo();
+  cleanUpdateStamp();
+  checkForUpdate();
+
+  // "Ana ekrana ekle" istemi: tarayıcı izin verdiğinde butonu göster.
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    $('btnInstall').classList.remove('hidden');
+  });
+
+  $('btnInstall').onclick = async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    const { outcome } = await deferredInstall.userChoice;
+    deferredInstall = null;
+    $('btnInstall').classList.add('hidden');
+    if (outcome === 'accepted') toast('Kuruldu — ana ekrandan açabilirsin.');
+  };
+
+  window.addEventListener('appinstalled', () => {
+    $('btnInstall').classList.add('hidden');
+    toast('Uygulama kuruldu.');
+  });
+
+  // Tam ekran (özellikle telefonda çok fark ediyor)
+  $('btnFullscreen').onclick = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => { /* masaüstünde desteklenmez */ });
+      }
+    } catch { toast('Tam ekran bu tarayıcıda desteklenmiyor.'); }
+  };
+
+  // Zaten kurulu olarak açıldıysa kurulum butonunu hiç gösterme
+  if (window.matchMedia('(display-mode: fullscreen)').matches
+    || window.matchMedia('(display-mode: standalone)').matches) {
+    $('btnInstall').classList.add('hidden');
+    $('btnFullscreen').classList.add('hidden');
+  }
+}
+
+// Hata ayıklama kolaylığı: konsoldan durum incelenebilsin.
+window.__game = game;
+window.__sprites = spritesModule;
+window.__render = renderModule;
+window.__net = net;
+window.__state = state;
+
+// Daha önce "GÜNCELLE" denmişse ve internet varsa doğrudan güncel sürüme git.
+// Bu, oyunun geri kalanını kurmadan önce olmalı — boşuna iş yapmayalım.
+// Sunucuya erişilebildiği doğrulanana kadar uygulamayı normal şekilde
+// açıyoruz. Doğrulama başarılı olursa zaten sayfa değişir; olmazsa oyuncu
+// hiçbir şey kaybetmemiş olur.
+initUi();
+initSettings();
+initPwa();
+show('menu');
+startup();
+preferOnlineIfChosen();
+
+// Açılış bekçisine "her şey yüklendi" işareti (bkz. index.html).
+window.__bootOk = true;
+
+function startup() {
+  const params = new URLSearchParams(location.search);
+
+  // Ana ekran kısayolu: ?mod=cevrimdisi doğrudan çevrimdışı açar
+  if (params.get('mod') === 'cevrimdisi') { useLocal(); return; }
+
+  // Davet linki: ?lobi=ABCDE → online moda geç ve o lobiye gir
+  const invite = (params.get('lobi') || '').toUpperCase().trim();
+  if (invite) {
+    state.pendingJoinCode = invite;
+    setConnStatus(`Lobiye bağlanılıyor: ${invite}…`);
+    useOnline('', false);
+    return;
+  }
+
+  // Kayıtlı adres eski bir sürümden kalma "localhost" olabilir; paketlenmiş
+  // sürümde bu adres asla çalışmaz, o yüzden temizleyip kaydını da siliyoruz.
+  const savedServer = store('sa_server');
+  if (isPackagedApp() && savedServer && ownAddress(savedServer)) {
+    store('sa_server', '');
+    $('serverInput').value = '';
+  } else {
+    $('serverInput').value = savedServer;
+  }
+
+  const savedMode = store('sa_mode');
+
+  // İnternet yoksa hiç bekleme, doğrudan çevrimdışı başla.
+  if (navigator.onLine === false) {
+    useLocal(false);
+    setConnStatus('İnternet yok — çevrimdışı moddasın. Oyun bu cihazda çalışıyor.', 'ok');
+    return;
+  }
+
+  // Uygulama olarak paketlendiğinde (Android/APK veya dosyadan açıldığında)
+  // içinde sunucu yoktur; doğrudan çevrimdışı başla.
+  const packaged = !!window.__BUNDLED__
+    || !!window.Capacitor
+    || location.protocol === 'file:'
+    || location.protocol === 'capacitor:';
+  const servedFromServer = location.protocol === 'http:' || location.protocol === 'https:';
+
+  if (packaged || savedMode === 'local' || !servedFromServer) {
+    useLocal(false);
+    return;
+  }
+
+  // İlk açılışta ya da online seçiliyken sunucuyu dene; ulaşılamazsa
+  // kullanıcıyı boşta bırakmayıp çevrimdışı moda geç.
+  useOnline(savedServer, false);
+  autoFallbackTimer = setTimeout(() => {
+    autoFallbackTimer = null;
+    if (net.connected) return;
+    toast('Sunucuya ulaşılamadı — çevrimdışı moda geçildi.');
+    useLocal(false);
+  }, CONNECT_PATIENCE_MS);
+}
+
+
+
+  };
+
+  __defs["/shared/constants.js"] = function (__exp, __req) {
+// Sunucu ve istemcinin ORTAK kullandığı sabitler.
+// Bu dosya hem Node tarafında (import) hem tarayıcıda (<script type="module">) çalışır.
+
+const PROTOCOL_VERSION = 1;
+
+// --- Ağ / zamanlama -------------------------------------------------------
+const TICK_RATE = 30;                 // sunucu simülasyon adımı (Hz)
+const TICK_MS = 1000 / TICK_RATE;
+const SNAPSHOT_RATE = 20;             // sunucudan gönderilen durum paketi (Hz)
+const SNAPSHOT_MS = 1000 / SNAPSHOT_RATE;
+const INPUT_RATE = 60;                // istemcinin girdi gönderme hızı (Hz)
+const INTERP_DELAY_MS = 110;          // diğer oyuncuları geçmişte gösterme gecikmesi
+const MAX_INPUT_DT_MS = 50;           // hile önleme: tek girdi paketinin üst sınırı
+const CLIENT_TIMEOUT_MS = 20000;      // ping cevabı gelmezse düşür
+
+// --- Lobi -----------------------------------------------------------------
+const MAX_PLAYERS = 20;               // BİR LOBİDE EN FAZLA 20 KİŞİ
+const MIN_PLAYERS_TO_START = 1;       // botlarla tek başına da başlanabilsin
+const MAX_NAME_LEN = 16;
+const MAX_LOBBY_NAME_LEN = 24;
+const MAX_CHAT_LEN = 140;
+const LOBBY_CODE_LEN = 5;
+const COUNTDOWN_MS = 5000;            // "başlıyor" geri sayımı
+const POST_MATCH_MS = 12000;          // maç sonu skor tablosu süresi
+
+// --- Oyun modları ---------------------------------------------------------
+// Bir maç 5 dakika sürer.
+const MATCH_MS = 5 * 60 * 1000;
+
+const MODES = {
+  ffa: {
+    id: 'ffa',
+    name: 'Herkes Herkese',
+    short: 'FFA',
+    desc: 'Tek başınasın. İlk hedef sayısına ulaşan kazanır.',
+    teams: false,
+    respawn: true,
+    scoreLimit: 20,
+    timeLimitMs: MATCH_MS,
+    shrinkingZone: false,
+    map: 'arena',
+  },
+  tdm: {
+    id: 'tdm',
+    name: 'Takım Savaşı',
+    short: 'TDM',
+    desc: 'İki takım. Takımının toplam öldürme sayısı hedefe ulaşsın.',
+    teams: true,
+    respawn: true,
+    scoreLimit: 50,
+    timeLimitMs: MATCH_MS,
+    shrinkingZone: false,
+    map: 'arena',
+  },
+  br: {
+    id: 'br',
+    name: 'Son Hayatta Kalan',
+    short: 'BR',
+    desc: 'Tek can. Güvenli alan daralır. Ayakta kalan son kişi kazanır.',
+    teams: false,
+    respawn: false,
+    scoreLimit: 0,
+    timeLimitMs: MATCH_MS,
+    shrinkingZone: true,
+    map: 'royale',
+  },
+};
+const MODE_IDS = Object.keys(MODES);
+const DEFAULT_MODE = 'ffa';
+
+// --- Takımlar -------------------------------------------------------------
+const TEAMS = {
+  0: { id: 0, name: 'Yok', color: '#9aa4b2' },
+  1: { id: 1, name: 'Kızıl Tugay', color: '#ef4a4a', colorDim: '#7d2020' },
+  2: { id: 2, name: 'Mavi Filo', color: '#3f9bff', colorDim: '#1d4a7d' },
+};
+
+// --- Haritalar ------------------------------------------------------------
+// Harita boyutları. Yerleşim oransal üretildiği için bu sayıları
+// değiştirmek yeterli — engeller ve doğuş noktaları kendiliğinden uyar.
+const MAPS = {
+  arena: { w: 3400, h: 2400 },
+  royale: { w: 4600, h: 3400 },
+};
+
+// Geçitlerin en az bu kadar boşluğu olmalı (oyuncu çapı 32 px).
+const MIN_CORRIDOR = 96;
+
+// --- Oyuncu ---------------------------------------------------------------
+const PLAYER_RADIUS = 16;
+const RESPAWN_MS = 3500;
+// Asist penceresi: bir oyuncuya vurduktan sonra bu süre içinde ölürse asist
+// alırsın. Kısa tutuluyor ki maçın başında değdirdiğin biri dakikalar sonra
+// ölünce asist yazılmasın.
+const ASSIST_WINDOW_MS = 9000;
+const SPAWN_PROTECT_MS = 1500;
+
+// --- Doğuş noktaları ------------------------------------------------------
+// Oyuncular haritanın dış çerçevesinde doğmasın: her kenardan haritanın bu
+// kadarlık şeridi doğuşa kapalı. (Kutular hâlâ her yere dağılır.)
+const SPAWN_EDGE_INSET = 0.15;
+// Doğuş seçilirken "düşmandan uzaklık" tek başına köşeleri kazandırıyordu.
+// Merkeze yakınlığa da bu ağırlıkla puan veriyoruz (piksel cinsinden, 1'e
+// yaklaştıkça oyuncular ortaya toplanır).
+const SPAWN_CENTER_BIAS = 0.6;
+// Can kutusu yok: can kendiliğinden yenilenir (2 saniyede 1 can).
+const HP_REGEN_PER_SEC = 0.5;
+
+// Cephane kutuları
+const PICKUP_RADIUS = 18;
+const AMMO_PACK_RESPAWN_MS = 16000;
+const AMMO_PACK_FRACTION = 0.5;   // yedek kapasitesinin yarısını doldurur
+
+// --- Güncelleme -----------------------------------------------------------
+// Paketlenmiş sürüm (APK / tek dosya) açılışta buradaki adresten sürüm
+// bilgisini okur. Sunucuda daha yeni bir sürüm varsa kullanıcıya "Güncelle"
+// çıkarır; bastığında uygulama sunucudaki güncel sürüme geçer ve bunu
+// hatırlar. İnternet yoksa içindeki kopyayla sessizce açılmaya devam eder.
+// Kendi sunucun varsa burayı değiştir.
+const UPDATE_SERVER = 'https://savas-arenasi.onrender.com';
+
+
+// --- Sınıflar -------------------------------------------------------------
+const CLASSES = {
+  komando: {
+    id: 'komando',
+    name: 'Komando',
+    desc: 'Dengeli. Otomatik tüfek. Her duruma uyar.',
+    speed: 218,
+    hp: 100,
+    weapon: 'rifle',
+    color: '#7ee787',
+  },
+  akinci: {
+    id: 'akinci',
+    name: 'Akıncı',
+    desc: 'Çok hızlı, az canlı. Pompalı ile yakın dövüş.',
+    speed: 282,
+    hp: 78,
+    weapon: 'shotgun',
+    color: '#ffd479',
+  },
+  nisanci: {
+    id: 'nisanci',
+    name: 'Keskin Nişancı',
+    desc: 'Yavaş ama tek atışta yıkıcı. Uzun menzil.',
+    speed: 176,
+    hp: 88,
+    weapon: 'sniper',
+    color: '#c39bff',
+  },
+  bombaci: {
+    id: 'bombaci',
+    name: 'Bombacı',
+    desc: 'Bomba atar. Basılı tut, menzili ayarla, bırak.',
+    speed: 202,
+    hp: 94,
+    weapon: 'bomba',
+    color: '#ff9f5a',
+  },
+};
+const CLASS_IDS = Object.keys(CLASSES);
+const DEFAULT_CLASS = 'komando';
+
+// --- Bot zorluğu ----------------------------------------------------------
+// Botların "yeteneği" tek bir sayı (0..1) ve şu üç şeyi birden belirliyor:
+// nişan isabeti, hedefi ne kadar öngördüğü ve ateş etmeden önceki tepki
+// gecikmesi. Bir de görüş menzili var: kolay botlar seni geç fark eder.
+//
+// Aralık veriyoruz, tek sayı değil: aynı zorlukta bile botlar birbirinin
+// kopyası olmasın, aralarında biraz fark bulunsun.
+const BOT_LEVELS = {
+  kolay: {
+    id: 'kolay',
+    name: 'Kolay',
+    desc: 'Geç fark eder, ıskalar',
+    skill: [0.12, 0.34],
+    view: 780,
+    reactMs: 520,
+  },
+  orta: {
+    id: 'orta',
+    name: 'Orta',
+    desc: 'Dengeli rakip',
+    skill: [0.42, 0.68],
+    view: 1150,
+    reactMs: 220,
+  },
+  zor: {
+    id: 'zor',
+    name: 'Zor',
+    desc: 'Çabuk görür, isabetli',
+    skill: [0.78, 0.98],
+    view: 1400,
+    reactMs: 90,
+  },
+};
+const BOT_LEVEL_IDS = Object.keys(BOT_LEVELS);
+const DEFAULT_BOT_LEVEL = 'orta';
+
+// --- Karakterler ----------------------------------------------------------
+// Görünüş seçimi; oynanışı etkilemez. Renkler kodla piksel piksel çizilir
+// (public/js/sprites.js), hazır görsel dosyası yok.
+const CHARACTERS = {
+  kivircik:  { id: 'kivircik',  name: 'Kıvırcık',   style: 'kabarik', hair: '#8a6a3f', skin: '#f0c8a0', jacket: '#2f3a4a', accent: '#e8c15a', eye: '#7fb0d8' },
+  diken:     { id: 'diken',     name: 'Diken',      style: 'dikenli', hair: '#4e8f6d', skin: '#f2d0aa', jacket: '#23262e', accent: '#9fd8b4', eye: '#8fe0b0' },
+  uzunsac:   { id: 'uzunsac',   name: 'Yele',       style: 'uzun',    hair: '#7a5a3a', skin: '#f4d3ae', jacket: '#2b3550', accent: '#cfd8e8', eye: '#6fa8d8' },
+  kasketli:  { id: 'kasketli',  name: 'Kasketli',   style: 'kasket',  hair: '#3b3f5c', skin: '#e9c39c', jacket: '#20242c', accent: '#c8b26a', eye: '#9aa8e0' },
+  karasac:   { id: 'karasac',   name: 'Karasaç',    style: 'uzun',    hair: '#2a2730', skin: '#a9714b', jacket: '#26282f', accent: '#d8b552', eye: '#c8a0d8' },
+  gumus:     { id: 'gumus',     name: 'Gümüş',      style: 'kisa',    hair: '#c9c6bd', skin: '#eec9a6', jacket: '#33383f', accent: '#d9d3c0', eye: '#a8c8e0' },
+  mavipercem:{ id: 'mavipercem',name: 'Mavi Perçem',style: 'kisa',    hair: '#5f7fc4', skin: '#f2d2b2', jacket: '#242a38', accent: '#b8cbe8', eye: '#7fc8e8' },
+  esmer:     { id: 'esmer',     name: 'Esmer',      style: 'kabarik', hair: '#402e20', skin: '#8a5a3a', jacket: '#2c3630', accent: '#e0bb55', eye: '#d8b98f' },
+};
+const CHAR_IDS = Object.keys(CHARACTERS);
+const DEFAULT_CHAR = 'kivircik';
+
+// --- Çalılar --------------------------------------------------------------
+// Çalı bir engel DEĞİLDİR: içinden geçilir, mermi geçer. Ama içindeki oyuncu
+// bu mesafeden uzaktan görünmez. Ateş edince yeri belli olur.
+const BUSH_REVEAL_DIST = 190;
+const BUSH_FIRE_REVEAL_MS = 900;
+
+// Görüş menzili: bu mesafenin ötesindeki düşmanlar sunucudan hiç gönderilmez.
+const VIS_DIST = 1250;
+const VIS_GRACE_MS = 600;     // görüşten çıkan hedef kısa süre daha gönderilir
+const BULLET_VIS = 1500;
+const EVENT_AUDIO_DIST = 1500;   // atış sesinin duyulduğu mesafe
+
+// --- Silahlar -------------------------------------------------------------
+// dmg: mermi başına hasar, fireMs: atışlar arası bekleme, speed: mermi hızı px/s
+// spread: radyan cinsinden rastgele sapma, pellets: tek atıştaki mermi sayısı
+const WEAPONS = {
+  rifle: {
+    id: 'rifle', name: 'Tüfek',
+    dmg: 15, fireMs: 115, speed: 950, spread: 0.045, pellets: 1,
+    mag: 30, reserve: 60, reloadMs: 1700, range: 950, bulletR: 4, auto: true,
+  },
+  shotgun: {
+    id: 'shotgun', name: 'Pompalı',
+    dmg: 12, fireMs: 720, speed: 800, spread: 0.155, pellets: 7,
+    mag: 5, reserve: 15, reloadMs: 2200, range: 430, bulletR: 3, auto: false,
+  },
+  sniper: {
+    id: 'sniper', name: 'Keskin Tüfek',
+    dmg: 82, fireMs: 1250, speed: 1900, spread: 0.004, pellets: 1,
+    mag: 5, reserve: 15, reloadMs: 2500, range: 1700, bulletR: 3, auto: false,
+    laser: true,                      // nereye ateş edeceğini gösteren çizgi
+  },
+  // Bomba diğer silahlardan farklı çalışır: ATEŞ TUŞUNU BASILI TUTARSIN,
+  // menzil dolar, BIRAKINCA atılır. Çarptığı yerde patlar; hasar merkeze
+  // yakınlıkla azalır. Doğrudan isabet hasarı yoktur (dmg: 0) — bütün iş
+  // patlamada.
+  bomba: {
+    id: 'bomba', name: 'Bomba',
+    // Menzil, hasar ve patlama alanı yarıya indirildi; buna karşılık bomba
+    // %50 daha hızlı gidiyor. Böylece bombacı "uzaktan tarla süpüren" değil,
+    // yakın mesafede hızlı iş gören bir sınıf oluyor.
+    dmg: 0, fireMs: 620, speed: 840, spread: 0.02, pellets: 1,
+    mag: 3, reserve: 15, reloadMs: 2400, range: 450, bulletR: 8, auto: false,
+    throwable: true,
+    minRange: 95,         // hiç beklemeden bırakınca bu kadar gider
+    maxRange: 450,        // tam dolunca bu kadar gider
+    chargeMs: 850,        // menzilin dolması bu kadar sürer (bilgisayarda)
+    blastR: 83,           // patlama yarıçapı
+    blastDmg: 37,         // merkezdeki hasar (kenarda %25'e iner)
+  },
+};
+const WEAPON_IDS = Object.keys(WEAPONS);
+
+// --- Daralan alan (Son Hayatta Kalan) ------------------------------------
+const ZONE = {
+  startDelayMs: 18000,   // ilk daralmaya kadar bekleme
+  shrinkMs: 22000,       // bir daralma evresinin süresi
+  holdMs: 8000,          // evreler arası bekleme
+  phases: 6,             // toplam ~3,5 dakikada merkeze iner (maç 5 dk)
+  minRadius: 260,
+  dpsBase: 3,            // alan dışı saniyelik hasar
+  dpsPerPhase: 2.5,
+};
+
+// --- Girdi bit maskesi ----------------------------------------------------
+const IN_UP = 1 << 0;
+const IN_DOWN = 1 << 1;
+const IN_LEFT = 1 << 2;
+const IN_RIGHT = 1 << 3;
+const IN_FIRE = 1 << 4;
+const IN_RELOAD = 1 << 5;
+
+// --- Ölüm sebepleri -------------------------------------------------------
+const DEATH_BULLET = 0;
+const DEATH_ZONE = 1;
+
+const BOT_NAMES = [
+  'Bozkurt', 'Kartal', 'Şahin', 'Yıldırım', 'Fırtına', 'Tunç', 'Demir', 'Alp',
+  'Kılıç', 'Poyraz', 'Batur', 'Serdar', 'Korkut', 'Toygar', 'Atmaca', 'Ejder',
+  'Gökmen', 'Sancak', 'Barbaros', 'Kayra',
+];
+
+__exp.PROTOCOL_VERSION = PROTOCOL_VERSION;
+__exp.TICK_RATE = TICK_RATE;
+__exp.TICK_MS = TICK_MS;
+__exp.SNAPSHOT_RATE = SNAPSHOT_RATE;
+__exp.SNAPSHOT_MS = SNAPSHOT_MS;
+__exp.INPUT_RATE = INPUT_RATE;
+__exp.INTERP_DELAY_MS = INTERP_DELAY_MS;
+__exp.MAX_INPUT_DT_MS = MAX_INPUT_DT_MS;
+__exp.CLIENT_TIMEOUT_MS = CLIENT_TIMEOUT_MS;
+__exp.MAX_PLAYERS = MAX_PLAYERS;
+__exp.MIN_PLAYERS_TO_START = MIN_PLAYERS_TO_START;
+__exp.MAX_NAME_LEN = MAX_NAME_LEN;
+__exp.MAX_LOBBY_NAME_LEN = MAX_LOBBY_NAME_LEN;
+__exp.MAX_CHAT_LEN = MAX_CHAT_LEN;
+__exp.LOBBY_CODE_LEN = LOBBY_CODE_LEN;
+__exp.COUNTDOWN_MS = COUNTDOWN_MS;
+__exp.POST_MATCH_MS = POST_MATCH_MS;
+__exp.MATCH_MS = MATCH_MS;
+__exp.MODES = MODES;
+__exp.MODE_IDS = MODE_IDS;
+__exp.DEFAULT_MODE = DEFAULT_MODE;
+__exp.TEAMS = TEAMS;
+__exp.MAPS = MAPS;
+__exp.MIN_CORRIDOR = MIN_CORRIDOR;
+__exp.PLAYER_RADIUS = PLAYER_RADIUS;
+__exp.RESPAWN_MS = RESPAWN_MS;
+__exp.ASSIST_WINDOW_MS = ASSIST_WINDOW_MS;
+__exp.SPAWN_PROTECT_MS = SPAWN_PROTECT_MS;
+__exp.SPAWN_EDGE_INSET = SPAWN_EDGE_INSET;
+__exp.SPAWN_CENTER_BIAS = SPAWN_CENTER_BIAS;
+__exp.HP_REGEN_PER_SEC = HP_REGEN_PER_SEC;
+__exp.PICKUP_RADIUS = PICKUP_RADIUS;
+__exp.AMMO_PACK_RESPAWN_MS = AMMO_PACK_RESPAWN_MS;
+__exp.AMMO_PACK_FRACTION = AMMO_PACK_FRACTION;
+__exp.UPDATE_SERVER = UPDATE_SERVER;
+__exp.CLASSES = CLASSES;
+__exp.CLASS_IDS = CLASS_IDS;
+__exp.DEFAULT_CLASS = DEFAULT_CLASS;
+__exp.BOT_LEVELS = BOT_LEVELS;
+__exp.BOT_LEVEL_IDS = BOT_LEVEL_IDS;
+__exp.DEFAULT_BOT_LEVEL = DEFAULT_BOT_LEVEL;
+__exp.CHARACTERS = CHARACTERS;
+__exp.CHAR_IDS = CHAR_IDS;
+__exp.DEFAULT_CHAR = DEFAULT_CHAR;
+__exp.BUSH_REVEAL_DIST = BUSH_REVEAL_DIST;
+__exp.BUSH_FIRE_REVEAL_MS = BUSH_FIRE_REVEAL_MS;
+__exp.VIS_DIST = VIS_DIST;
+__exp.VIS_GRACE_MS = VIS_GRACE_MS;
+__exp.BULLET_VIS = BULLET_VIS;
+__exp.EVENT_AUDIO_DIST = EVENT_AUDIO_DIST;
+__exp.WEAPONS = WEAPONS;
+__exp.WEAPON_IDS = WEAPON_IDS;
+__exp.ZONE = ZONE;
+__exp.IN_UP = IN_UP;
+__exp.IN_DOWN = IN_DOWN;
+__exp.IN_LEFT = IN_LEFT;
+__exp.IN_RIGHT = IN_RIGHT;
+__exp.IN_FIRE = IN_FIRE;
+__exp.IN_RELOAD = IN_RELOAD;
+__exp.DEATH_BULLET = DEATH_BULLET;
+__exp.DEATH_ZONE = DEATH_ZONE;
+__exp.BOT_NAMES = BOT_NAMES;
+
+  };
+
+  __defs["/js/sprites.js"] = function (__exp, __req) {
+// Pixel-art karakter üretimi (RPG tarzı yürüyüş sayfası).
+//
+// Hazır görsel dosyası yok: her karakter küçük bir tuvale piksel piksel
+// çizilip önbelleğe alınıyor. Böylece indirilecek dosya olmuyor ve yeni
+// karakter eklemek sadece birkaç renk yazmak demek.
+//
+// Her karakter için 4 yön × 3 kare üretilir:
+//   yönler: 'down' (bize bakar), 'up' (sırtı döner), 'left', 'right'
+//   kareler: 0 sol ayak önde · 1 duruş · 2 sağ ayak önde
+//
+// Karakter DÖNDÜRÜLMEZ; nişan yönünü elindeki silah gösterir.
+
+// Yön başına yürüyüş karesi sayısı. 3 → 8: adımlar arasındaki sıçrama kalmadı.
+// Ayrıca gövdenin inip kalkması artık kareye gömülü DEĞİL; çizim sırasında
+// sürekli bir sinüs olarak uygulanıyor (bkz. render.js), böylece geçişler
+// kare sayısından bağımsız olarak yumuşak.
+const WALK_FRAMES = 8;
+
+const SPRITE_W = 32;
+const SPRITE_H = 36;
+
+const cache = new Map();
+
+// --- küçük çizim yardımcıları --------------------------------------------
+function rectPx(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+
+function disc(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color;
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      if (dx * dx + dy * dy <= r * r) ctx.fillRect(x, y, 1, 1);
+    }
+  }
+}
+
+function shade(hex, amount) {
+  if (!hex.startsWith('#')) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v) => Math.max(0, Math.min(255, v + amount));
+  return `rgb(${ch((n >> 16) & 255)},${ch((n >> 8) & 255)},${ch(n & 255)})`;
+}
+
+// --- kafa ölçüleri --------------------------------------------------------
+const HEAD_CX = 16;
+const HEAD_CY = 11;
+const HEAD_R = 5.4;
+const FACE_TOP = 9;        // saç bu çizginin ÜSTÜNDE kalır, altı yüzdür
+
+// --- saç biçimleri --------------------------------------------------------
+// Her biçim kafanın üstünü kaplar; alt kenarı sonradan temizlenip düzgün bir
+// saç çizgisi elde edilir (yoksa saç gözlerin üstüne düşüp yüzü bozuyor).
+function drawHair(ctx, style, dir, colors) {
+  const { hair, hairDark, hairLight } = colors;
+  const CX = HEAD_CX;
+
+  // ortak taban: kafayı saran kalotta
+  disc(ctx, CX, HEAD_CY - 1.6, HEAD_R + 1.0, hairDark);
+  disc(ctx, CX, HEAD_CY - 2.0, HEAD_R + 0.3, hair);
+
+  if (style === 'kabarik') {
+    // düzenli üç kabarıklık — dağınık değil, simetrik
+    disc(ctx, CX - 4.4, HEAD_CY - 3.4, 2.9, hair);
+    disc(ctx, CX + 4.4, HEAD_CY - 3.4, 2.9, hair);
+    disc(ctx, CX, HEAD_CY - 6.2, 3.1, hair);
+    disc(ctx, CX - 5.4, HEAD_CY - 0.6, 2.3, hair);
+    disc(ctx, CX + 5.4, HEAD_CY - 0.6, 2.3, hair);
+    disc(ctx, CX - 3.6, HEAD_CY - 4.4, 1.7, hairLight);
+    disc(ctx, CX + 0.6, HEAD_CY - 6.0, 1.4, hairLight);
+  } else if (style === 'dikenli') {
+    for (let i = -2; i <= 2; i++) {
+      const x = CX + i * 2.6;
+      const hgt = i === 0 ? 7 : 5 - Math.abs(i);
+      rectPx(ctx, x - 1, HEAD_CY - 5 - hgt, 2, hgt + 3, hair);
+      rectPx(ctx, x - 1, HEAD_CY - 5 - hgt, 2, 1, hairLight);
+    }
+    disc(ctx, CX - 5.2, HEAD_CY - 1.4, 2.3, hair);
+    disc(ctx, CX + 5.2, HEAD_CY - 1.4, 2.3, hair);
+  } else if (style === 'uzun') {
+    // yanlardan omuzlara inen iki tutam
+    rectPx(ctx, CX - 7, HEAD_CY - 3, 3, 13, hairDark);
+    rectPx(ctx, CX + 4, HEAD_CY - 3, 3, 13, hairDark);
+    rectPx(ctx, CX - 7, HEAD_CY - 3, 3, 11, hair);
+    rectPx(ctx, CX + 4, HEAD_CY - 3, 3, 11, hair);
+    disc(ctx, CX, HEAD_CY - 5.4, 3.0, hair);
+    disc(ctx, CX - 1.2, HEAD_CY - 5.6, 1.6, hairLight);
+  } else if (style === 'kisa') {
+    rectPx(ctx, CX - 6, HEAD_CY - 5, 12, 3, hair);
+    rectPx(ctx, CX - 6, HEAD_CY - 5, 12, 1, hairLight);
+    disc(ctx, CX - 5.0, HEAD_CY - 1.4, 2.2, hair);
+    disc(ctx, CX + 5.0, HEAD_CY - 1.4, 2.2, hair);
+  } else {                                   // 'kasket'
+    disc(ctx, CX, HEAD_CY - 3.4, HEAD_R + 0.9, hairDark);
+    disc(ctx, CX, HEAD_CY - 3.6, HEAD_R + 0.2, hair);
+    rectPx(ctx, CX - 7, HEAD_CY - 2, 14, 2, hairDark);       // siperlik
+    rectPx(ctx, CX - 7, HEAD_CY - 2, 14, 1, hairLight);
+  }
+}
+
+// Saç çizgisini düzelt: kafanın FACE_TOP altındaki kısmını yeniden ten yap.
+// Kenarlardaki tutamlara dokunmaz, sadece yüz alanını açar.
+function carveFace(ctx, skin, skinDark) {
+  const CX = HEAD_CX;
+  for (let y = FACE_TOP; y <= HEAD_CY + HEAD_R; y++) {
+    for (let x = CX - 4; x <= CX + 3; x++) {
+      const dx = x + 0.5 - CX, dy = y + 0.5 - HEAD_CY;
+      if (dx * dx + dy * dy > HEAD_R * HEAD_R) continue;
+      ctx.fillStyle = (y >= HEAD_CY + HEAD_R - 1.6) ? skinDark : skin;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+}
+
+// --- tek bir kare ---------------------------------------------------------
+function drawFrame(o, dir, frame) {
+  const c = document.createElement('canvas');
+  c.width = SPRITE_W; c.height = SPRITE_H;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  const colors = {
+    hair: o.hair,
+    hairDark: shade(o.hair, -45),
+    hairLight: shade(o.hair, 36),
+  };
+  const jacket = o.jacket;
+  const jacketDark = shade(jacket, -38);
+  const jacketLight = shade(jacket, 26);
+  const skin = o.skin;
+  const skinDark = shade(skin, -36);
+  const boot = '#221a13';
+  const side = dir === 'left' || dir === 'right';
+
+  // 8 kareli yürüyüş döngüsü. Bacak açısı sinüs eğrisinden türetiliyor:
+  // uçlarda yavaşlayıp ortada hızlanıyor — gözün "yumuşak" dediği şey bu.
+  //   kare:  0   1   2   3   4   5   6   7
+  // LEG : hangi bacak önde (işaret) ve ne kadar açık (büyüklük)
+  // LIFT: arkadaki ayağın yerden kalkması — böylece "kalkıyor" ve "iniyor"
+  //       kareleri birbirinin aynısı olmuyor, döngü 8 ayrı poz üretiyor
+  const LEG = [1, 2, 3, 2, -1, -2, -3, -2][frame] || 0;
+  const ARM = [-1, -2, -3, -2, 1, 2, 3, 2][frame] || 0;
+  const LIFT = [0, 2, 1, 0, 0, 2, 1, 0][frame] || 0;
+  const BOB = 0;   // gövde inişi çizimde sürekli olarak uygulanıyor
+
+  const legShift = LEG;
+  const armSwing = ARM;
+
+  const CX = 16;
+  const bodyW = side ? 8 : 11;
+  const bodyX = CX - bodyW / 2;
+
+  // --- bacaklar + botlar ---------------------------------------------------
+  const legY = 25;
+  if (side) {
+    // öndeki bacak yere basar, arkadaki LIFT kadar kalkar
+    rectPx(ctx, CX - 3 + legShift, legY, 3, 6, jacketDark);
+    rectPx(ctx, CX + 0 - legShift, legY - LIFT, 3, 6, shade(jacket, -52));
+    rectPx(ctx, CX - 3 + legShift, legY + 6, 4, 3, boot);
+    rectPx(ctx, CX + 0 - legShift, legY + 6 - LIFT, 4, 3, shade(boot, -6));
+  } else {
+    // Önden/arkadan bakışta adım, bacakların ileri geri kaymasıyla okunur.
+    // Geride kalan bacak LIFT kadar kalkar — "kalkıyor" ve "iniyor" kareleri
+    // böylece birbirinden ayrılıyor.
+    const l = Math.max(0, legShift), r = Math.max(0, -legShift);
+    const liftL = legShift < 0 ? LIFT : 0;      // sol bacak arkadaysa kalkar
+    const liftR = legShift < 0 ? 0 : LIFT;      // sağ bacak arkadaysa kalkar
+    rectPx(ctx, CX - 4, legY + l - liftL, 3, 6, jacketDark);
+    rectPx(ctx, CX + 1, legY + r - liftR, 3, 6, jacketDark);
+    rectPx(ctx, CX - 4, legY + 6 + l - liftL, 3, 3, boot);
+    rectPx(ctx, CX + 1, legY + 6 + r - liftR, 3, 3, boot);
+  }
+
+  // Buradan sonrası gövde ve baş: adım çöküşünde hepsi birlikte 1 px iniyor.
+  // Bacaklar/botlar yukarıda çizildi, onlar yere basılı kalıyor.
+  ctx.save();
+  ctx.translate(0, BOB);
+
+  // --- gövde ---------------------------------------------------------------
+  rectPx(ctx, bodyX - 1, 16, bodyW + 2, 10, jacketDark);
+  rectPx(ctx, bodyX, 16, bodyW, 9, jacket);
+  rectPx(ctx, bodyX, 16, bodyW, 1, jacketLight);
+  if (!side) rectPx(ctx, CX - 1, 18, 2, 7, jacketDark);
+
+  // --- kollar --------------------------------------------------------------
+  if (side) {
+    rectPx(ctx, CX - 1, 17 + armSwing, 4, 7, jacketDark);
+    rectPx(ctx, CX - 1, 23 + armSwing, 3, 3, skin);
+  } else {
+    rectPx(ctx, bodyX - 3, 17 + armSwing, 3, 7, jacketDark);
+    rectPx(ctx, bodyX + bodyW, 17 - armSwing, 3, 7, jacketDark);
+    rectPx(ctx, bodyX - 3, 23 + armSwing, 3, 3, skin);
+    rectPx(ctx, bodyX + bodyW, 23 - armSwing, 3, 3, skin);
+  }
+
+  // --- yaka detayı ---------------------------------------------------------
+  if (dir !== 'up') {
+    rectPx(ctx, CX - 3, 15, 6, 2, o.accent);
+    rectPx(ctx, CX - 3, 15, 6, 1, shade(o.accent, 45));
+  }
+
+  // --- kafa ----------------------------------------------------------------
+  rectPx(ctx, CX - 2, 14, 4, 2, skinDark);                 // boyun
+  disc(ctx, HEAD_CX, HEAD_CY, HEAD_R + 0.6, skinDark);
+  disc(ctx, HEAD_CX, HEAD_CY, HEAD_R, skin);
+
+  // --- saç -----------------------------------------------------------------
+  drawHair(ctx, o.style, dir, colors);
+
+  if (dir === 'up') {
+    // Sırtı dönük: yüz yok, saç kafayı tümüyle kaplar
+    disc(ctx, HEAD_CX, HEAD_CY, HEAD_R + 0.4, colors.hair);
+    disc(ctx, HEAD_CX, HEAD_CY - 1.2, HEAD_R - 1.4, colors.hairLight);
+  } else {
+    // Saç çizgisini temizle: gözler ve yüz açıkta kalsın
+    carveFace(ctx, skin, skinDark);
+
+    if (dir === 'down') {
+      // gözler: beyaz + koyu bebek — küçük boyutta net okunur
+      rectPx(ctx, HEAD_CX - 4, 10, 3, 3, '#f3efe6');
+      rectPx(ctx, HEAD_CX + 1, 10, 3, 3, '#f3efe6');
+      rectPx(ctx, HEAD_CX - 3, 11, 2, 2, '#2b2119');
+      rectPx(ctx, HEAD_CX + 2, 11, 2, 2, '#2b2119');
+      rectPx(ctx, HEAD_CX - 3, 11, 1, 1, o.eye);
+      rectPx(ctx, HEAD_CX + 2, 11, 1, 1, o.eye);
+      // kaşlar
+      rectPx(ctx, HEAD_CX - 4, 9, 3, 1, colors.hairDark);
+      rectPx(ctx, HEAD_CX + 1, 9, 3, 1, colors.hairDark);
+      // ağız
+      rectPx(ctx, HEAD_CX - 1, 14, 2, 1, skinDark);
+    } else {
+      // yandan tek göz
+      const ex = dir === 'right' ? HEAD_CX + 1 : HEAD_CX - 4;
+      rectPx(ctx, ex, 10, 3, 3, '#f3efe6');
+      rectPx(ctx, dir === 'right' ? ex + 1 : ex, 11, 2, 2, '#2b2119');
+      rectPx(ctx, dir === 'right' ? ex + 1 : ex, 11, 1, 1, o.eye);
+      rectPx(ctx, ex, 9, 3, 1, colors.hairDark);
+      // burun
+      rectPx(ctx, dir === 'right' ? HEAD_CX + 4 : HEAD_CX - 5, 12, 1, 1, skinDark);
+    }
+  }
+
+  ctx.restore();
+  return c;
+}
+
+/**
+ * Bir karakterin tüm yön/kare setini üretir (ve önbelleğe alır).
+ * @param {object} o { jacket, hair, skin, accent, eye, style }
+ */
+function getCharacterSprites(o) {
+  const key = `${o.jacket}|${o.hair}|${o.skin}|${o.accent}|${o.eye}|${o.style}`;
+  let set = cache.get(key);
+  if (set) return set;
+
+  set = {};
+  for (const dir of ['down', 'up', 'left', 'right']) {
+    set[dir] = [];
+    for (let f = 0; f < WALK_FRAMES; f++) set[dir].push(drawFrame(o, dir, f));
+  }
+  cache.set(key, set);
+  return set;
+}
+
+/**
+ * Karakterin eline silah çizer (önizleme ve lobi kartları için).
+ * Oyun içinde silah nişan açısına göre döndürülerek ayrıca çizilir; burada
+ * yana bakan sabit bir duruş yeterli.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x sol üst köşe (karakter kutusunun)
+ * @param {number} y sol üst köşe
+ * @param {number} scale karakterin çizim ölçeği (1 = 32x36 piksel)
+ * @param {string} wepId 'rifle' | 'shotgun' | 'sniper'
+ * @param {string} skin el rengi
+ */
+function drawWeaponOnPreview(ctx, x, y, scale, wepId, skin) {
+  const S = scale;
+  // eller gövdenin önünde, bel hizasında
+  const hx = x + 19 * S;
+  const hy = y + 21 * S;
+  const len = wepId === 'sniper' ? 15 : wepId === 'shotgun' ? 11 : 12;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  // dipçik
+  ctx.fillStyle = '#3a2b1e';
+  ctx.fillRect(hx - 5 * S, hy - 1 * S, 5 * S, 3 * S);
+  // namlu
+  ctx.fillStyle = '#20272f';
+  ctx.fillRect(hx, hy - 1.5 * S, len * S, 3 * S);
+  ctx.fillStyle = '#3d4854';
+  ctx.fillRect(hx, hy - 1.5 * S, len * S, 1 * S);
+  // şarjör
+  ctx.fillStyle = '#2a323b';
+  ctx.fillRect(hx + 2 * S, hy + 1.5 * S, 3 * S, 3 * S);
+  if (wepId === 'sniper') {
+    ctx.fillStyle = '#151a20';
+    ctx.fillRect(hx + 4 * S, hy - 3.5 * S, 5 * S, 2 * S);
+  }
+  // eller
+  ctx.fillStyle = skin;
+  ctx.fillRect(hx, hy - 2 * S, 2 * S, 4 * S);
+  ctx.fillRect(hx + (len - 4) * S, hy - 2 * S, 2 * S, 4 * S);
+  ctx.restore();
+}
+
+/** Nişan açısından bakış yönünü seçer (RPG sayfasındaki 4 yön). */
+function dirFromAngle(a) {
+  const cos = Math.cos(a), sin = Math.sin(a);
+  if (Math.abs(cos) >= Math.abs(sin)) return cos >= 0 ? 'right' : 'left';
+  return sin >= 0 ? 'down' : 'up';
+}
+
+__exp.WALK_FRAMES = WALK_FRAMES;
+__exp.SPRITE_W = SPRITE_W;
+__exp.SPRITE_H = SPRITE_H;
+__exp.getCharacterSprites = getCharacterSprites;
+__exp.drawWeaponOnPreview = drawWeaponOnPreview;
+__exp.dirFromAngle = dirFromAngle;
+
+  };
+
+  __defs["/shared/protocol.js"] = function (__exp, __req) {
+// İstemci <-> sunucu mesaj tipleri. Tek kaynak: iki taraf da buradan okur.
+
+// İstemci -> Sunucu
+const C = {
+  HELLO: 'hello',              // { name, version }
+  LOBBY_LIST: 'lobbyList',     // {}
+  LOBBY_CREATE: 'lobbyCreate', // { name, mode, maxPlayers, private, botCount }
+  LOBBY_JOIN: 'lobbyJoin',     // { id } veya { code }
+  LOBBY_LEAVE: 'lobbyLeave',   // {}
+  LOBBY_CHAT: 'lobbyChat',     // { text }
+  SET_READY: 'setReady',       // { ready }
+  SET_CLASS: 'setClass',       // { cls }
+  SET_CHAR: 'setChar',         // { char }
+  SET_TEAM: 'setTeam',         // { team }
+  SET_SETTINGS: 'setSettings', // { mode?, maxPlayers?, botCount?, private? }  (sadece host)
+  KICK: 'kick',                // { id }  (sadece host)
+  START: 'start',              // {}      (sadece host)
+  INPUT: 'i',                  // { s, d, k, a }  seq, dtMs, keys, aim
+  PONG: 'pong',                // { t }
+  RENAME: 'rename',            // { name }
+};
+
+// Sunucu -> İstemci
+const S = {
+  WELCOME: 'welcome',          // { id, name, config }
+  LOBBY_LIST: 'lobbyList',     // { lobbies: [...] }
+  LOBBY_STATE: 'lobbyState',   // { lobby }
+  LOBBY_LEFT: 'lobbyLeft',     // { reason }
+  CHAT: 'chat',                // { from, text, sys }
+  ERROR: 'error',              // { message }
+  MATCH_START: 'matchStart',   // { map, mode, you, players }
+  SNAPSHOT: 'snap',            // ana durum paketi
+  EVENTS: 'ev',                // anlık olaylar (snapshot içinde de gelir)
+  MATCH_END: 'matchEnd',       // { scoreboard, winner }
+  PING: 'ping',                // { t }
+};
+
+// --- Durum paketi (snapshot) biçimi --------------------------------------
+// Bant genişliğini düşürmek için varlıklar nesne değil DÜZ SAYI DİZİSİ olarak
+// gönderilir. Alan sayıları aşağıda; sıralama iki tarafta da aynıdır.
+//
+// snap.ps : her oyuncu için PS_FIELDS adet sayı
+//   [ id, x, y, aim*100, hp, maxHp, sınıfIndeksi, bayraklar ]
+// snap.bs : her mermi için BS_FIELDS adet sayı
+//   [ id, x, y, açı*100, silahIndeksi ]
+// snap.sc.ps : her oyuncu için SC_FIELDS adet sayı
+//   [ id, öldürme, ölüm, hasar, ayaktaMı, asist ]
+//
+// bayraklar: 1=hayatta, 2=doğuş koruması, 4=şarjör dolduruyor, 8=namlu alevi,
+//            16=çalıda gizli
+const PS_FIELDS = 8;
+const BS_FIELDS = 5;
+const SC_FIELDS = 6;
+
+const F_ALIVE = 1;
+const F_PROTECTED = 2;
+const F_RELOADING = 4;
+const F_MUZZLE = 8;
+const F_HIDDEN = 16;
+
+__exp.C = C;
+__exp.S = S;
+__exp.PS_FIELDS = PS_FIELDS;
+__exp.BS_FIELDS = BS_FIELDS;
+__exp.SC_FIELDS = SC_FIELDS;
+__exp.F_ALIVE = F_ALIVE;
+__exp.F_PROTECTED = F_PROTECTED;
+__exp.F_RELOADING = F_RELOADING;
+__exp.F_MUZZLE = F_MUZZLE;
+__exp.F_HIDDEN = F_HIDDEN;
+
+  };
+
+  __defs["/js/net.js"] = function (__exp, __req) {
+// Bağlantı katmanı.
+//
+// İki taşıma biçimi var ve ikisi de AYNI mesajları taşır:
+//   • WsTransport    — uzaktaki sunucuya WebSocket ile
+//   • LocalTransport — oyun sunucusunun tarayıcı içinde çalıştığı çevrimdışı mod
+//
+// Net sınıfı ikisinin önünde duran ince bir vekildir; oyun kodu hangi taşımanın
+// kullanıldığını bilmez, bu yüzden çevrimdışı ve online oynanış birebir aynıdır.
+
+const { C } = __req("/shared/protocol.js");
+const { decodeSnapshot } = __req("/shared/binary.js");
+
+class Net {
+  constructor() {
+    this.handlers = new Map();
+    this.impl = null;
+    this.mode = null;          // 'local' | 'online'
+    this.ping = 0;
+    this.url = '';
+  }
+
+  on(type, fn) {
+    if (!this.handlers.has(type)) this.handlers.set(type, []);
+    this.handlers.get(type).push(fn);
+    return this;
+  }
+
+  emit(type, data) {
+    const list = this.handlers.get(type);
+    if (list) for (const fn of list) fn(data);
+  }
+
+  get connected() { return !!(this.impl && this.impl.connected); }
+
+  async connectLocal() {
+    this.disconnect();
+    // Simülasyon kodu yalnızca çevrimdışı oynanınca yüklenir.
+    const { LocalTransport } = await Promise.resolve(__req("/js/local.js"));
+    this.mode = 'local';
+    this.url = '';
+    this.ping = 0;
+    this.impl = new LocalTransport(this);
+    this.impl.start();
+  }
+
+  connectRemote(url) {
+    this.disconnect();
+    this.mode = 'online';
+    this.url = url || '';
+    this.impl = new WsTransport(this, url);
+    this.impl.start();
+  }
+
+  disconnect() {
+    if (this.impl) { try { this.impl.stop(); } catch { /* yok say */ } }
+    this.impl = null;
+    this.mode = null;
+  }
+
+  send(type, payload = {}) {
+    if (this.impl) this.impl.send(type, payload);
+  }
+}
+
+// --- Uzak sunucu (WebSocket) ---------------------------------------------
+class WsTransport {
+  constructor(net, url) {
+    this.net = net;
+    this.url = url;
+    this.ws = null;
+    this.connected = false;
+    this.retry = 0;
+    this.retryTimer = null;
+    this.queue = [];
+    this.stopped = false;
+  }
+
+  // "sunucu.com" → "wss://sunucu.com" gibi kullanıcı dostu dönüşüm
+  resolveUrl() {
+    let u = (this.url || '').trim();
+    if (!u) {
+      // Sayfanın kendi sunucusu. file:// gibi sunucusuz bir yerden açıldıysa
+      // location.host BOŞTUR; böyle bir adrese bağlanmak imkânsızdır, o yüzden
+      // burada açıkça hata veriyoruz (sessizce sonsuz denemek yerine).
+      if (!location.host) throw new Error('Sunucu adresi yok');
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}`;
+    }
+    if (u.startsWith('ws://') || u.startsWith('wss://')) return u;
+    if (u.startsWith('https://')) return `wss://${u.slice(8)}`;
+    if (u.startsWith('http://')) return `ws://${u.slice(7)}`;
+    // Şema yoksa: yerel ağ adresleri ws, diğerleri wss
+    const local = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u);
+    return `${local ? 'ws' : 'wss'}://${u.replace(/\/+$/, '')}`;
+  }
+
+  start() {
+    this.stopped = false;
+    let target;
+    try {
+      target = this.resolveUrl();
+    } catch (e) {
+      this.net.emit('_error', { message: e.message || 'Adres anlaşılamadı' });
+      return;
+    }
+
+    try {
+      this.ws = new WebSocket(target);
+      // Durum paketleri ikili geliyor; varsayılan Blob yerine doğrudan
+      // ArrayBuffer isteyelim ki senkron çözebilelim.
+      this.ws.binaryType = 'arraybuffer';
+    } catch {
+      this.scheduleRetry();
+      return;
+    }
+
+    this.ws.onopen = () => {
+      this.connected = true;
+      this.retry = 0;
+      this.net.emit('_open');
+      for (const m of this.queue) this.ws.send(m);
+      this.queue.length = 0;
+    };
+
+    this.ws.onmessage = (e) => {
+      let msg;
+      if (typeof e.data !== 'string') {
+        // İkili durum paketi. Çözülemezse paketi atıyoruz: bir sonraki
+        // paket 50 ms sonra geliyor, oyun kendini toparlar.
+        try {
+          msg = decodeSnapshot(new Uint8Array(e.data));
+        } catch (err) {
+          if (!this.binHata) { this.binHata = true; console.warn('ikili paket çözülemedi:', err); }
+          return;
+        }
+        this.net.emit(msg.ty, msg);
+        return;
+      }
+      try { msg = JSON.parse(e.data); } catch { return; }
+      // Gecikme ölçümü sunucuda yapılır; sonucu durum paketiyle geri alıyoruz.
+      if (msg.ty === 'ping') { this.send(C.PONG, { t: msg.t }); return; }
+      this.net.emit(msg.ty, msg);
+    };
+
+    this.ws.onclose = () => {
+      this.connected = false;
+      this.net.emit('_close');
+      if (!this.stopped) this.scheduleRetry();
+    };
+
+    this.ws.onerror = () => { /* onclose zaten tetiklenecek */ };
+  }
+
+  scheduleRetry() {
+    if (this.retryTimer || this.stopped) return;
+    this.retry++;
+    const delay = Math.min(8000, 500 * 2 ** Math.min(4, this.retry));
+    this.net.emit('_retry', { in: delay, attempt: this.retry });
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (!this.stopped) this.start();
+    }, delay);
+  }
+
+  send(type, payload) {
+    // Sunucuya ikili paket çözebildiğimizi tanışma mesajında söylüyoruz.
+    // Bu bir TAŞIMA yeteneğidir, oyun kuralı değil — o yüzden burada eklenir.
+    if (type === C.HELLO) payload = { ...payload, bin: 1 };
+    const data = JSON.stringify({ ty: type, ...payload });
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(data);
+    else if (this.queue.length < 40) this.queue.push(data);
+  }
+
+  stop() {
+    this.stopped = true;
+    this.connected = false;
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this.ws) { try { this.ws.close(); } catch { /* yok say */ } this.ws = null; }
+  }
+}
+
+__exp.Net = Net;
+
+  };
+
+  __defs["/shared/binary.js"] = function (__exp, __req) {
+// Durum paketinin (snapshot) İKİLİ biçimi.
+//
+// NEDEN: Sunucudan çıkan verinin %100'ü durum paketleridir. JSON olarak
+// gönderilince baytların çoğu oyun bilgisi değil AMBALAJ olur — alan adları,
+// tırnaklar, virgüller, sayıların tek tek rakamları. `1450` yazmak metinde
+// 4 bayt tutar, ikilide 2. 20 kişilik bir maçta bu fark saatte gigabaytlara
+// çıkıyor ve doğrudan sunucu faturasına yazılıyor.
+//
+// TASARIM İLKESİ — bu dosya SADECE bir ambalajdır:
+//   coz(kodla(x)) her zaman x ile BİREBİR AYNI nesneyi vermelidir.
+// Hassasiyet düşürülmez, alan atılmaz, yuvarlama yapılmaz. Paket üreticisi
+// (game.js snapshotFor) neyi hangi hassasiyette ürettiyse o korunur. Böylece
+// oyun kodunun hiçbir yerinde "ikili mi geldi, JSON mu geldi" sorusu sorulmaz
+// ve iki taşıma da tamamen aynı davranır. test/binary.mjs bu eşitliği rastgele
+// üretilmiş on binlerce paketle sınar.
+//
+// GÜVENLİK AĞI: beklenmedik bir değer (menzil dışı sayı, tanınmayan olay tipi)
+// gelirse kodlayıcı HATA FIRLATIR, sessizce bozuk paket üretmez. Çağıran taraf
+// (hub.send) bunu yakalayıp o paketi JSON olarak gönderir. Yani en kötü ihtimal
+// "bant kazancı olmadı", asla "oyuncular ışınlandı" değildir.
+
+const { CLASS_IDS, WEAPON_IDS, CHAR_IDS, CLASSES, WEAPONS } = __req("/shared/constants.js");
+
+const BIN_VERSION = 1;
+const BIN_SNAPSHOT = 1;          // ilk bayt: bu paketin türü
+
+// Paket içi bayrak bitleri
+const HAS_EV = 1, HAS_ZN = 2, HAS_SC = 4, HAS_PE = 8, HAS_TEAM = 16;
+
+// Olay tipleri — sıralama ASLA değişmemeli (istemciyle ortak sözlük).
+// YENİ TİP SONA EKLENİR — sıra değişirse eski istemciler yanlış çözer.
+const EV_IDS = ['join', 'spawn', 'shot', 'imp', 'kill', 'pk', 'zone', 'boom'];
+const PE_IDS = ['dry', 'hit', 'hurt', 'pick'];
+
+// kill.w alanı silah adı ya da 'zone' olabilir; 'zone' için ayrı numara.
+const W_ZONE = 254;
+// kill olayında konum gizlenmiş olabilir (uzaktaki oyuncuya sızmasın diye).
+const KILL_HAS_POS = 1;
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+// --- Yazıcı ---------------------------------------------------------------
+class Yazici {
+  constructor(kapasite = 4096) {
+    this.buf = new Uint8Array(kapasite);
+    this.dv = new DataView(this.buf.buffer);
+    this.p = 0;
+  }
+
+  yer(n) {
+    if (this.p + n <= this.buf.length) return;
+    let k = this.buf.length * 2;
+    while (k < this.p + n) k *= 2;
+    const yeni = new Uint8Array(k);
+    yeni.set(this.buf);
+    this.buf = yeni;
+    this.dv = new DataView(yeni.buffer);
+  }
+
+  u8(x) { kontrol(x, 0, 255, 'u8'); this.yer(1); this.dv.setUint8(this.p, x); this.p += 1; }
+  u16(x) { kontrol(x, 0, 65535, 'u16'); this.yer(2); this.dv.setUint16(this.p, x, true); this.p += 2; }
+  i16(x) { kontrol(x, -32768, 32767, 'i16'); this.yer(2); this.dv.setInt16(this.p, x, true); this.p += 2; }
+  i32(x) { kontrol(x, -2147483648, 2147483647, 'i32'); this.yer(4); this.dv.setInt32(this.p, x, true); this.p += 4; }
+
+  // Değişken uzunluklu tam sayı (LEB128): küçük sayılar 1 bayt, büyükler 5.
+  // Oyuncu/mermi numaraları maç boyunca büyüdüğü için üst sınır varsaymıyoruz.
+  // NOT: bit kaydırma (>>>) 32 bitte taşar; zigzag farkları 32 biti aşabildiği
+  // için bilerek bölme kullanıyoruz — 2^53'e kadar doğru çalışır.
+  vu(x) {
+    kontrol(x, 0, Number.MAX_SAFE_INTEGER, 'vu');
+    let v = x;
+    this.yer(8);
+    do {
+      let b = v % 128;
+      v = Math.floor(v / 128);
+      if (v) b |= 0x80;
+      this.dv.setUint8(this.p++, b);
+    } while (v);
+  }
+
+  // İşaretli fark (zigzag): -1 → 1, 1 → 2, -2 → 3 … Küçük farklar, negatif
+  // olsalar bile, tek bayta sığar.
+  vz(x) {
+    if (!Number.isInteger(x)) throw new Error(`ikili: vz tam sayı değil: ${x}`);
+    this.vu(x >= 0 ? x * 2 : -x * 2 - 1);
+  }
+
+  yazi(s) {
+    const b = enc.encode(String(s == null ? '' : s));
+    if (b.length > 255) throw new Error('yazı çok uzun');
+    this.u8(b.length);
+    this.yer(b.length);
+    this.buf.set(b, this.p);
+    this.p += b.length;
+  }
+
+  bitir() { return this.buf.subarray(0, this.p); }
+}
+
+// --- Okuyucu --------------------------------------------------------------
+class Okuyucu {
+  constructor(bytes) {
+    this.buf = bytes;
+    this.dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    this.p = 0;
+  }
+
+  u8() { return this.dv.getUint8(this.p++); }
+  u16() { const v = this.dv.getUint16(this.p, true); this.p += 2; return v; }
+  i16() { const v = this.dv.getInt16(this.p, true); this.p += 2; return v; }
+  i32() { const v = this.dv.getInt32(this.p, true); this.p += 4; return v; }
+
+  vu() {
+    let v = 0, shift = 0, b;
+    do {
+      b = this.dv.getUint8(this.p++);
+      v += (b & 0x7f) * 2 ** shift;
+      shift += 7;
+    } while (b & 0x80);
+    return v;
+  }
+
+  vz() {
+    const v = this.vu();
+    return (v % 2 === 0) ? v / 2 : -(v + 1) / 2;
+  }
+
+  yazi() {
+    const n = this.u8();
+    const s = dec.decode(this.buf.subarray(this.p, this.p + n));
+    this.p += n;
+    return s;
+  }
+}
+
+function kontrol(x, min, max, tip) {
+  if (typeof x !== 'number' || !Number.isInteger(x) || x < min || x > max) {
+    throw new Error(`ikili: ${tip} alanına uymayan değer: ${x}`);
+  }
+}
+
+// 1/100 hassasiyetli ondalık: JSON'daki değerin birebir aynısını üretir.
+// (Math.round(1234.56 * 100) = 123456 → 123456 / 100 = 1234.56)
+function yuz(x) { return Math.round(x * 100); }
+
+// "you" paketindeki türetilebilir alanlar tablodaki değerlerle aynı mı?
+// Aynıysa gönderilmez, çözerken tablodan geri konur.
+function tureyenlerUyuyor(y, cli, wpi) {
+  const c = CLASSES[CLASS_IDS[cli]];
+  const wp = WEAPONS[WEAPON_IDS[wpi]];
+  if (!c || !wp) return false;
+  return y.mx === c.hp && y.sp === c.speed
+    && y.mg === wp.mag && y.mr === wp.reserve && y.rt === wp.reloadMs;
+}
+
+function dizinBul(liste, deger, ad) {
+  const i = liste.indexOf(deger);
+  if (i < 0) throw new Error(`ikili: tanınmayan ${ad}: ${deger}`);
+  return i;
+}
+
+// =========================================================================
+// KODLAMA
+// =========================================================================
+function encodeSnapshot(s) {
+  const w = new Yazici(4096);
+  w.u8(BIN_VERSION);
+  w.u8(BIN_SNAPSHOT);
+
+  let bayrak = 0;
+  if (s.ev && s.ev.length) bayrak |= HAS_EV;
+  if (s.zn) bayrak |= HAS_ZN;
+  if (s.sc) bayrak |= HAS_SC;
+  if (s.pe && s.pe.length) bayrak |= HAS_PE;
+  if (s.sc && s.sc.team) bayrak |= HAS_TEAM;
+  w.u8(bayrak);
+
+  w.vu(s.t);
+  w.vu(s.ack || 0);
+
+  // --- kendi durumun -----------------------------------------------------
+  // mx/mg/mr/rt/sp alanları sınıf ve silah tablolarından TÜRETİLEBİLİR
+  // (azami can = sınıfın canı, şarjör = silahın şarjörü…). Normalde hepsi
+  // tabloyla birebir aynıdır, o yüzden hiç göndermiyoruz: tek bit yetiyor.
+  // Bir gün bir güçlendirme bu değerleri değiştirirse bit sıfırlanır ve
+  // değerler açıkça yazılır — yani tahmin yürütmüyoruz, doğruluk garanti.
+  const y = s.you;
+  const cli = dizinBul(CLASS_IDS, y.cl, 'sınıf');
+  const wpi = dizinBul(WEAPON_IDS, y.wp, 'silah');
+  const turetilmis = tureyenlerUyuyor(y, cli, wpi);
+  w.u8(turetilmis ? 1 : 0);
+  w.i32(yuz(y.x));
+  w.i32(yuz(y.y));
+  w.vu(y.hp); w.vu(y.am); w.vu(y.ar);
+  w.vu(y.rl); w.vu(y.rs);
+  w.u8(y.al); w.u8(y.hd);
+  w.u8(cli); w.u8(wpi);
+  w.vu(y.k); w.vu(y.d); w.vu(y.dm);
+  w.u8(y.pl);
+  if (!turetilmis) { w.vu(y.mx); w.vu(y.mg); w.vu(y.mr); w.vu(y.rt); w.vu(y.sp); }
+
+  // --- görünen oyuncular -------------------------------------------------
+  // id'ler bir önceki kaydın id'sine göre FARK olarak yazılır: aynı karede
+  // görünen oyuncuların numaraları birbirine yakın olduğu için fark çoğu
+  // zaman tek bayta sığar (bot numaraları 100000'den başlıyor, tam sayı
+  // olarak yazsak her biri 3 bayt tutardı).
+  const ps = s.ps || [];
+  w.vu(ps.length / 8);
+  let sonId = 0;
+  for (let i = 0; i < ps.length; i += 8) {
+    w.vz(ps[i] - sonId); sonId = ps[i];
+    w.i16(ps[i + 1]);       // x
+    w.i16(ps[i + 2]);       // y
+    w.i16(ps[i + 3]);       // nişan * 100
+    // Tek baytta: bayraklar (bit 0-4) + sınıf (bit 5-7, 8 sınıfa kadar).
+    // "Azami can sınıfın varsayılanı mı" bilgisi için bayt kalmadı; onu CAN
+    // sayısının en düşük bitine sıkıştırıyoruz (can zaten küçük bir sayı,
+    // ikiye katlamak bir bayt bile büyütmüyor).
+    const bayraklar = ps[i + 7];
+    if (!Number.isInteger(bayraklar) || bayraklar < 0 || bayraklar > 31) {
+      throw new Error(`ikili: oyuncu bayrağı 5 bite sığmıyor: ${bayraklar}`);
+    }
+    const sinif = ps[i + 6];
+    if (!Number.isInteger(sinif) || sinif < 0 || sinif > 7) {
+      throw new Error(`ikili: sınıf indeksi 3 bite sığmıyor: ${sinif}`);
+    }
+    const varsayilanCan = CLASSES[CLASS_IDS[sinif]] && CLASSES[CLASS_IDS[sinif]].hp;
+    const canTuretilmis = ps[i + 5] === varsayilanCan;
+    w.vu(ps[i + 4] * 2 + (canTuretilmis ? 0 : 1));   // can + "azami can ayrı mı" biti
+    w.u8(bayraklar | (sinif << 5));
+    if (!canTuretilmis) w.vu(ps[i + 5]);
+  }
+
+  // --- görünen mermiler --------------------------------------------------
+  // Mermi numaraları da fark olarak yazılıyor; aynı anda uçan mermiler
+  // ardışık numaralı olduğu için fark neredeyse hep 1-2.
+  const bs = s.bs || [];
+  w.vu(bs.length / 5);
+  let sonB = 0;
+  for (let i = 0; i < bs.length; i += 5) {
+    w.vz(bs[i] - sonB); sonB = bs[i];
+    w.i16(bs[i + 1]);
+    w.i16(bs[i + 2]);
+    w.i16(bs[i + 3]);
+    w.u8(bs[i + 4]);
+  }
+
+  // --- olaylar -----------------------------------------------------------
+  if (bayrak & HAS_EV) {
+    w.vu(s.ev.length);
+    for (const e of s.ev) olayYaz(w, e);
+  }
+  if (bayrak & HAS_PE) {
+    w.vu(s.pe.length);
+    for (const e of s.pe) ozelOlayYaz(w, e);
+  }
+
+  // --- daralan alan ------------------------------------------------------
+  if (bayrak & HAS_ZN) {
+    const z = s.zn;
+    w.i16(z.x); w.i16(z.y); w.i16(z.r);
+    w.i16(z.tx); w.i16(z.ty); w.i16(z.tr);
+    w.u8(z.s); w.u16(z.w); w.u8(z.p);
+  }
+
+  // --- skor tablosu ------------------------------------------------------
+  if (bayrak & HAS_SC) {
+    const sc = s.sc;
+    if (bayrak & HAS_TEAM) { w.vu(sc.team[1] || 0); w.vu(sc.team[2] || 0); }
+    w.u16(sc.alive); w.u16(sc.total); w.u16(sc.left);
+    const sp = sc.ps || [];
+    w.vu(sp.length / 6);
+    for (let i = 0; i < sp.length; i += 6) {
+      w.vu(sp[i]);          // id
+      w.vu(sp[i + 1]);      // öldürme
+      w.vu(sp[i + 2]);      // ölüm
+      w.vu(sp[i + 3]);      // hasar
+      w.u8(sp[i + 4]);      // ayakta mı
+      w.vu(sp[i + 5]);      // asist
+    }
+  }
+
+  return w.bitir();
+}
+
+function olayYaz(w, e) {
+  const t = dizinBul(EV_IDS, e.e, 'olay');
+  w.u8(t);
+  switch (e.e) {
+    case 'join':
+      w.vu(e.i); w.yazi(e.n); w.u8(e.t);
+      w.u8(dizinBul(CLASS_IDS, e.c, 'sınıf'));
+      w.u8(dizinBul(CHAR_IDS, e.ch, 'karakter'));
+      w.u8(e.b);
+      break;
+    case 'spawn':
+      w.vu(e.i);
+      break;
+    case 'shot':
+      w.vu(e.i); w.i16(e.x); w.i16(e.y); w.i16(yuz(e.a));
+      w.u8(dizinBul(WEAPON_IDS, e.w, 'silah'));
+      break;
+    case 'imp':
+      w.i16(e.x); w.i16(e.y); w.u8(e.t);
+      break;
+    case 'kill': {
+      // Uzaktaki oyunculara konum gönderilmez; o yüzden x/y isteğe bağlı.
+      const konum = (e.x !== undefined && e.y !== undefined) ? KILL_HAS_POS : 0;
+      w.u8(konum);
+      w.vu(e.k); w.yazi(e.kn); w.u8(e.kt);
+      w.vu(e.v); w.yazi(e.vn); w.u8(e.vt);
+      w.u8(e.w === 'zone' ? W_ZONE : dizinBul(WEAPON_IDS, e.w, 'silah'));
+      if (konum) { w.i16(e.x); w.i16(e.y); }
+      break;
+    }
+    case 'pk':
+      w.vu(e.i); w.u8(e.a);
+      break;
+    case 'zone':
+      w.u8(e.p); w.i16(e.x); w.i16(e.y); w.i16(e.r);
+      break;
+    case 'boom':
+      w.i16(e.x); w.i16(e.y); w.i16(e.r);
+      break;
+    default:
+      throw new Error(`ikili: olay yazılamadı: ${e.e}`);
+  }
+}
+
+function ozelOlayYaz(w, e) {
+  w.u8(dizinBul(PE_IDS, e.e, 'özel olay'));
+  switch (e.e) {
+    case 'dry': break;
+    case 'hit': w.u16(e.d); w.u8(e.k); break;
+    case 'hurt': w.u16(e.d); w.i16(yuz(e.a)); w.u8(e.z); break;
+    case 'pick': w.yazi(e.k); break;
+    default: throw new Error(`ikili: özel olay yazılamadı: ${e.e}`);
+  }
+}
+
+// =========================================================================
+// ÇÖZME
+// =========================================================================
+function decodeSnapshot(bytes) {
+  const r = new Okuyucu(bytes);
+  const ver = r.u8();
+  if (ver !== BIN_VERSION) throw new Error(`ikili: bilinmeyen sürüm ${ver}`);
+  const tip = r.u8();
+  if (tip !== BIN_SNAPSHOT) throw new Error(`ikili: bilinmeyen paket türü ${tip}`);
+  const bayrak = r.u8();
+
+  const out = { ty: 'snap' };
+  out.t = r.vu();
+  out.ack = r.vu();
+
+  // Alan sırası kodlayıcıyla birebir aynı olmalı. `you` nesnesini de aynı
+  // sırayla kuruyoruz ki JSON'dan gelenle anahtar sırası bile aynı olsun.
+  const turetilmis = r.u8() === 1;
+  const yx = r.i32() / 100;
+  const yy = r.i32() / 100;
+  const yhp = r.vu(), yam = r.vu(), yar = r.vu();
+  const yrl = r.vu(), yrs = r.vu();
+  const yal = r.u8(), yhd = r.u8();
+  const ycl = CLASS_IDS[r.u8()], ywp = WEAPON_IDS[r.u8()];
+  const yk = r.vu(), yd = r.vu(), ydm = r.vu();
+  const ypl = r.u8();
+  const sinif = CLASSES[ycl], silah = WEAPONS[ywp];
+  const ymx = turetilmis ? sinif.hp : r.vu();
+  const ymg = turetilmis ? silah.mag : r.vu();
+  const ymr = turetilmis ? silah.reserve : r.vu();
+  const yrt = turetilmis ? silah.reloadMs : r.vu();
+  const ysp = turetilmis ? sinif.speed : r.vu();
+  out.you = {
+    x: yx, y: yy,
+    hp: yhp, mx: ymx,
+    am: yam, mg: ymg,
+    ar: yar, mr: ymr,
+    rl: yrl, rt: yrt,
+    al: yal, hd: yhd,
+    rs: yrs,
+    cl: ycl, wp: ywp, sp: ysp,
+    k: yk, d: yd, dm: ydm,
+    pl: ypl,
+  };
+
+  const pn = r.vu();
+  const ps = new Array(pn * 8);
+  let sonId = 0;
+  for (let i = 0, o = 0; i < pn; i++, o += 8) {
+    sonId += r.vz();
+    ps[o] = sonId;
+    ps[o + 1] = r.i16();
+    ps[o + 2] = r.i16();
+    ps[o + 3] = r.i16();
+    const canPaket = r.vu();
+    ps[o + 4] = Math.floor(canPaket / 2);
+    const canAyri = (canPaket % 2) === 1;
+    const paket = r.u8();
+    const cls = (paket >> 5) & 7;
+    ps[o + 5] = canAyri ? r.vu() : CLASSES[CLASS_IDS[cls]].hp;
+    ps[o + 6] = cls;
+    ps[o + 7] = paket & 31;
+  }
+  out.ps = ps;
+
+  const bn = r.vu();
+  const bs = new Array(bn * 5);
+  let sonB = 0;
+  for (let i = 0, o = 0; i < bn; i++, o += 5) {
+    sonB += r.vz();
+    bs[o] = sonB;
+    bs[o + 1] = r.i16();
+    bs[o + 2] = r.i16();
+    bs[o + 3] = r.i16();
+    bs[o + 4] = r.u8();
+  }
+  out.bs = bs;
+
+  if (bayrak & HAS_EV) {
+    const n = r.vu();
+    const ev = new Array(n);
+    for (let i = 0; i < n; i++) ev[i] = olayOku(r);
+    out.ev = ev;
+  }
+  if (bayrak & HAS_PE) {
+    const n = r.vu();
+    const pe = new Array(n);
+    for (let i = 0; i < n; i++) pe[i] = ozelOlayOku(r);
+    out.pe = pe;
+  }
+  if (bayrak & HAS_ZN) {
+    out.zn = {
+      x: r.i16(), y: r.i16(), r: r.i16(),
+      tx: r.i16(), ty: r.i16(), tr: r.i16(),
+      s: r.u8(), w: r.u16(), p: r.u8(),
+    };
+  }
+  if (bayrak & HAS_SC) {
+    const sc = {};
+    sc.team = (bayrak & HAS_TEAM) ? { 1: r.vu(), 2: r.vu() } : null;
+    sc.alive = r.u16(); sc.total = r.u16();
+    const left = r.u16();
+    const n = r.vu();
+    const sp = new Array(n * 6);
+    for (let i = 0, o = 0; i < n; i++, o += 6) {
+      sp[o] = r.vu();
+      sp[o + 1] = r.vu();
+      sp[o + 2] = r.vu();
+      sp[o + 3] = r.vu();
+      sp[o + 4] = r.u8();
+      sp[o + 5] = r.vu();
+    }
+    sc.ps = sp;
+    sc.left = left;
+    out.sc = sc;
+  }
+  return out;
+}
+
+function olayOku(r) {
+  const t = EV_IDS[r.u8()];
+  switch (t) {
+    case 'join': return {
+      e: 'join', i: r.vu(), n: r.yazi(), t: r.u8(),
+      c: CLASS_IDS[r.u8()], ch: CHAR_IDS[r.u8()], b: r.u8(),
+    };
+    case 'spawn': return { e: 'spawn', i: r.vu() };
+    case 'shot': return {
+      e: 'shot', i: r.vu(), x: r.i16(), y: r.i16(),
+      a: r.i16() / 100, w: WEAPON_IDS[r.u8()],
+    };
+    case 'imp': return { e: 'imp', x: r.i16(), y: r.i16(), t: r.u8() };
+    case 'kill': {
+      const konum = r.u8();
+      const o = {
+        e: 'kill',
+        k: r.vu(), kn: r.yazi(), kt: r.u8(),
+        v: r.vu(), vn: r.yazi(), vt: r.u8(),
+      };
+      const wi = r.u8();
+      o.w = wi === W_ZONE ? 'zone' : WEAPON_IDS[wi];
+      if (konum & KILL_HAS_POS) { o.x = r.i16(); o.y = r.i16(); }
+      return o;
+    }
+    case 'pk': return { e: 'pk', i: r.vu(), a: r.u8() };
+    case 'zone': return { e: 'zone', p: r.u8(), x: r.i16(), y: r.i16(), r: r.i16() };
+    case 'boom': return { e: 'boom', x: r.i16(), y: r.i16(), r: r.i16() };
+    default: throw new Error('ikili: tanınmayan olay numarası');
+  }
+}
+
+function ozelOlayOku(r) {
+  const t = PE_IDS[r.u8()];
+  switch (t) {
+    case 'dry': return { e: 'dry' };
+    case 'hit': return { e: 'hit', d: r.u16(), k: r.u8() };
+    case 'hurt': return { e: 'hurt', d: r.u16(), a: r.i16() / 100, z: r.u8() };
+    case 'pick': return { e: 'pick', k: r.yazi() };
+    default: throw new Error('ikili: tanınmayan özel olay numarası');
+  }
+}
+
+__exp.BIN_VERSION = BIN_VERSION;
+__exp.BIN_SNAPSHOT = BIN_SNAPSHOT;
+__exp.encodeSnapshot = encodeSnapshot;
+__exp.decodeSnapshot = decodeSnapshot;
+
+  };
+
+  __defs["/js/local.js"] = function (__exp, __req) {
+// Çevrimdışı mod: oyun sunucusunu doğrudan tarayıcının içinde çalıştırır.
+//
+// Ayrı bir "tek kişilik oyun" kodu YAZMIYORUZ. Gerçek sunucudaki Hub/Lobby/Game
+// sınıflarının aynısını burada da çalıştırıyoruz; sadece WebSocket yerine
+// bellek içi bir boru kullanıyoruz. Böylece çevrimdışı oynanış, online oynanışla
+// birebir aynı davranır ve oyun mantığı tek yerde kalır.
+
+const { Hub } = __req("/shared/sim/hub.js");
+const { TICK_MS } = __req("/shared/constants.js");
+
+class LocalTransport {
+  constructor(net) {
+    this.net = net;
+    this.hub = null;
+    this.client = null;
+    this.connected = false;
+    this.inbox = [];
+    this.flushQueued = false;
+    this.rafId = 0;
+    this.acc = 0;
+    this.last = 0;
+    this.stopped = false;
+    this.step = this.step.bind(this);
+  }
+
+  start() {
+    this.stopped = false;
+    this.hub = new Hub();
+
+    // Sunucunun "soket" gördüğü nesne. Tek gereksinimi readyState ve send.
+    const socket = {
+      readyState: 1,
+      send: (str) => {
+        let msg;
+        try { msg = JSON.parse(str); } catch { return; }
+        // Ping'i burada kısa devre yapıyoruz: gecikme zaten sıfır.
+        if (msg.ty === 'ping') {
+          this.hub.handle(this.client, { ty: 'pong', t: msg.t });
+          return;
+        }
+        this.inbox.push(msg);
+        this.queueFlush();
+      },
+    };
+
+    this.client = this.hub.addClient(socket, 'local');
+    this.connected = true;
+
+    this.last = performance.now();
+    this.rafId = requestAnimationFrame(this.step);
+    // Uygulama kodu bağlantının açıldığını duysun
+    queueMicrotask(() => { if (!this.stopped) this.net.emit('_open'); });
+  }
+
+  // Sunucudan gelen mesajları senkron değil, mikro görevde dağıtıyoruz:
+  // hub bir mesajı işlerken istemcinin yeni mesaj göndermesi karışıklık yaratmasın.
+  queueFlush() {
+    if (this.flushQueued) return;
+    this.flushQueued = true;
+    queueMicrotask(() => {
+      this.flushQueued = false;
+      const q = this.inbox;
+      this.inbox = [];
+      for (const m of q) {
+        if (this.stopped) return;
+        this.net.emit(m.ty, m);
+      }
+    });
+  }
+
+  // Sabit adımlı simülasyon. Sekme arka plana alınınca rAF durur; oyun da
+  // durur — tek kişilik oyunda istenen davranış bu.
+  step(now) {
+    if (this.stopped) return;
+    this.rafId = requestAnimationFrame(this.step);
+
+    let elapsed = now - this.last;
+    this.last = now;
+    if (elapsed > 250) elapsed = 250;    // uzun donmalarda ileri sarma yapma
+    this.acc += elapsed;
+
+    let steps = 0;
+    while (this.acc >= TICK_MS && steps < 5) {
+      this.acc -= TICK_MS;
+      steps++;
+      this.hub.tick(TICK_MS);
+    }
+    if (steps === 5) this.acc = 0;
+
+    this.hub.flushLobbyList();
+  }
+
+  send(type, payload) {
+    if (!this.hub || this.stopped) return;
+    try {
+      this.hub.handle(this.client, { ty: type, ...payload });
+    } catch (err) {
+      console.error('[çevrimdışı sunucu hatası]', type, err);
+    }
+  }
+
+  stop() {
+    this.stopped = true;
+    this.connected = false;
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.rafId = 0;
+    this.hub = null;
+    this.client = null;
+    this.inbox.length = 0;
+  }
+}
+
+__exp.LocalTransport = LocalTransport;
+
+  };
+
+  __defs["/shared/sim/hub.js"] = function (__exp, __req) {
+// Bağlantı ve lobi yönetimi. Taşıma katmanından (WebSocket / tarayıcı içi)
+// bağımsızdır: bir istemcinin tek gereksinimi `ws.readyState` ve `ws.send(str)`
+// sunmasıdır. Bu sayede aynı kod hem sunucuda hem telefonun içinde çalışır.
+
+const { MAX_PLAYERS, MODES, CLASSES, MAX_NAME_LEN, PROTOCOL_VERSION } = __req("/shared/constants.js");
+const { C, S } = __req("/shared/protocol.js");
+const { Lobby } = __req("/shared/sim/lobby.js");
+const { encodeSnapshot } = __req("/shared/binary.js");
+
+class Hub {
+  constructor() {
+    this.clients = new Map();     // id -> client
+    this.lobbies = new Map();     // id -> Lobby
+    this.nextClientId = 1;
+    this.nextBot = 100000;
+    this.listDirty = false;
+    this.lastListSent = 0;
+  }
+
+  nextBotId() { return ++this.nextBot; }
+
+  // --- Bağlantı yaşam döngüsü ---------------------------------------------
+  addClient(ws, ip) {
+    const client = {
+      id: this.nextClientId++,
+      ws,
+      ip,
+      name: `Oyuncu${this.nextClientId - 1}`,
+      lobbyId: null,
+      alive: true,
+      ping: 0,
+      lastSeen: Date.now(),
+      msgCount: 0,
+      msgWindow: Date.now(),
+    };
+    this.clients.set(client.id, client);
+    return client;
+  }
+
+  dropClient(client, reason = '') {
+    if (!this.clients.has(client.id)) return;
+    const lobby = client.lobbyId ? this.lobbies.get(client.lobbyId) : null;
+    this.clients.delete(client.id);
+    if (lobby) lobby.remove(client.id, reason);
+    this.listDirty = true;
+  }
+
+  // Bir mesajı istemciye yollar.
+  //
+  // Durum paketleri (snapshot) sunucudan çıkan verinin neredeyse tamamıdır ve
+  // saniyede 20 kez gider. İstemci "ben ikili anlıyorum" dediyse bunları JSON
+  // yerine ikili gönderiyoruz — aynı bilgi, ~3,7 kat az bayt.
+  //
+  // Diyemeyen (eski) istemciler eskisi gibi JSON alır: kimsenin oyunu bozulmaz.
+  // Kodlayıcı beklenmedik bir değerle karşılaşırsa hata fırlatır; o paketi
+  // sessizce bozuk göndermek yerine JSON'a düşüyoruz.
+  send(client, type, payload) {
+    if (!client || !client.ws || client.ws.readyState !== 1) return;
+    if (client.bin && type === S.SNAPSHOT) {
+      try {
+        client.ws.send(encodeSnapshot(payload));
+        return;
+      } catch (e) {
+        if (!this._binUyarildi) {
+          this._binUyarildi = true;
+          console.warn('[ikili] paket kodlanamadı, JSON’a düşülüyor:', e && e.message);
+        }
+      }
+    }
+    try {
+      client.ws.send(JSON.stringify({ ty: type, ...payload }));
+    } catch { /* bağlantı kopmuş olabilir */ }
+  }
+
+  error(client, message) { this.send(client, S.ERROR, { message }); }
+
+  // --- Lobiler ------------------------------------------------------------
+  createLobby(client, opts) {
+    if (this.lobbies.size > 200) return { error: 'Sunucuda çok fazla lobi var, biraz sonra dene.' };
+    const lobby = new Lobby(this, client, opts);
+    this.lobbies.set(lobby.id, lobby);
+    const r = lobby.add(client);
+    if (!r.ok) { this.lobbies.delete(lobby.id); return { error: r.error }; }
+    this.listDirty = true;
+    return { lobby };
+  }
+
+  destroyLobby(id) {
+    this.lobbies.delete(id);
+    this.listDirty = true;
+  }
+
+  lobbyList() {
+    return [...this.lobbies.values()]
+      .filter((l) => !l.private)
+      .sort((a, b) => b.members.size - a.members.size || a.createdAt - b.createdAt)
+      .slice(0, 60)
+      .map((l) => l.summary());
+  }
+
+  broadcastLobbyList() { this.listDirty = true; }
+
+  flushLobbyList() {
+    if (!this.listDirty) return;
+    this.listDirty = false;
+    const list = this.lobbyList();
+    for (const c of this.clients.values()) {
+      if (!c.lobbyId) this.send(c, S.LOBBY_LIST, { lobbies: list });
+    }
+  }
+
+  // --- Zaman ilerletme ----------------------------------------------------
+  // Sabit adımlı döngü. Hem Node sunucusu hem tarayıcı içi mod bunu çağırır.
+  tick(dtMs) {
+    for (const lobby of [...this.lobbies.values()]) {
+      try { lobby.tick(dtMs); } catch (err) { console.error('[hata] lobi tick:', lobby.id, err); }
+    }
+  }
+
+  // --- Mesaj yönlendirme --------------------------------------------------
+  handle(client, msg) {
+    const lobby = client.lobbyId ? this.lobbies.get(client.lobbyId) : null;
+
+    switch (msg.ty) {
+      case C.HELLO: {
+        const name = cleanName(msg.name) || client.name;
+        client.name = name;
+        // İstemci ikili durum paketi çözebiliyorsa bunu burada söyler.
+        // Söylemeyen eski sürümler JSON almaya devam eder.
+        client.bin = msg.bin === 1 || msg.bin === true;
+        this.send(client, S.WELCOME, {
+          id: client.id,
+          name,
+          config: {
+            maxPlayers: MAX_PLAYERS,
+            modes: MODES,
+            classes: CLASSES,
+            version: PROTOCOL_VERSION,
+            bin: !!client.bin,
+          },
+        });
+        this.send(client, S.LOBBY_LIST, { lobbies: this.lobbyList() });
+        break;
+      }
+
+      case C.RENAME: {
+        const name = cleanName(msg.name);
+        if (!name) return;
+        client.name = name;
+        if (lobby) {
+          const m = lobby.members.get(client.id);
+          if (m) { m.name = name; lobby.broadcastState(); }
+          const p = lobby.game?.players.get(client.id);
+          if (p) p.name = name;
+        }
+        break;
+      }
+
+      case C.LOBBY_LIST:
+        this.send(client, S.LOBBY_LIST, { lobbies: this.lobbyList() });
+        break;
+
+      case C.LOBBY_CREATE: {
+        if (lobby) lobby.remove(client.id);
+        const { lobby: created, error } = this.createLobby(client, {
+          name: msg.name,
+          mode: msg.mode,
+          maxPlayers: msg.maxPlayers,
+          private: msg.private,
+          botCount: msg.botCount,
+          botLevel: msg.botLevel,
+        });
+        if (error) this.error(client, error);
+        else this.send(client, S.LOBBY_STATE, { lobby: created.full() });
+        break;
+      }
+
+      case C.LOBBY_JOIN: {
+        let target = null;
+        if (msg.id) target = this.lobbies.get(msg.id);
+        else if (msg.code) {
+          const code = String(msg.code).toUpperCase().trim();
+          target = [...this.lobbies.values()].find((l) => l.code === code) || null;
+        }
+        if (!target) { this.error(client, 'Lobi bulunamadı.'); break; }
+        if (lobby && lobby !== target) lobby.remove(client.id);
+        const r = target.add(client);
+        if (!r.ok) { this.error(client, r.error); break; }
+        this.send(client, S.LOBBY_STATE, { lobby: target.full() });
+        break;
+      }
+
+      case C.LOBBY_LEAVE: {
+        if (lobby) lobby.remove(client.id);
+        client.lobbyId = null;
+        this.send(client, S.LOBBY_LEFT, { reason: '' });
+        this.send(client, S.LOBBY_LIST, { lobbies: this.lobbyList() });
+        break;
+      }
+
+      case C.LOBBY_CHAT: if (lobby) lobby.chat(client.id, msg.text); break;
+      case C.SET_READY: if (lobby) lobby.setReady(client.id, msg.ready); break;
+      case C.SET_CLASS: if (lobby) lobby.setClass(client.id, msg.cls); break;
+      case C.SET_CHAR: if (lobby) lobby.setChar(client.id, msg.char); break;
+      case C.SET_TEAM: if (lobby) lobby.setTeam(client.id, msg.team); break;
+      case C.KICK: if (lobby) lobby.kick(client.id, msg.id); break;
+
+      case C.SET_SETTINGS: {
+        if (!lobby) break;
+        const err = lobby.setSettings(client.id, msg);
+        if (err) this.error(client, err);
+        break;
+      }
+
+      case C.START: {
+        if (!lobby) break;
+        const err = lobby.requestStart(client.id);
+        if (err) this.error(client, err);
+        break;
+      }
+
+      case C.INPUT: {
+        const g = lobby?.game;
+        if (!g) break;
+        const p = g.players.get(client.id);
+        if (p) g.queueInput(p, msg);
+        break;
+      }
+
+      case C.PONG: {
+        if (typeof msg.t === 'number') client.ping = Math.max(0, Date.now() - msg.t);
+        client.lastSeen = Date.now();
+        break;
+      }
+
+      default: break;
+    }
+  }
+}
+
+function cleanName(raw) {
+  return String(raw ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_NAME_LEN);
+}
+
+__exp.Hub = Hub;
+
+  };
+
+  __defs["/shared/sim/lobby.js"] = function (__exp, __req) {
+// Lobi: oyuncuların toplandığı, ayarların yapıldığı ve maçın başlatıldığı yer.
+// Bir lobide EN FAZLA 20 kişi bulunur (MAX_PLAYERS).
+
+const { MAX_PLAYERS, MODES, DEFAULT_MODE, CLASSES, DEFAULT_CLASS, COUNTDOWN_MS, CHARACTERS, DEFAULT_CHAR, CHAR_IDS, POST_MATCH_MS, SNAPSHOT_MS, MIN_PLAYERS_TO_START, BOT_NAMES, CLASS_IDS, MAX_LOBBY_NAME_LEN, MAX_CHAT_LEN, BOT_LEVELS, DEFAULT_BOT_LEVEL } = __req("/shared/constants.js");
+const { S } = __req("/shared/protocol.js");
+const { Game } = __req("/shared/sim/game.js");
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function makeCode(len = 5) {
+  let s = '';
+  for (let i = 0; i < len; i++) s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return s;
+}
+
+function sanitize(str, max) {
+  return String(str ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+// Yeni gelen oyuncuya lobide kullanılmayan bir karakter ver (herkes aynı
+// görünmesin); hepsi doluysa rastgele seç.
+function pickFreeChar(lobby) {
+  const used = new Set([...lobby.members.values()].map((m) => m.char));
+  const free = CHAR_IDS.filter((id) => !used.has(id));
+  if (free.length) return free[0];
+  return CHAR_IDS[Math.floor(Math.random() * CHAR_IDS.length)] || DEFAULT_CHAR;
+}
+
+let lobbySeq = 0;
+
+class Lobby {
+  constructor(hub, host, opts = {}) {
+    this.hub = hub;
+    this.id = `L${++lobbySeq}`;
+    this.code = makeCode();
+    this.name = sanitize(opts.name, MAX_LOBBY_NAME_LEN) || `${host.name} lobisi`;
+    this.modeId = MODES[opts.mode] ? opts.mode : DEFAULT_MODE;
+    this.maxPlayers = Math.min(MAX_PLAYERS, Math.max(2, opts.maxPlayers | 0 || MAX_PLAYERS));
+    this.private = !!opts.private;
+    this.botCount = Math.min(MAX_PLAYERS - 1, Math.max(0, opts.botCount | 0));
+    this.botLevel = BOT_LEVELS[opts.botLevel] ? opts.botLevel : DEFAULT_BOT_LEVEL;
+    this.hostId = host.id;
+    this.members = new Map();     // clientId -> member
+    this.state = 'waiting';       // waiting | countdown | playing | post
+    this.countdownEnd = 0;
+    this.postEnd = 0;
+    this.game = null;
+    this.snapAccum = 0;
+    this.createdAt = Date.now();
+    this.chatLog = [];
+  }
+
+  // --- Üyeler -------------------------------------------------------------
+  get humanCount() { return this.members.size; }
+
+  isFull() { return this.members.size >= this.maxPlayers; }
+
+  add(client) {
+    if (this.isFull()) return { ok: false, error: 'Lobi dolu (en fazla 20 kişi).' };
+    if (this.members.has(client.id)) return { ok: true };
+
+    const member = {
+      id: client.id,
+      name: client.name,
+      ready: false,
+      cls: DEFAULT_CLASS,
+      char: pickFreeChar(this),
+      team: this.modeId === 'tdm' ? this.pickBalancedTeam() : 0,
+      spectating: false,
+    };
+    this.members.set(client.id, member);
+    client.lobbyId = this.id;
+    if (!this.members.has(this.hostId)) this.hostId = client.id;
+
+    this.sysChat(`${client.name} lobiye katıldı.`);
+
+    // Devam eden maça geç katılma: yeniden doğuşlu modlarda hemen oyuna al.
+    if (this.state === 'playing' && this.game) {
+      if (MODES[this.modeId].respawn) {
+        const p = this.game.addPlayer({
+          id: client.id, name: client.name, bot: false,
+          team: member.team, cls: member.cls, char: member.char, conn: client.ws,
+        });
+        this.hub.send(client, S.MATCH_START, this.game.matchStartPayload(p));
+      } else {
+        member.spectating = true;
+        this.hub.send(client, S.CHAT, { sys: true, text: 'Maç sürüyor. Bir sonraki turda oyuna gireceksin.' });
+      }
+    }
+    this.broadcastState();
+    return { ok: true };
+  }
+
+  remove(clientId, reason = 'left') {
+    const m = this.members.get(clientId);
+    if (!m) return;
+    this.members.delete(clientId);
+    if (this.game) this.game.removePlayer(clientId);
+    this.sysChat(`${m.name} ayrıldı.`);
+
+    if (this.hostId === clientId) {
+      const next = this.members.keys().next();
+      this.hostId = next.done ? null : next.value;
+      if (this.hostId) this.sysChat(`${this.members.get(this.hostId).name} artık lobi sahibi.`);
+    }
+    if (this.members.size === 0) {
+      this.hub.destroyLobby(this.id);
+      return;
+    }
+    if (this.state === 'countdown' && !this.canStart()) {
+      this.state = 'waiting';
+      this.sysChat('Geri sayım iptal edildi.');
+    }
+    this.broadcastState();
+  }
+
+  pickBalancedTeam() {
+    let t1 = 0, t2 = 0;
+    for (const m of this.members.values()) {
+      if (m.team === 1) t1++; else if (m.team === 2) t2++;
+    }
+    return t1 <= t2 ? 1 : 2;
+  }
+
+  // --- Ayarlar ------------------------------------------------------------
+  setSettings(clientId, s) {
+    if (clientId !== this.hostId) return 'Sadece lobi sahibi ayarları değiştirebilir.';
+    if (this.state === 'playing' || this.state === 'countdown') return 'Maç sırasında ayar değiştirilemez.';
+
+    if (s.mode && MODES[s.mode] && s.mode !== this.modeId) {
+      this.modeId = s.mode;
+      // Takım moduna geçişte takımları dengele
+      if (MODES[this.modeId].teams) {
+        let i = 0;
+        for (const m of this.members.values()) m.team = (i++ % 2) + 1;
+      } else {
+        for (const m of this.members.values()) m.team = 0;
+      }
+      for (const m of this.members.values()) m.ready = false;
+      this.sysChat(`Mod değişti: ${MODES[this.modeId].name}`);
+    }
+    if (s.name !== undefined) {
+      const n = sanitize(s.name, MAX_LOBBY_NAME_LEN);
+      if (n) this.name = n;
+    }
+    if (s.maxPlayers !== undefined) {
+      const v = Math.min(MAX_PLAYERS, Math.max(2, s.maxPlayers | 0));
+      if (v < this.members.size) return 'Lobide zaten daha fazla oyuncu var.';
+      this.maxPlayers = v;
+    }
+    if (s.botCount !== undefined) {
+      this.botCount = Math.min(MAX_PLAYERS - 1, Math.max(0, s.botCount | 0));
+    }
+    if (s.botLevel !== undefined && BOT_LEVELS[s.botLevel]) this.botLevel = s.botLevel;
+    if (s.private !== undefined) this.private = !!s.private;
+
+    this.broadcastState();
+    return null;
+  }
+
+  setReady(clientId, ready) {
+    const m = this.members.get(clientId);
+    if (!m) return;
+    m.ready = !!ready;
+    if (this.state === 'waiting' && this.allReady() && this.canStart()) this.beginCountdown();
+    else if (this.state === 'countdown' && !this.allReady()) {
+      this.state = 'waiting';
+      this.sysChat('Geri sayım iptal edildi.');
+    }
+    this.broadcastState();
+  }
+
+  setClass(clientId, cls) {
+    const m = this.members.get(clientId);
+    if (!m || !CLASSES[cls]) return;
+    m.cls = cls;
+    // Maç sırasında sınıf değişimi bir sonraki doğuşta geçerli olur.
+    if (this.game) {
+      const p = this.game.players.get(clientId);
+      if (p) p.pendingCls = cls;
+    }
+    this.broadcastState();
+  }
+
+  setChar(clientId, char) {
+    const m = this.members.get(clientId);
+    if (!m || !CHARACTERS[char]) return;
+    m.char = char;
+    // Maç sürüyorsa görünüş hemen değişsin
+    const p = this.game?.players.get(clientId);
+    if (p) p.char = char;
+    this.broadcastState();
+  }
+
+  setTeam(clientId, team) {
+    const m = this.members.get(clientId);
+    if (!m || !MODES[this.modeId].teams) return;
+    const t = team === 2 ? 2 : 1;
+    let count = 0;
+    for (const o of this.members.values()) if (o.team === t) count++;
+    if (count >= Math.ceil(this.maxPlayers / 2)) return;
+    m.team = t;
+    m.ready = false;
+    this.broadcastState();
+  }
+
+  kick(hostId, targetId) {
+    if (hostId !== this.hostId || hostId === targetId) return;
+    const target = this.members.get(targetId);
+    if (!target) return;
+    const client = this.hub.clients.get(targetId);
+    this.remove(targetId, 'kicked');
+    if (client) {
+      client.lobbyId = null;
+      this.hub.send(client, S.LOBBY_LEFT, { reason: 'Lobi sahibi tarafından atıldın.' });
+    }
+  }
+
+  chat(clientId, text) {
+    const m = this.members.get(clientId);
+    if (!m) return;
+    const t = sanitize(text, MAX_CHAT_LEN);
+    if (!t) return;
+    const now = Date.now();
+    m.lastChat = m.lastChat || 0;
+    if (now - m.lastChat < 400) return;   // basit spam koruması
+    m.lastChat = now;
+    this.pushChat({ from: m.name, text: t, team: m.team, sys: false });
+  }
+
+  sysChat(text) { this.pushChat({ from: '', text, sys: true }); }
+
+  pushChat(msg) {
+    msg.t = Date.now();
+    this.chatLog.push(msg);
+    if (this.chatLog.length > 60) this.chatLog.shift();
+    this.broadcast(S.CHAT, msg);
+  }
+
+  // --- Başlatma -----------------------------------------------------------
+  canStart() {
+    return this.members.size >= MIN_PLAYERS_TO_START;
+  }
+
+  // Lobi sahibi de dahil HERKES hazır olmadan maç başlamaz.
+  allReady() {
+    if (this.members.size === 0) return false;
+    for (const m of this.members.values()) if (!m.ready) return false;
+    return true;
+  }
+
+  readyCount() {
+    let n = 0;
+    for (const m of this.members.values()) if (m.ready) n++;
+    return n;
+  }
+
+  requestStart(clientId) {
+    if (clientId !== this.hostId) return 'Maçı sadece lobi sahibi başlatabilir.';
+    if (this.state === 'playing') return 'Maç zaten sürüyor.';
+    if (this.state === 'countdown') return null;
+    if (!this.canStart()) return 'Başlamak için en az 1 oyuncu gerekli.';
+    this.beginCountdown();
+    return null;
+  }
+
+  beginCountdown() {
+    this.state = 'countdown';
+    this.countdownEnd = Date.now() + COUNTDOWN_MS;
+    this.sysChat(`Herkes hazır — maç ${Math.round(COUNTDOWN_MS / 1000)} saniye içinde başlıyor!`);
+    this.broadcastState();
+  }
+
+  startMatch() {
+    this.matchNo = (this.matchNo || 0) + 1;
+    const mode = MODES[this.modeId];
+    const roster = [];
+
+    for (const m of this.members.values()) {
+      m.spectating = false;
+      const client = this.hub.clients.get(m.id);
+      roster.push({
+        id: m.id, name: m.name, bot: false,
+        team: mode.teams ? (m.team || 1) : 0,
+        cls: m.cls, char: m.char, conn: client ? client.ws : null,
+      });
+    }
+
+    // Botlarla doldur
+    const slots = Math.min(this.maxPlayers, roster.length + this.botCount);
+    let botIdx = 0;
+    const usedNames = new Set(roster.map((r) => r.name));
+    // Sınıflar dengeli dağılsın (hepsi keskin nişancı olmasın)
+    const clsPool = CLASS_IDS.slice().sort(() => Math.random() - 0.5);
+    while (roster.length < slots) {
+      let name = BOT_NAMES[botIdx % BOT_NAMES.length];
+      if (usedNames.has(name)) name = `${name}${Math.floor(botIdx / BOT_NAMES.length) + 2}`;
+      usedNames.add(name);
+      botIdx++;
+      let team = 0;
+      if (mode.teams) {
+        let t1 = 0, t2 = 0;
+        for (const r of roster) { if (r.team === 1) t1++; else if (r.team === 2) t2++; }
+        team = t1 <= t2 ? 1 : 2;
+      }
+      roster.push({
+        id: this.hub.nextBotId(),
+        name, bot: true, team,
+        botLevel: this.botLevel,
+        cls: clsPool[(botIdx - 1) % clsPool.length],
+        char: CHAR_IDS[(botIdx - 1) % CHAR_IDS.length],
+        conn: null,
+      });
+    }
+
+    this.game = new Game({ modeId: this.modeId, players: roster });
+    this.state = 'playing';
+    this.snapAccum = 0;
+
+    for (const m of this.members.values()) {
+      const client = this.hub.clients.get(m.id);
+      const p = this.game.players.get(m.id);
+      if (client && p) this.hub.send(client, S.MATCH_START, this.game.matchStartPayload(p));
+    }
+    this.broadcastState();
+    this.hub.broadcastLobbyList();
+  }
+
+
+  // --- Tick ---------------------------------------------------------------
+  tick(dtMs) {
+    const now = Date.now();
+
+    if (this.state === 'countdown' && now >= this.countdownEnd) {
+      this.startMatch();
+      return;
+    }
+
+    if (this.state === 'playing' && this.game) {
+      const g = this.game;
+      g.tick(dtMs);
+
+      this.snapAccum += dtMs;
+      if (this.snapAccum >= SNAPSHOT_MS) {
+        this.snapAccum -= SNAPSHOT_MS;
+        if (this.snapAccum > SNAPSHOT_MS * 3) this.snapAccum = 0;
+        g.prepareSnapshot();
+        for (const m of this.members.values()) {
+          const client = this.hub.clients.get(m.id);
+          const p = g.players.get(m.id);
+          if (!client || !p) continue;
+          const snap = g.snapshotFor(p);
+          snap.you.pg = Math.round(client.ping || 0);   // ölçülen gecikme (ms)
+          this.hub.send(client, S.SNAPSHOT, snap);
+        }
+        g.clearEvents();
+      }
+
+      if (g.over) {
+        this.game = null;
+        this._lastScoreboard = g.scoreboard();
+        // Her maça bir numara: istemci 'bu tabloyu zaten gördüm' diyebilsin.
+        this._lastScoreboard.matchId = `${this.id}-${this.matchNo || 1}`;
+        this.state = 'post';
+        this.postEnd = now + POST_MATCH_MS;
+        this.broadcast(S.MATCH_END, { scoreboard: this._lastScoreboard, nextIn: POST_MATCH_MS });
+        for (const m of this.members.values()) m.ready = false;
+        this.broadcastState();
+        this.hub.broadcastLobbyList();
+      }
+      return;
+    }
+
+    if (this.state === 'post' && now >= this.postEnd) {
+      this.state = 'waiting';
+      this.broadcastState();
+      this.hub.broadcastLobbyList();
+    }
+  }
+
+  // --- Serileştirme -------------------------------------------------------
+  summary() {
+    return {
+      id: this.id,
+      name: this.name,
+      mode: this.modeId,
+      players: this.members.size,
+      max: this.maxPlayers,
+      bots: this.botCount,
+      botLevel: this.botLevel,
+      state: this.state,
+      private: this.private,
+    };
+  }
+
+  full() {
+    return {
+      id: this.id,
+      code: this.code,
+      name: this.name,
+      mode: this.modeId,
+      maxPlayers: this.maxPlayers,
+      botCount: this.botCount,
+      botLevel: this.botLevel,
+      private: this.private,
+      hostId: this.hostId,
+      state: this.state,
+      readyCount: this.readyCount(),
+      countdownLeft: this.state === 'countdown' ? Math.max(0, this.countdownEnd - Date.now()) : 0,
+      postLeft: this.state === 'post' ? Math.max(0, this.postEnd - Date.now()) : 0,
+      members: [...this.members.values()].map((m) => ({
+        id: m.id, name: m.name, ready: m.ready, cls: m.cls, char: m.char, team: m.team,
+        host: m.id === this.hostId, spectating: m.spectating,
+      })),
+      chat: this.chatLog.slice(-25),
+      lastScoreboard: this._lastScoreboard || null,
+    };
+  }
+
+  broadcast(type, payload) {
+    for (const m of this.members.values()) {
+      const client = this.hub.clients.get(m.id);
+      if (client) this.hub.send(client, type, payload);
+    }
+  }
+
+  broadcastState() {
+    const data = this.full();
+    for (const m of this.members.values()) {
+      const client = this.hub.clients.get(m.id);
+      if (client) this.hub.send(client, S.LOBBY_STATE, { lobby: data });
+    }
+    this.hub.broadcastLobbyList();
+  }
+}
+
+__exp.Lobby = Lobby;
+
+  };
+
+  __defs["/shared/sim/game.js"] = function (__exp, __req) {
+// Otoriter oyun simülasyonu. Tüm kararlar burada verilir; istemci sadece
+// girdi gönderir ve sonucu çizer.
+
+const { TICK_MS, PLAYER_RADIUS, RESPAWN_MS, SPAWN_PROTECT_MS, MODES, CLASSES, WEAPONS, ZONE, HP_REGEN_PER_SEC, AMMO_PACK_RESPAWN_MS, AMMO_PACK_FRACTION, PICKUP_RADIUS, IN_FIRE, IN_RELOAD, MAX_INPUT_DT_MS, DEATH_BULLET, DEATH_ZONE, CLASS_IDS, WEAPON_IDS, VIS_DIST, VIS_GRACE_MS, BULLET_VIS, EVENT_AUDIO_DIST, DEFAULT_CHAR, BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS, DEFAULT_BOT_LEVEL, ASSIST_WINDOW_MS } = __req("/shared/constants.js");
+const { F_ALIVE, F_PROTECTED, F_RELOADING, F_MUZZLE, F_HIDDEN } = __req("/shared/protocol.js");
+const { applyMovement, queryObstacles, clamp, lineBlocked } = __req("/shared/physics.js");
+const { createMap } = __req("/shared/sim/map.js");
+const { botThink, resetBot, updateVelocityEstimates } = __req("/shared/sim/bot.js");
+
+let nextBulletId = 1;
+
+class Game {
+  /**
+   * @param {object} opts { modeId, players: [{id,name,bot,team,cls,conn}] }
+   */
+  constructor(opts) {
+    this.mode = MODES[opts.modeId] || MODES.ffa;
+    const built = createMap(this.mode.map);
+    this.map = built.map;
+    this.idx = built.idx;
+    this.spawns = built.spawns;
+    this.pickups = built.pickups;
+    this.bushes = built.map.bushes || [];
+
+    this.time = 0;              // maç başından beri geçen ms (tick tabanlı)
+    this.over = false;
+    this.winner = null;
+    this.players = new Map();
+    this.bullets = [];
+    this.globalEvents = [];
+    this.teamScore = { 1: 0, 2: 0 };
+    this.snapAccum = 0;
+    this.tickCount = 0;
+    this._scratch = [];
+
+    for (const p of opts.players) this.addPlayer(p);
+
+    this.aliveAtStart = this.players.size;
+
+    if (this.mode.shrinkingZone) this.initZone();
+    else this.zone = null;
+  }
+
+  // --- Oyuncular ----------------------------------------------------------
+  addPlayer(info) {
+    const cls = CLASSES[info.cls] || CLASSES.komando;
+    const wep = WEAPONS[cls.weapon];
+    const p = {
+      id: info.id,
+      name: info.name,
+      bot: !!info.bot,
+      botLevel: info.botLevel || DEFAULT_BOT_LEVEL,   // kolay | orta | zor
+      conn: info.conn || null,
+      team: this.mode.teams ? (info.team || 1) : 0,
+      cls: cls.id,
+      char: info.char || DEFAULT_CHAR,
+      speed: cls.speed,
+      maxHp: cls.hp,
+      hp: cls.hp,
+      weapon: wep.id,
+      x: 0, y: 0, aim: 0,
+      alive: true,
+      deadUntil: 0,
+      protectUntil: SPAWN_PROTECT_MS,
+      ammo: wep.mag,
+      reserve: wep.reserve,          // yedek mermi havuzu
+      reloadUntil: 0,
+      nextFireAt: 0,
+      prevKeys: 0,
+      muzzle: -1e9,            // son atış zamanı (hiç ateş etmedi = çok eski)
+      kills: 0, deaths: 0, damage: 0, assists: 0, place: 0,
+      // Bana son kim hasar verdi? saldıranId -> zaman.
+      // Öldüğümde öldüren DIŞINDA buradakiler asist alır.
+      hurtBy: new Map(),
+      lastSeq: 0,
+      inputQueue: [],
+      inputBudgetMs: 250,
+      privEvents: [],
+      brain: info.bot ? {} : null,
+    };
+    this.players.set(p.id, p);
+    this.respawn(p, true);
+    // Maç başladıktan sonra katılan oyuncuyu diğer istemcilerin listesine ekle
+    if (this.time > 0) {
+      this.globalEvents.push({
+        e: 'join', i: p.id, n: p.name, t: p.team, c: p.cls, ch: p.char, b: p.bot ? 1 : 0,
+      });
+    }
+    return p;
+  }
+
+  removePlayer(id) {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.alive = false;
+    p.left = true;
+    this.players.delete(id);
+    this.checkEnd();
+  }
+
+  // Düşmanlardan en uzak spawn noktasını seç.
+  pickSpawn(p) {
+    let pool = this.spawns.all;
+    if (this.mode.teams && this.spawns[p.team] && this.spawns[p.team].length) {
+      pool = this.spawns[p.team];
+    }
+    let best = pool[0], bestScore = -Infinity;
+    for (const s of pool) {
+      let dd2 = Infinity;
+      for (const o of this.players.values()) {
+        if (o === p || !o.alive) continue;
+        if (this.mode.teams && o.team === p.team) continue;
+        const d2 = (o.x - s.x) ** 2 + (o.y - s.y) ** 2;
+        if (d2 < dd2) dd2 = d2;
+      }
+      // Puanı piksel cinsinden tutuyoruz ki "düşmandan uzaklık" ile
+      // "kenardan uzaklık" aynı ölçekte karşılaştırılabilsin.
+      const enemyDist = dd2 === Infinity ? 1e6 : Math.sqrt(dd2);
+      const edgeDist = Math.min(s.x, this.map.w - s.x, s.y, this.map.h - s.y);
+      // Sadece düşmandan uzaklığa bakınca kazanan hep köşe oluyordu; merkeze
+      // yakınlık da puanlanıyor. Küçük rastgelelik aynı noktada yığılmayı önler.
+      const score = enemyDist + edgeDist * SPAWN_CENTER_BIAS + Math.random() * 140;
+      if (score > bestScore) { bestScore = score; best = s; }
+    }
+    // Daralan alan varsa alan içi tercih edilir
+    if (this.zone) {
+      const inside = pool.filter((s) => Math.hypot(s.x - this.zone.cx, s.y - this.zone.cy) < this.zone.r * 0.8);
+      if (inside.length) best = inside[Math.floor(Math.random() * inside.length)];
+    }
+    return best || { x: this.map.w / 2, y: this.map.h / 2 };
+  }
+
+  respawn(p, initial = false) {
+    // Lobiden yapılan sınıf değişimi bir sonraki doğuşta yürürlüğe girer.
+    if (p.pendingCls && CLASSES[p.pendingCls]) {
+      const c = CLASSES[p.pendingCls];
+      p.cls = c.id; p.speed = c.speed; p.maxHp = c.hp; p.weapon = c.weapon;
+      p.pendingCls = null;
+    }
+    const s = this.pickSpawn(p);
+    p.x = s.x; p.y = s.y;
+    p.hp = p.maxHp;
+    p.alive = true;
+    p.ammo = WEAPONS[p.weapon].mag;
+    p.reserve = WEAPONS[p.weapon].reserve;
+    p.reloadUntil = 0;
+    p.nextFireAt = this.time;
+    p.protectUntil = this.time + SPAWN_PROTECT_MS;
+    p.inputQueue.length = 0;
+    if (p.brain) resetBot(p);
+    if (p.hurtBy) p.hurtBy.clear();
+    if (!initial) this.globalEvents.push({ e: 'spawn', i: p.id });
+  }
+
+  // --- Girdi --------------------------------------------------------------
+  queueInput(p, msg) {
+    if (!p || p.left) return;
+    // Hile önleme: paket başına dt sınırı + saniyelik toplam dt bütçesi
+    const dt = clamp(Number(msg.d) || 0, 0, MAX_INPUT_DT_MS);
+    if (dt <= 0) return;
+    if (p.inputQueue.length > 40) p.inputQueue.shift();
+    const girdi = { s: msg.s | 0, d: dt, k: msg.k | 0, a: Number(msg.a) || 0 };
+    // p: bomba menzili doluluğu (0..100). Sadece dokunmatik istemciler
+    // gönderir; gelmezse sunucu tutma süresine bakar. Burada kırpıyoruz ki
+    // uydurma bir değer menzili silahın sınırının ötesine taşımasın.
+    if (msg.p !== undefined) {
+      const g = Number(msg.p);
+      if (Number.isFinite(g)) girdi.p = clamp(g, 0, 100);
+    }
+    p.inputQueue.push(girdi);
+  }
+
+  drainInputs(p, tickMs) {
+    // Bütçe: gerçek zamandan hızlı hareket edilemez (%20 tolerans).
+    p.inputBudgetMs = Math.min(300, p.inputBudgetMs + tickMs * 1.2);
+
+    const q = p.inputQueue;
+    let processed = 0;
+    while (q.length) {
+      const inp = q[0];
+      if (inp.d > p.inputBudgetMs) break;
+      q.shift();
+      p.inputBudgetMs -= inp.d;
+      this.applyInput(p, inp);
+      processed++;
+      if (processed > 12) break; // tek tick'te aşırı birikmeyi kes
+    }
+    // Girdi hiç gelmiyorsa (ağ kesintisi) oyuncu yerinde durur, sorun değil.
+  }
+
+  applyInput(p, inp) {
+    p.lastSeq = inp.s;
+    p.aim = inp.a;
+    if (!p.alive) { p.prevKeys = inp.k; return; }
+
+    const dtSec = inp.d / 1000;
+    applyMovement(p, inp.k, p.speed, dtSec, this.idx);
+
+    const wep = WEAPONS[p.weapon];
+    const wantReload = (inp.k & IN_RELOAD) && !(p.prevKeys & IN_RELOAD);
+    if (wantReload && p.ammo < wep.mag && p.reserve > 0 && !p.reloadUntil) {
+      p.reloadUntil = this.time + wep.reloadMs;
+    }
+    if (p.reloadUntil && this.time >= p.reloadUntil) this.finishReload(p, wep);
+
+    // Bomba diğer silahlar gibi "basınca ateşler" değildir: BASILI TUTARKEN
+    // menzil dolar, BIRAKINCA atılır. Böylece oyuncu bombayı nereye
+    // düşüreceğini kendisi ayarlar.
+    let atisMenzili = 0;
+    let firing;
+    if (wep.throwable) {
+      const basili = !!(inp.k & IN_FIRE);
+      const oncekiBasili = !!(p.prevKeys & IN_FIRE);
+      if (basili && !oncekiBasili) p.chargeStart = this.time;      // tutmaya başladı
+      firing = !basili && oncekiBasili && p.chargeStart > 0;       // bıraktı
+      // Menzil doluluğu iki şekilde belirlenebilir:
+      //
+      //   • inp.p geldiyse (dokunmatik) → oyuncu nişan çubuğunu ne kadar
+      //     ittiyse o. Telefonda "tutma süresi" işe yaramıyordu: nişan almak
+      //     için çubuğu tutmak zorundasın, dolayısıyla menzil kendiliğinden
+      //     doluyor ve bomba hep en uzağa gidiyordu.
+      //   • gelmediyse (klavye/fare) → tuşu ne kadar tuttuğu.
+      //
+      // Değeri istemci söylüyor ama bir üstünlük sağlamıyor: 0..1 arasına
+      // kırpılıyor ve azami menzil yine silahın kendi sınırı.
+      if (firing) {
+        let t;
+        if (typeof inp.p === 'number' && Number.isFinite(inp.p)) {
+          t = Math.max(0, Math.min(1, inp.p / 100));
+        } else {
+          const tuttu = Math.max(0, this.time - p.chargeStart);
+          t = Math.max(0, Math.min(1, tuttu / wep.chargeMs));
+        }
+        atisMenzili = wep.minRange + t * (wep.maxRange - wep.minRange);
+        p.chargeStart = 0;
+      }
+    } else {
+      firing = wep.auto ? !!(inp.k & IN_FIRE) : ((inp.k & IN_FIRE) && !(p.prevKeys & IN_FIRE));
+    }
+
+    if (firing && !p.reloadUntil && this.time >= p.nextFireAt) {
+      if (p.ammo <= 0) {
+        // Şarjör boş: yedek varsa kendiliğinden doldur, yoksa cephane bitti.
+        if (p.reserve > 0) p.reloadUntil = this.time + wep.reloadMs;
+        else if (!p.dryNotified) {
+          p.dryNotified = true;
+          p.privEvents.push({ e: 'dry' });
+        }
+      } else {
+        this.fire(p, wep, atisMenzili);
+      }
+    }
+    p.prevKeys = inp.k;
+  }
+
+  // Şarjörü yedekten doldurur. Yedek yetmezse ne kadar varsa onu koyar.
+  finishReload(p, wep) {
+    const need = wep.mag - p.ammo;
+    const take = Math.min(need, p.reserve);
+    p.ammo += take;
+    p.reserve -= take;
+    p.reloadUntil = 0;
+    if (take > 0) p.dryNotified = false;
+  }
+
+  fire(p, wep, menzil = 0) {
+    p.ammo--;
+    p.nextFireAt = this.time + wep.fireMs;
+    p.muzzle = this.time;
+    if (p.protectUntil > this.time) p.protectUntil = this.time; // ateş edince koruma biter
+
+    const muzzleDist = PLAYER_RADIUS + 6;
+    const ox = p.x + Math.cos(p.aim) * muzzleDist;
+    const oy = p.y + Math.sin(p.aim) * muzzleDist;
+
+    for (let i = 0; i < wep.pellets; i++) {
+      const ang = p.aim + (Math.random() - 0.5) * 2 * wep.spread;
+      const spd = wep.speed * (0.95 + Math.random() * 0.1);
+      this.bullets.push({
+        id: nextBulletId++,
+        owner: p.id,
+        team: p.team,
+        x: ox, y: oy,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        dmg: wep.dmg,
+        r: wep.bulletR,
+        w: wep.id,
+        // Bombada menzil her atışta farklı (ne kadar tuttuysan o kadar).
+        life: ((menzil > 0 ? menzil : wep.range) / wep.speed) * 1000,
+        // Patlayıcıysa çarpınca/menzil bitince patlasın.
+        blastR: wep.blastR || 0,
+        blastDmg: wep.blastDmg || 0,
+      });
+    }
+    this.globalEvents.push({ e: 'shot', i: p.id, x: Math.round(ox), y: Math.round(oy), a: +p.aim.toFixed(2), w: wep.id });
+  }
+
+  // --- Ana tick -----------------------------------------------------------
+  tick(dtMs) {
+    if (this.over) return;
+    this.time += dtMs;
+    this.tickCount++;
+    const dtSec = dtMs / 1000;
+
+    this.updateHidden();
+
+    for (const p of this.players.values()) {
+      if (p.bot) botThink(p, this, dtMs);
+      this.drainInputs(p, dtMs);
+
+      if (!p.alive && this.mode.respawn && this.time >= p.deadUntil) this.respawn(p);
+      if (p.alive && p.reloadUntil && this.time >= p.reloadUntil) {
+        this.finishReload(p, WEAPONS[p.weapon]);
+      }
+    }
+
+    this.regenerate(dtSec);
+    updateVelocityEstimates(this, dtMs);
+    this.stepBullets(dtSec);
+    this.stepPickups();
+    if (this.zone) this.stepZone(dtMs, dtSec);
+    this.checkEnd();
+  }
+
+  // Can kutusu yok: canın kendiliğinden yavaşça dolar (2 saniyede 1 can).
+  regenerate(dtSec) {
+    const amount = HP_REGEN_PER_SEC * dtSec;
+    for (const p of this.players.values()) {
+      if (!p.alive || p.hp >= p.maxHp) continue;
+      p.hp = Math.min(p.maxHp, p.hp + amount);
+    }
+  }
+
+  stepBullets(dtSec) {
+    const next = [];
+    for (const b of this.bullets) {
+      b.life -= dtSec * 1000;
+      // Ömrü bitti: normal mermi sessizce kaybolur, bomba düştüğü yerde patlar.
+      if (b.life <= 0) {
+        if (b.blastR > 0) this.explode(b, b.x, b.y);
+        continue;
+      }
+
+      const dx = b.vx * dtSec, dy = b.vy * dtSec;
+      const hit = this.raycast(b, dx, dy);
+
+      if (hit.type === 'player') {
+        if (b.blastR > 0) { this.explode(b, hit.x, hit.y); continue; }
+        this.damage(hit.player, b.dmg, this.players.get(b.owner), DEATH_BULLET, b.w);
+        this.globalEvents.push({ e: 'imp', x: Math.round(hit.x), y: Math.round(hit.y), t: 1 });
+        continue;
+      }
+      if (hit.type === 'wall') {
+        if (b.blastR > 0) { this.explode(b, hit.x, hit.y); continue; }
+        this.globalEvents.push({ e: 'imp', x: Math.round(hit.x), y: Math.round(hit.y), t: 0 });
+        continue;
+      }
+      b.x += dx; b.y += dy;
+      if (b.x < 0 || b.y < 0 || b.x > this.map.w || b.y > this.map.h) {
+        if (b.blastR > 0) this.explode(b, Math.max(0, Math.min(this.map.w, b.x)), Math.max(0, Math.min(this.map.h, b.y)));
+        continue;
+      }
+      next.push(b);
+    }
+    this.bullets = next;
+  }
+
+  // Patlama: yarıçap içindeki herkese, merkeze yakınlıkla artan hasar.
+  //
+  // Kurallar mermiyle aynı tutuluyor ki bomba "kural tanımaz" olmasın:
+  //   • dost ateşi geçmez (takım modunda),
+  //   • yeni doğmuş (koruma altındaki) oyuncu zarar görmez,
+  //   • DUVAR ARKASI KORUR — patlama duvarı delip geçmez.
+  // Atan kişi kendi bombasından zarar görür: yakına atmak risklidir.
+  explode(b, x, y) {
+    const attacker = this.players.get(b.owner) || null;
+    this.globalEvents.push({ e: 'boom', x: Math.round(x), y: Math.round(y), r: Math.round(b.blastR) });
+
+    for (const p of this.players.values()) {
+      if (!p.alive) continue;
+      if (this.mode.teams && p.id !== b.owner && p.team === b.team) continue;
+      if (p.protectUntil > this.time) continue;
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d > b.blastR) continue;
+      if (lineBlocked(x, y, p.x, p.y, this.idx)) continue;
+      // Merkezde tam hasar, kenarda dörtte biri.
+      const k = 1 - (d / b.blastR) * 0.75;
+      this.damage(p, b.blastDmg * k, attacker, DEATH_BULLET, b.w);
+    }
+  }
+
+  // Mermi yolu üzerinde en yakın çarpışmayı bulur (tünelleme olmaz).
+  raycast(b, dx, dy) {
+    let bestT = 1.0001, best = { type: 'none' };
+
+    // Engeller
+    const minX = Math.min(b.x, b.x + dx) - b.r, maxX = Math.max(b.x, b.x + dx) + b.r;
+    const minY = Math.min(b.y, b.y + dy) - b.r, maxY = Math.max(b.y, b.y + dy) + b.r;
+    const list = queryObstacles(this.idx, minX, minY, maxX, maxY, this._scratch);
+    for (let i = 0; i < list.length; i++) {
+      const t = raySlab(b.x, b.y, dx, dy, list[i], b.r);
+      if (t !== null && t < bestT) { bestT = t; best = { type: 'wall' }; }
+    }
+
+    // Oyuncular
+    for (const p of this.players.values()) {
+      if (!p.alive || p.id === b.owner) continue;
+      if (this.mode.teams && p.team === b.team) continue;   // dost ateşi kapalı
+      if (p.protectUntil > this.time) continue;
+      const t = rayCircle(b.x, b.y, dx, dy, p.x, p.y, PLAYER_RADIUS + b.r);
+      if (t !== null && t < bestT) { bestT = t; best = { type: 'player', player: p }; }
+    }
+
+    if (best.type !== 'none') {
+      best.x = b.x + dx * bestT;
+      best.y = b.y + dy * bestT;
+    }
+    return best;
+  }
+
+  damage(victim, amount, attacker, cause, weapon) {
+    if (!victim.alive) return;
+    victim.hp -= amount;
+
+    if (attacker && attacker !== victim) {
+      attacker.damage += Math.min(amount, amount + Math.min(0, victim.hp));
+      attacker.privEvents.push({ e: 'hit', d: Math.round(amount), k: victim.hp <= 0 ? 1 : 0 });
+      // Asist defteri: takım arkadaşına verilen hasar (dost ateşi kapalı olsa
+      // da alan hasarı gibi durumlar) sayılmasın.
+      if (!(this.mode.teams && attacker.team === victim.team)) {
+        if (!victim.hurtBy) victim.hurtBy = new Map();
+        victim.hurtBy.set(attacker.id, this.time);
+      }
+    }
+    victim.privEvents.push({
+      e: 'hurt',
+      d: Math.round(amount),
+      a: attacker && attacker !== victim ? Math.round(Math.atan2(attacker.y - victim.y, attacker.x - victim.x) * 100) / 100 : 0,
+      z: cause === DEATH_ZONE ? 1 : 0,
+    });
+
+    if (victim.hp <= 0) this.kill(victim, attacker, cause, weapon);
+  }
+
+  kill(victim, attacker, cause, weapon) {
+    victim.hp = 0;
+    victim.alive = false;
+    victim.deaths++;
+
+    // ASİST: son ASSIST_WINDOW_MS içinde bu oyuncuya hasar vermiş herkes —
+    // öldüren ve kurbanın kendisi hariç — bir asist alır. Süre sınırı önemli:
+    // maçın başında bir kez vurup unuttuğun biri sonradan ölünce asist
+    // almamalı.
+    if (victim.hurtBy) {
+      for (const [id, t] of victim.hurtBy) {
+        if (this.time - t > ASSIST_WINDOW_MS) continue;
+        if (attacker && id === attacker.id) continue;
+        if (id === victim.id) continue;
+        const yardimci = this.players.get(id);
+        if (yardimci) yardimci.assists++;
+      }
+      victim.hurtBy.clear();
+    }
+    victim.deadUntil = this.time + RESPAWN_MS;
+    victim.inputQueue.length = 0;
+
+    if (attacker && attacker !== victim) {
+      attacker.kills++;
+      if (this.mode.teams) this.teamScore[attacker.team] = (this.teamScore[attacker.team] || 0) + 1;
+    }
+
+    if (!this.mode.respawn) {
+      victim.place = this.countAlive() + 1;
+    }
+
+    this.globalEvents.push({
+      e: 'kill',
+      k: attacker && attacker !== victim ? attacker.id : 0,
+      kn: attacker && attacker !== victim ? attacker.name : '',
+      kt: attacker ? attacker.team : 0,
+      v: victim.id, vn: victim.name, vt: victim.team,
+      w: cause === DEATH_ZONE ? 'zone' : (weapon || 'rifle'),
+      x: Math.round(victim.x), y: Math.round(victim.y),
+    });
+  }
+
+  countAlive() {
+    let n = 0;
+    for (const p of this.players.values()) if (p.alive) n++;
+    return n;
+  }
+
+  // --- Toplanabilirler ----------------------------------------------------
+  stepPickups() {
+    for (const k of this.pickups) {
+      if (!k.active) {
+        if (this.time >= k.respawnAt) { k.active = true; this.globalEvents.push({ e: 'pk', i: k.id, a: 1 }); }
+        continue;
+      }
+      for (const p of this.players.values()) {
+        if (!p.alive) continue;
+        const wep = WEAPONS[p.weapon];
+        if (p.reserve >= wep.reserve) continue;          // yedeği zaten dolu
+        if ((p.x - k.x) ** 2 + (p.y - k.y) ** 2 > (PLAYER_RADIUS + PICKUP_RADIUS) ** 2) continue;
+
+        p.reserve = Math.min(wep.reserve, p.reserve + Math.ceil(wep.reserve * AMMO_PACK_FRACTION));
+        p.dryNotified = false;
+        k.active = false;
+        k.respawnAt = this.time + AMMO_PACK_RESPAWN_MS;
+        p.privEvents.push({ e: 'pick', k: 'ammo' });
+        this.globalEvents.push({ e: 'pk', i: k.id, a: 0 });
+        break;
+      }
+    }
+  }
+
+  // --- Daralan alan -------------------------------------------------------
+  initZone() {
+    const cx = this.map.w / 2, cy = this.map.h / 2;
+    const r0 = Math.hypot(this.map.w, this.map.h) / 2;
+    this.zone = {
+      cx, cy, r: r0,
+      fromCx: cx, fromCy: cy, fromR: r0,
+      toCx: cx, toCy: cy, toR: r0,
+      phase: 0,
+      shrinking: false,
+      timer: ZONE.startDelayMs,
+      dps: ZONE.dpsBase,
+    };
+  }
+
+  nextZonePhase() {
+    const z = this.zone;
+    z.phase++;
+    z.fromCx = z.cx; z.fromCy = z.cy; z.fromR = z.r;
+    const factor = 1 - z.phase / (ZONE.phases + 0.6);
+    const targetR = Math.max(ZONE.minRadius, z.fromR * (0.62 + 0.06 * Math.random()) * (factor > 0.15 ? 1 : 0.85));
+    const maxOff = Math.max(0, z.fromR - targetR) * 0.7;
+    const ang = Math.random() * Math.PI * 2;
+    const off = Math.random() * maxOff;
+    z.toCx = clamp(z.fromCx + Math.cos(ang) * off, targetR * 0.4, this.map.w - targetR * 0.4);
+    z.toCy = clamp(z.fromCy + Math.sin(ang) * off, targetR * 0.4, this.map.h - targetR * 0.4);
+    z.toR = targetR;
+    z.shrinking = true;
+    z.timer = ZONE.shrinkMs;
+    z.dps = ZONE.dpsBase + ZONE.dpsPerPhase * z.phase;
+    this.globalEvents.push({ e: 'zone', p: z.phase, x: Math.round(z.toCx), y: Math.round(z.toCy), r: Math.round(z.toR) });
+  }
+
+  stepZone(dtMs, dtSec) {
+    const z = this.zone;
+    z.timer -= dtMs;
+
+    if (z.shrinking) {
+      const total = ZONE.shrinkMs;
+      const t = clamp(1 - z.timer / total, 0, 1);
+      const e = t * t * (3 - 2 * t);           // yumuşak geçiş
+      z.cx = z.fromCx + (z.toCx - z.fromCx) * e;
+      z.cy = z.fromCy + (z.toCy - z.fromCy) * e;
+      z.r = z.fromR + (z.toR - z.fromR) * e;
+      if (z.timer <= 0) {
+        z.shrinking = false;
+        z.cx = z.toCx; z.cy = z.toCy; z.r = z.toR;
+        z.timer = ZONE.holdMs;
+      }
+    } else if (z.timer <= 0 && z.phase < ZONE.phases) {
+      this.nextZonePhase();
+    }
+
+    // Alan dışı hasarı
+    for (const p of this.players.values()) {
+      if (!p.alive) continue;
+      const d = Math.hypot(p.x - z.cx, p.y - z.cy);
+      if (d > z.r) this.damage(p, z.dps * dtSec, null, DEATH_ZONE, 'zone');
+    }
+  }
+
+  // --- Bitiş koşulları ----------------------------------------------------
+  checkEnd() {
+    if (this.over) return;
+    const m = this.mode;
+
+    if (m.timeLimitMs && this.time >= m.timeLimitMs) return this.end('time');
+
+    if (m.id === 'ffa') {
+      for (const p of this.players.values()) {
+        if (p.kills >= m.scoreLimit) return this.end('score', { id: p.id, name: p.name });
+      }
+    } else if (m.id === 'tdm') {
+      for (const t of [1, 2]) {
+        if ((this.teamScore[t] || 0) >= m.scoreLimit) return this.end('score', { team: t });
+      }
+    } else if (m.id === 'br') {
+      const alive = [...this.players.values()].filter((p) => p.alive);
+      if (this.aliveAtStart > 1 && alive.length <= 1) {
+        if (alive[0]) alive[0].place = 1;
+        return this.end('lastman', alive[0] ? { id: alive[0].id, name: alive[0].name } : null);
+      }
+      if (this.players.size === 0) return this.end('empty');
+    }
+  }
+
+  end(reason, winner = null) {
+    this.over = true;
+    this.endReason = reason;
+    this.winner = winner;
+  }
+
+  scoreboard() {
+    const rows = [...this.players.values()].map((p) => ({
+      id: p.id, name: p.name, bot: p.bot, team: p.team, cls: p.cls,
+      kills: p.kills, deaths: p.deaths, assists: p.assists || 0, damage: Math.round(p.damage),
+      place: p.place || (p.alive ? 1 : 0),
+    }));
+    if (this.mode.id === 'br') {
+      rows.sort((a, b) => (a.place || 999) - (b.place || 999) || b.kills - a.kills);
+    } else {
+      rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || b.damage - a.damage);
+    }
+    return {
+      mode: this.mode.id,
+      rows,
+      teamScore: this.mode.teams ? this.teamScore : null,
+      winner: this.winner,
+      reason: this.endReason,
+    };
+  }
+
+  // --- Anlık durum paketi -------------------------------------------------
+  // Varlıklar düz sayı dizisi olarak kodlanır (bkz. shared/protocol.js) ve
+  // her istemciye SADECE görebildiği şeyler gönderilir. Bu hem bant
+  // genişliğini düşürür hem de duvar arkasını okuyan hile yazılmasını
+  // engeller: istemcide o veri hiç yoktur.
+  prepareSnapshot() {
+    const base = {
+      t: Math.round(this.time),
+      ev: this.globalEvents.length ? this.globalEvents : undefined,
+    };
+    if (this.zone) {
+      base.zn = {
+        x: Math.round(this.zone.cx), y: Math.round(this.zone.cy), r: Math.round(this.zone.r),
+        tx: Math.round(this.zone.toCx), ty: Math.round(this.zone.toCy), tr: Math.round(this.zone.toR),
+        s: this.zone.shrinking ? 1 : 0,
+        w: Math.max(0, Math.round(this.zone.timer / 1000)),
+        p: this.zone.phase,
+      };
+    }
+    if (this.tickCount % 10 === 0) {
+      // Tam skor listesi saniyede iki kez gider.
+      const sp = [];
+      for (const p of this.players.values()) {
+        sp.push(p.id, p.kills, p.deaths, Math.round(p.damage), p.alive ? 1 : 0, p.assists);
+      }
+      base.sc = {
+        team: this.mode.teams ? this.teamScore : null,
+        alive: this.countAlive(),
+        total: this.players.size,
+        ps: sp,
+        left: this.mode.timeLimitMs ? Math.max(0, Math.round((this.mode.timeLimitMs - this.time) / 1000)) : 0,
+      };
+    }
+    this._base = base;
+    return base;
+  }
+
+  clearEvents() {
+    this.globalEvents = [];
+    for (const p of this.players.values()) p.privEvents = [];
+  }
+
+  // Çalıda saklanma durumunu her tick'te bir kez hesapla.
+  // Ateş eden oyuncu kısa süreliğine açığa çıkar — çalı kalkan değil.
+  updateHidden() {
+    const bushes = this.bushes;
+    if (!bushes.length) return;
+    for (const p of this.players.values()) {
+      if (!p.alive || this.time - p.muzzle < BUSH_FIRE_REVEAL_MS) { p.hidden = false; continue; }
+      let inside = false;
+      for (let i = 0; i < bushes.length; i++) {
+        const b = bushes[i];
+        const dx = p.x - b.x, dy = p.y - b.y;
+        if (dx * dx + dy * dy < b.r * b.r) { inside = true; break; }
+      }
+      p.hidden = inside;
+    }
+  }
+
+  // Bir izleyici belirli bir oyuncuyu görüyor mu? (mesafe + çalı + görüş hattı)
+  canSee(viewer, other) {
+    if (viewer === other) return true;
+    if (this.mode.teams && other.team === viewer.team) return true;   // takım arkadaşları hep görünür
+    if (!other.alive) return false;
+    const dx = other.x - viewer.x, dy = other.y - viewer.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > VIS_DIST * VIS_DIST) return false;
+    if (other.hidden && d2 > BUSH_REVEAL_DIST * BUSH_REVEAL_DIST) return false;
+    return !lineBlocked(viewer.x, viewer.y, other.x, other.y, this.idx);
+  }
+
+  snapshotFor(viewer) {
+    const base = this._base || this.prepareSnapshot();
+    const now = this.time;
+    // Sadece elenmiş (yeniden doğmayacak) oyuncu izleyici olur ve her şeyi görür.
+    // Yeniden doğacak ölülerde görüş kısıtı sürer; ölüm ekranında zaten bir şey
+    // göstermiyoruz, böylece hiçbir anda fazladan bilgi sızmıyor.
+    const seeAll = !viewer.alive && !this.mode.respawn;
+    if (!viewer.seen) viewer.seen = new Map();
+
+    const ps = [];
+    for (const o of this.players.values()) {
+      let include = seeAll || this.canSee(viewer, o);
+      if (include && o !== viewer) viewer.seen.set(o.id, now);
+      else if (!include && now - (viewer.seen.get(o.id) || -1e9) < VIS_GRACE_MS) include = true;
+      if (!include) continue;
+
+      let f = 0;
+      if (o.alive) f |= F_ALIVE;
+      if (o.protectUntil > now) f |= F_PROTECTED;
+      if (o.reloadUntil) f |= F_RELOADING;
+      if (now - o.muzzle < 60) f |= F_MUZZLE;
+      if (o.hidden) f |= F_HIDDEN;
+
+      ps.push(
+        o.id,
+        Math.round(o.x), Math.round(o.y),
+        Math.round(o.aim * 100),
+        Math.max(0, Math.round(o.hp)),
+        o.maxHp,
+        CLASS_IDS.indexOf(o.cls),
+        f,
+      );
+    }
+
+    const bs = [];
+    const bvis = BULLET_VIS * BULLET_VIS;
+    for (const b of this.bullets) {
+      if (!seeAll) {
+        const dx = b.x - viewer.x, dy = b.y - viewer.y;
+        if (dx * dx + dy * dy > bvis) continue;
+      }
+      bs.push(
+        b.id,
+        Math.round(b.x), Math.round(b.y),
+        Math.round(Math.atan2(b.vy, b.vx) * 100),
+        WEAPON_IDS.indexOf(b.w),
+      );
+    }
+
+    const wep = WEAPONS[viewer.weapon];
+    const out = {
+      t: base.t,
+      ack: viewer.lastSeq,
+      ps, bs,
+      you: {
+        x: Math.round(viewer.x * 100) / 100,
+        y: Math.round(viewer.y * 100) / 100,
+        hp: Math.max(0, Math.round(viewer.hp)),
+        mx: viewer.maxHp,
+        am: viewer.ammo,
+        mg: wep.mag,
+        ar: viewer.reserve,
+        mr: wep.reserve,
+        rl: viewer.reloadUntil ? Math.max(0, Math.round(viewer.reloadUntil - now)) : 0,
+        rt: wep.reloadMs,
+        al: viewer.alive ? 1 : 0,
+        hd: viewer.hidden ? 1 : 0,
+        rs: viewer.alive ? 0 : Math.max(0, Math.round(viewer.deadUntil - now)),
+        cl: viewer.cls, wp: viewer.weapon, sp: viewer.speed,
+        k: viewer.kills, d: viewer.deaths, dm: Math.round(viewer.damage),
+        pl: viewer.place || 0,
+      },
+    };
+    // Olay filtresi:
+    //  - 'shot' / 'imp' konumludur; sadece menzildekilere gider (bant + hile).
+    //  - 'kill' herkese gider ama uzaktaysa konumu gizlenir (öldürme akışı
+    //    bozulmasın, ama konum sızmasın).
+    //  - diğerleri (zone, join, pk, spawn) herkese olduğu gibi gider.
+    if (base.ev) {
+      const evs = [];
+      for (const e of base.ev) {
+        if (e.e === 'shot' || e.e === 'imp') {
+          if (!seeAll) {
+            const lim = e.e === 'shot' ? EVENT_AUDIO_DIST : BULLET_VIS;
+            const dx = e.x - viewer.x, dy = e.y - viewer.y;
+            if (dx * dx + dy * dy > lim * lim) continue;
+          }
+          evs.push(e);
+        } else if (e.e === 'kill' && !seeAll) {
+          const dx = e.x - viewer.x, dy = e.y - viewer.y;
+          if (dx * dx + dy * dy > BULLET_VIS * BULLET_VIS) {
+            const { x, y, ...rest } = e;
+            evs.push(rest);
+          } else evs.push(e);
+        } else {
+          evs.push(e);
+        }
+      }
+      if (evs.length) out.ev = evs;
+    }
+    if (base.zn) out.zn = base.zn;
+    if (base.sc) out.sc = base.sc;
+    if (viewer.privEvents.length) out.pe = viewer.privEvents;
+    return out;
+  }
+
+  matchStartPayload(p) {
+    return {
+      map: this.map,
+      mode: this.mode.id,
+      youId: p.id,
+      tickMs: TICK_MS,
+      players: [...this.players.values()].map((q) => ({
+        id: q.id, name: q.name, team: q.team, cls: q.cls, char: q.char, bot: q.bot,
+      })),
+      pickups: this.pickups.map((k) => ({ id: k.id, x: k.x, y: k.y, kind: k.kind, active: k.active })),
+    };
+  }
+}
+
+// --- Işın testleri --------------------------------------------------------
+// Segment (p,d) ile şişirilmiş AABB kesişimi; [0,1] aralığında en küçük t.
+function raySlab(px, py, dx, dy, o, pad) {
+  const minX = o.x - pad, maxX = o.x + o.w + pad;
+  const minY = o.y - pad, maxY = o.y + o.h + pad;
+  let t0 = 0, t1 = 1;
+
+  if (Math.abs(dx) < 1e-9) {
+    if (px < minX || px > maxX) return null;
+  } else {
+    let ta = (minX - px) / dx, tb = (maxX - px) / dx;
+    if (ta > tb) { const tmp = ta; ta = tb; tb = tmp; }
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  if (Math.abs(dy) < 1e-9) {
+    if (py < minY || py > maxY) return null;
+  } else {
+    let ta = (minY - py) / dy, tb = (maxY - py) / dy;
+    if (ta > tb) { const tmp = ta; ta = tb; tb = tmp; }
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  return t0 >= 0 ? t0 : null;
+}
+
+// Segment ile daire kesişimi; [0,1] aralığında en küçük t.
+function rayCircle(px, py, dx, dy, cx, cy, r) {
+  const fx = px - cx, fy = py - cy;
+  const a = dx * dx + dy * dy;
+  if (a < 1e-9) return null;
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - r * r;
+  if (c <= 0) return 0;                       // zaten içinde
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const t = (-b - sq) / (2 * a);
+  if (t >= 0 && t <= 1) return t;
+  return null;
+}
+
+__exp.Game = Game;
+
+  };
+
+  __defs["/shared/physics.js"] = function (__exp, __req) {
+// Sunucu ile istemcinin AYNI şekilde çalıştırdığı hareket/çarpışma kodu.
+// İstemci tarafı tahmin (client-side prediction) ile sunucunun sonucu birebir
+// örtüşsün diye bu mantık tek yerde durur.
+
+const { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, PLAYER_RADIUS } = __req("/shared/constants.js");
+
+// --- Engel indeksi (uniform grid) ----------------------------------------
+// Her karede 20 oyuncu + yüzlerce mermi için tüm engelleri taramak israf.
+// Haritayı hücrelere bölüp sadece ilgili hücredeki engellere bakıyoruz.
+function buildObstacleIndex(map) {
+  const cell = 200;
+  const cols = Math.ceil(map.w / cell);
+  const rows = Math.ceil(map.h / cell);
+  const cells = new Array(cols * rows);
+  for (let i = 0; i < cells.length; i++) cells[i] = [];
+
+  for (const o of map.obstacles) {
+    const c0 = Math.max(0, Math.floor(o.x / cell));
+    const c1 = Math.min(cols - 1, Math.floor((o.x + o.w) / cell));
+    const r0 = Math.max(0, Math.floor(o.y / cell));
+    const r1 = Math.min(rows - 1, Math.floor((o.y + o.h) / cell));
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) cells[r * cols + c].push(o);
+    }
+  }
+  return { cell, cols, rows, cells, w: map.w, h: map.h };
+}
+
+// Verilen kutuyla kesişen engelleri (tekrarsız) döndürür.
+function queryObstacles(idx, x0, y0, x1, y1, out) {
+  const res = out || [];
+  res.length = 0;
+  if (!idx) return res;
+  const c0 = Math.max(0, Math.floor(x0 / idx.cell));
+  const c1 = Math.min(idx.cols - 1, Math.floor(x1 / idx.cell));
+  const r0 = Math.max(0, Math.floor(y0 / idx.cell));
+  const r1 = Math.min(idx.rows - 1, Math.floor(y1 / idx.cell));
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const bucket = idx.cells[r * idx.cols + c];
+      for (let i = 0; i < bucket.length; i++) {
+        const o = bucket[i];
+        if (res.indexOf(o) === -1) res.push(o);
+      }
+    }
+  }
+  return res;
+}
+
+// --- Daire / dikdörtgen ---------------------------------------------------
+function circleHitsRect(cx, cy, r, o) {
+  const nx = cx < o.x ? o.x : (cx > o.x + o.w ? o.x + o.w : cx);
+  const ny = cy < o.y ? o.y : (cy > o.y + o.h ? o.y + o.h : cy);
+  const dx = cx - nx, dy = cy - ny;
+  return dx * dx + dy * dy < r * r;
+}
+
+// Daireyi dikdörtgenden en kısa yönde dışarı iter.
+function pushOut(pos, r, o) {
+  const cx = pos.x, cy = pos.y;
+  const nx = cx < o.x ? o.x : (cx > o.x + o.w ? o.x + o.w : cx);
+  const ny = cy < o.y ? o.y : (cy > o.y + o.h ? o.y + o.h : cy);
+  let dx = cx - nx, dy = cy - ny;
+  let d2 = dx * dx + dy * dy;
+
+  if (d2 > 1e-8) {
+    if (d2 >= r * r) return false;
+    const d = Math.sqrt(d2);
+    const push = r - d;
+    pos.x += (dx / d) * push;
+    pos.y += (dy / d) * push;
+    return true;
+  }
+
+  // Merkez tam kutunun içinde: en yakın kenardan çıkar.
+  const left = cx - o.x, right = o.x + o.w - cx;
+  const top = cy - o.y, bottom = o.y + o.h - cy;
+  const m = Math.min(left, right, top, bottom);
+  if (m === left) pos.x = o.x - r;
+  else if (m === right) pos.x = o.x + o.w + r;
+  else if (m === top) pos.y = o.y - r;
+  else pos.y = o.y + o.h + r;
+  return true;
+}
+
+const _scratch = [];
+
+// Bir daireyi (dx,dy) kadar kaydırır, engellere ve harita sınırlarına göre düzeltir.
+// Eksenleri ayrı ayrı çözmek duvar boyunca kaymayı (wall sliding) doğal kılar.
+function moveCircle(pos, radius, dx, dy, idx) {
+  if (dx !== 0) {
+    pos.x += dx;
+    const list = queryObstacles(idx, pos.x - radius, pos.y - radius, pos.x + radius, pos.y + radius, _scratch);
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (!circleHitsRect(pos.x, pos.y, radius, o)) continue;
+      // Yalnızca X ekseninde geri it
+      if (dx > 0) pos.x = Math.min(pos.x, o.x - radius);
+      else pos.x = Math.max(pos.x, o.x + o.w + radius);
+    }
+  }
+  if (dy !== 0) {
+    pos.y += dy;
+    const list = queryObstacles(idx, pos.x - radius, pos.y - radius, pos.x + radius, pos.y + radius, _scratch);
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (!circleHitsRect(pos.x, pos.y, radius, o)) continue;
+      if (dy > 0) pos.y = Math.min(pos.y, o.y - radius);
+      else pos.y = Math.max(pos.y, o.y + o.h + radius);
+    }
+  }
+
+  // Harita sınırları
+  if (pos.x < radius) pos.x = radius;
+  if (pos.y < radius) pos.y = radius;
+  if (pos.x > idx.w - radius) pos.x = idx.w - radius;
+  if (pos.y > idx.h - radius) pos.y = idx.h - radius;
+
+  // Köşe durumlarında hâlâ içeride kalmışsa temizle
+  const list = queryObstacles(idx, pos.x - radius, pos.y - radius, pos.x + radius, pos.y + radius, _scratch);
+  for (let i = 0; i < list.length; i++) pushOut(pos, radius, list[i]);
+}
+
+// --- Oyuncu hareketi (tahmin + sunucu ortak) ------------------------------
+// state: { x, y }  — yerinde güncellenir
+function applyMovement(state, keys, speed, dtSec, idx) {
+  let mx = 0, my = 0;
+  if (keys & IN_UP) my -= 1;
+  if (keys & IN_DOWN) my += 1;
+  if (keys & IN_LEFT) mx -= 1;
+  if (keys & IN_RIGHT) mx += 1;
+  if (mx === 0 && my === 0) return;
+  const len = Math.hypot(mx, my);
+  mx /= len; my /= len;
+  moveCircle(state, PLAYER_RADIUS, mx * speed * dtSec, my * speed * dtSec, idx);
+}
+
+// --- Görüş hattı (botlar ve isabet doğrulaması için) ----------------------
+function lineBlocked(x0, y0, x1, y1, idx) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1) return false;
+  const steps = Math.min(160, Math.ceil(dist / 22));
+  const sx = dx / steps, sy = dy / steps;
+  let x = x0, y = y0;
+  for (let i = 0; i < steps; i++) {
+    x += sx; y += sy;
+    const list = queryObstacles(idx, x - 1, y - 1, x + 1, y + 1, _scratch);
+    for (let j = 0; j < list.length; j++) {
+      const o = list[j];
+      if (x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h) return true;
+    }
+  }
+  return false;
+}
+
+// Bir yön boyunca ilk duvara kadar olan mesafe. Keskin nişancının nişan
+// çizgisinin duvarda kesilmesi için kullanılıyor.
+function rayHitDistance(x0, y0, angle, maxDist, idx) {
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  const step = 14;
+  const steps = Math.ceil(maxDist / step);
+  let x = x0, y = y0;
+  for (let i = 1; i <= steps; i++) {
+    x = x0 + dx * step * i;
+    y = y0 + dy * step * i;
+    if (x < 0 || y < 0 || x > idx.w || y > idx.h) return step * (i - 1);
+    const list = queryObstacles(idx, x - 1, y - 1, x + 1, y + 1, _scratch);
+    for (let j = 0; j < list.length; j++) {
+      const o = list[j];
+      if (x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h) return step * (i - 1);
+    }
+  }
+  return maxDist;
+}
+
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+// Açıyı -PI..PI aralığına indirger (interpolasyonda sarma sorunu için).
+function angleLerp(a, b, t) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
+__exp.buildObstacleIndex = buildObstacleIndex;
+__exp.queryObstacles = queryObstacles;
+__exp.circleHitsRect = circleHitsRect;
+__exp.moveCircle = moveCircle;
+__exp.applyMovement = applyMovement;
+__exp.lineBlocked = lineBlocked;
+__exp.rayHitDistance = rayHitDistance;
+__exp.clamp = clamp;
+__exp.angleLerp = angleLerp;
+
+  };
+
+  __defs["/shared/sim/map.js"] = function (__exp, __req) {
+// Harita üretimi. Üretilen harita maç başında istemciye olduğu gibi gönderilir,
+// böylece iki taraf da birebir aynı geometriyle çalışır.
+//
+// İki tür örtü var:
+//   • obstacles — duvar/kaya: içinden geçilmez, mermi geçmez, görüşü keser
+//   • bushes    — çalı: İÇİNDEN GEÇİLİR, mermi geçer, ama içindeki oyuncu
+//                 yakından bakılmadıkça görünmez (ateş edince açığa çıkar)
+//
+// Yerleşim oransal tanımlıdır: MAPS içindeki genişlik/yükseklik değişince
+// her şey kendiliğinden ölçeklenir.
+
+const { MAPS, PLAYER_RADIUS, MIN_CORRIDOR, SPAWN_EDGE_INSET } = __req("/shared/constants.js");
+const { buildObstacleIndex, circleHitsRect, queryObstacles } = __req("/shared/physics.js");
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function rect(x, y, w, h, type = 'wall') {
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), type };
+}
+
+// --- Simetrik arena (FFA + Takım Savaşı) ---------------------------------
+// Her maçta farklı ama hep AYNI TARZDA bir arena üretir: sol yarıya birkaç
+// motif (L, T, U, düz duvar) yerleştirilir, sağ yarı aynalanır. Motifler kaba
+// bir ızgaraya oturduğu için koridorlar hep geniş kalır; harita değişir ama
+// tanıdık hissettirir.
+function buildArena(seed) {
+  const { w, h } = MAPS.arena;
+  const rnd = mulberry32(seed);
+  const T = 0.013 * w;                     // duvar kalınlığı
+
+  // Motiflerin yerleşeceği bölge (kenarlarda dolaşma koridoru kalsın)
+  const X0 = 0.070 * w, X1 = 0.450 * w;
+  const Y0 = 0.080 * h, Y1 = 0.920 * h;
+  const COLS = 3, ROWS = 4;
+  const cellW = (X1 - X0) / COLS;
+  const cellH = (Y1 - Y0) / ROWS;
+
+  // Motif, hücrenin ortasına oturur ve hücreyi taşmaz — böylece komşu
+  // motifler arasında daima geniş boşluk kalır.
+  const mw = Math.min(cellW * 0.62, 0.095 * w);
+  const mh = Math.min(cellH * 0.62, 0.150 * h);
+
+  const out = [];
+  const motif = (kind, cx, cy, flipX, flipY) => {
+    const sx = flipX ? -1 : 1, sy = flipY ? -1 : 1;
+    const L = cx - mw / 2, R = cx + mw / 2;
+    const U = cy - mh / 2, D = cy + mh / 2;
+    switch (kind) {
+      case 'wallH':
+        out.push(rect(L, cy - T / 2, mw, T));
+        break;
+      case 'wallV':
+        out.push(rect(cx - T / 2, U, T, mh));
+        break;
+      case 'L':
+        out.push(rect(L, sy > 0 ? U : D - T, mw, T));
+        out.push(rect(sx > 0 ? L : R - T, U, T, mh));
+        break;
+      case 'T':
+        out.push(rect(L, cy - T / 2, mw, T));
+        out.push(rect(cx - T / 2, sy > 0 ? cy : U, T, mh / 2));
+        break;
+      case 'U':
+        out.push(rect(L, U, T, mh));
+        out.push(rect(R - T, U, T, mh));
+        out.push(rect(L, sy > 0 ? D - T : U, mw, T));
+        break;
+      case 'pillars':
+        out.push(rect(L, U, T * 2.2, T * 2.2));
+        out.push(rect(R - T * 2.2, D - T * 2.2, T * 2.2, T * 2.2));
+        break;
+      default:
+        out.push(rect(L, cy - T / 2, mw, T));
+    }
+  };
+
+  const KINDS = ['wallH', 'wallV', 'L', 'L', 'T', 'U', 'pillars'];
+
+  // Hücreleri karıştır, bir kısmını doldur
+  const cells = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) cells.push([c, r]);
+  for (let i = cells.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [cells[i], cells[j]] = [cells[j], cells[i]];
+  }
+  const used = cells.slice(0, 7 + Math.floor(rnd() * 3));   // 7–9 motif
+
+  for (const [c, r] of used) {
+    const cx = X0 + (c + 0.5) * cellW + (rnd() - 0.5) * cellW * 0.16;
+    const cy = Y0 + (r + 0.5) * cellH + (rnd() - 0.5) * cellH * 0.16;
+    motif(KINDS[Math.floor(rnd() * KINDS.length)], cx, cy, rnd() < 0.5, rnd() < 0.5);
+  }
+
+  const obstacles = [];
+  for (const o of out) {
+    if (o.w < 4 || o.h < 4) continue;
+    obstacles.push(o);
+    obstacles.push(rect(w - o.x - o.w, o.y, o.w, o.h));      // yatay ayna
+  }
+
+  // Merkez yapı — her haritada var, arenanın çekirdeği
+  const centerKind = rnd();
+  if (centerKind < 0.5) {
+    obstacles.push(rect(w / 2 - 0.009 * w, h / 2 - 0.135 * h, 0.018 * w, 0.080 * h));
+    obstacles.push(rect(w / 2 - 0.009 * w, h / 2 + 0.055 * h, 0.018 * w, 0.080 * h));
+  } else {
+    obstacles.push(rect(w / 2 - 0.075 * w, h / 2 - 0.010 * h, 0.055 * w, 0.020 * h));
+    obstacles.push(rect(w / 2 + 0.020 * w, h / 2 - 0.010 * h, 0.055 * w, 0.020 * h));
+  }
+
+  // --- Çalılar (bir tık küçük) --------------------------------------------
+  const idxTmp = buildObstacleIndex({ w, h, obstacles });
+  const bushes = [];
+  const minR = 0.030 * Math.min(w, h);
+  const maxR = 0.046 * Math.min(w, h);
+
+  const fitsBush = (x, y, r) => {
+    const buf = [];
+    const list = queryObstacles(idxTmp, x - r, y - r, x + r, y + r, buf);
+    for (let i = 0; i < list.length; i++) if (circleHitsRect(x, y, r * 0.75, list[i])) return false;
+    return true;
+  };
+
+  let placed = 0, guard = 0;
+  while (placed < 9 && guard < 600) {
+    guard++;
+    const r = minR + rnd() * (maxR - minR);
+    const x = 0.075 * w + rnd() * (0.400 * w);
+    const y = 0.090 * h + rnd() * (0.820 * h);
+    if (!fitsBush(x, y, r)) continue;
+    if (bushes.some((b) => Math.hypot(b.x - x, b.y - y) < (b.r + r) * 0.85)) continue;
+    bushes.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r) });
+    bushes.push({ x: Math.round(w - x), y: Math.round(y), r: Math.round(r) });
+    placed++;
+  }
+  // merkez çalılığı
+  const cr = Math.round(minR * 1.15);
+  if (fitsBush(w / 2, h * 0.5, cr)) bushes.push({ x: Math.round(w / 2), y: Math.round(h * 0.5), r: cr });
+
+  return { id: 'arena', w, h, obstacles, bushes };
+}
+
+// --- Daralan alan haritası (Son Hayatta Kalan) ---------------------------
+function buildRoyale(seed) {
+  const { w, h } = MAPS.royale;
+  const rnd = mulberry32(seed);
+  const obstacles = [];
+  const bushes = [];
+
+  // İki engel arasında daima en az MIN_CORRIDOR boşluk kalsın.
+  const overlaps = (r, pad) => obstacles.some((o) =>
+    r.x < o.x + o.w + pad && r.x + r.w + pad > o.x &&
+    r.y < o.y + o.h + pad && r.y + r.h + pad > o.y);
+
+  const DOOR = 150;                    // kapı genişliği (oyuncu çapı 32)
+  const T = 36;                        // duvar kalınlığı
+
+  let tries = 0, buildings = 0;
+  while (buildings < 16 && tries < 1400) {
+    tries++;
+    const bw = 280 + Math.floor(rnd() * 260);
+    const bh = 240 + Math.floor(rnd() * 240);
+    const x = 200 + rnd() * (w - bw - 400);
+    const y = 200 + rnd() * (h - bh - 400);
+    const box = rect(x, y, bw, bh);
+    if (overlaps(box, MIN_CORRIDOR * 2.2)) continue;
+
+    // Her binada iki kapı: içeride sıkışıp kalınmasın
+    const sides = [0, 1, 2, 3].sort(() => rnd() - 0.5).slice(0, 2);
+    const walls = [];
+
+    const withDoor = (horizontal, fixed, from, to) => {
+      const span = to - from;
+      if (span < DOOR + 2 * T + 20) {
+        walls.push(horizontal ? rect(from, fixed, span, T) : rect(fixed, from, T, span));
+        return;
+      }
+      const d = from + T + rnd() * (span - 2 * T - DOOR);
+      if (horizontal) {
+        walls.push(rect(from, fixed, d - from, T));
+        walls.push(rect(d + DOOR, fixed, to - d - DOOR, T));
+      } else {
+        walls.push(rect(fixed, from, T, d - from));
+        walls.push(rect(fixed, d + DOOR, T, to - d - DOOR));
+      }
+    };
+
+    // üst / alt / sol / sağ
+    if (sides.includes(0)) withDoor(true, box.y, box.x, box.x + box.w);
+    else walls.push(rect(box.x, box.y, box.w, T));
+    if (sides.includes(1)) withDoor(true, box.y + box.h - T, box.x, box.x + box.w);
+    else walls.push(rect(box.x, box.y + box.h - T, box.w, T));
+    if (sides.includes(2)) withDoor(false, box.x, box.y, box.y + box.h);
+    else walls.push(rect(box.x, box.y, T, box.h));
+    if (sides.includes(3)) withDoor(false, box.x + box.w - T, box.y, box.y + box.h);
+    else walls.push(rect(box.x + box.w - T, box.y, T, box.h));
+
+    for (const wl of walls) if (wl.w > 6 && wl.h > 6) obstacles.push(wl);
+    buildings++;
+  }
+
+  // Serbest duvar parçaları
+  for (let i = 0; i < 30; i++) {
+    for (let t = 0; t < 50; t++) {
+      const horiz = rnd() < 0.5;
+      const len = 180 + rnd() * 320;
+      const r = horiz
+        ? rect(160 + rnd() * (w - len - 320), 160 + rnd() * (h - 360), len, T)
+        : rect(160 + rnd() * (w - 320), 160 + rnd() * (h - len - 320), T, len);
+      if (overlaps(r, MIN_CORRIDOR * 1.6)) continue;
+      obstacles.push(r); break;
+    }
+  }
+
+  // Çalılıklar — engel değil, sadece saklanma
+  for (let i = 0; i < 48; i++) {
+    const r = 42 + rnd() * 36;
+    bushes.push({
+      x: Math.round(140 + rnd() * (w - 280)),
+      y: Math.round(140 + rnd() * (h - 280)),
+      r: Math.round(r),
+    });
+  }
+
+  return { id: 'royale', w, h, obstacles, bushes };
+}
+
+// --- Yürünebilirlik denetimi ---------------------------------------------
+// Haritayı ızgaraya bölüp oyuncunun sığdığı hücreleri işaretler, sonra en
+// büyük bağlı bölgeyi bulur. Dar kalan bir geçit varsa o bölge ana bölgeden
+// kopar ve burada yakalanır — "geçilmeyen boşluk" sorununun kökü budur.
+function analyzeWalkable(map, idx, clearance = PLAYER_RADIUS + 4, step = 26) {
+  const cols = Math.max(1, Math.floor(map.w / step));
+  const rows = Math.max(1, Math.floor(map.h / step));
+  const walk = new Uint8Array(cols * rows);
+  const buf = [];
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = (c + 0.5) * step, y = (r + 0.5) * step;
+      if (x < clearance || y < clearance || x > map.w - clearance || y > map.h - clearance) continue;
+      const list = queryObstacles(idx, x - clearance, y - clearance, x + clearance, y + clearance, buf);
+      let ok = true;
+      for (let i = 0; i < list.length; i++) {
+        if (circleHitsRect(x, y, clearance, list[i])) { ok = false; break; }
+      }
+      if (ok) walk[r * cols + c] = 1;
+    }
+  }
+
+  // Bağlı bileşenler (4 komşu)
+  const comp = new Int32Array(cols * rows).fill(-1);
+  const sizes = [];
+  const stack = [];
+  for (let i = 0; i < walk.length; i++) {
+    if (!walk[i] || comp[i] !== -1) continue;
+    const id = sizes.length;
+    let n = 0;
+    stack.length = 0;
+    stack.push(i);
+    comp[i] = id;
+    while (stack.length) {
+      const cur = stack.pop();
+      n++;
+      const cc = cur % cols, cr = (cur - cc) / cols;
+      if (cc > 0 && walk[cur - 1] && comp[cur - 1] === -1) { comp[cur - 1] = id; stack.push(cur - 1); }
+      if (cc < cols - 1 && walk[cur + 1] && comp[cur + 1] === -1) { comp[cur + 1] = id; stack.push(cur + 1); }
+      if (cr > 0 && walk[cur - cols] && comp[cur - cols] === -1) { comp[cur - cols] = id; stack.push(cur - cols); }
+      if (cr < rows - 1 && walk[cur + cols] && comp[cur + cols] === -1) { comp[cur + cols] = id; stack.push(cur + cols); }
+    }
+    sizes.push(n);
+  }
+
+  let main = -1, best = -1, total = 0;
+  for (let i = 0; i < sizes.length; i++) {
+    total += sizes[i];
+    if (sizes[i] > best) { best = sizes[i]; main = i; }
+  }
+
+  return {
+    cols, rows, step, walk, comp, main,
+    totalCells: total,
+    mainCells: Math.max(0, best),
+    mainRatio: total ? best / total : 0,
+    components: sizes.length,
+    /** Bu nokta ana bölgede mi? (kopuk cepte doğmayı engeller) */
+    inMain(x, y) {
+      const c = Math.min(cols - 1, Math.max(0, Math.floor(x / step)));
+      const r = Math.min(rows - 1, Math.max(0, Math.floor(y / step)));
+      return comp[r * cols + c] === main;
+    },
+  };
+}
+
+// --- Boş (spawn'a uygun) noktaların hesabı -------------------------------
+function computeFreePoints(map, idx, walkable, step = 80, clearance = PLAYER_RADIUS + 18) {
+  const pts = [];
+  const margin = 110;
+  const buf = [];
+  for (let y = margin; y < map.h - margin; y += step) {
+    for (let x = margin; x < map.w - margin; x += step) {
+      const list = queryObstacles(idx, x - clearance, y - clearance, x + clearance, y + clearance, buf);
+      let ok = true;
+      for (let i = 0; i < list.length; i++) {
+        if (circleHitsRect(x, y, clearance, list[i])) { ok = false; break; }
+      }
+      // Kopuk bir cebe doğmasın
+      if (ok && walkable.inMain(x, y)) pts.push({ x, y });
+    }
+  }
+  return pts;
+}
+
+// Haritanın dış çerçevesindeki noktaları eler. Oyuncunun köşede sıkışıp
+// doğmasını, arkasını kollamak zorunda kalmadan oyuna girmesini sağlar.
+function insetPoints(points, map, frac) {
+  const mx = map.w * frac;
+  const my = map.h * frac;
+  return points.filter((p) => p.x >= mx && p.x <= map.w - mx
+    && p.y >= my && p.y <= map.h - my);
+}
+
+// Birbirinden olabildiğince uzak k nokta seç (farthest-point sampling).
+function spreadPick(points, k, rnd) {
+  if (points.length === 0) return [];
+  const chosen = [points[Math.floor(rnd() * points.length)]];
+  while (chosen.length < k && chosen.length < points.length) {
+    let best = null, bestD = -1;
+    for (const p of points) {
+      let d = Infinity;
+      for (const c of chosen) {
+        const dd = (p.x - c.x) ** 2 + (p.y - c.y) ** 2;
+        if (dd < d) d = dd;
+      }
+      if (d > bestD) { bestD = d; best = p; }
+    }
+    if (!best) break;
+    chosen.push(best);
+  }
+  return chosen;
+}
+
+/**
+ * Mod için harita üretir.
+ * @returns {{map, idx, spawns, pickups, walkable}}
+ */
+function createMap(mapId, seed = Math.floor(Math.random() * 1e9)) {
+  const isRoyale = mapId === 'royale';
+
+  // Royale rastgele üretildiği için, bağlantısı kötü çıkarsa yeni tohumla dene.
+  let map, idx, walkable;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const s = (seed + attempt * 7919) >>> 0;
+    map = isRoyale ? buildRoyale(s) : buildArena(s);
+    idx = buildObstacleIndex(map);
+    walkable = analyzeWalkable(map, idx);
+    if (walkable.mainRatio >= 0.999) break;
+  }
+
+  const rnd = mulberry32(seed ^ 0x9e3779b9);
+  const free = computeFreePoints(map, idx, walkable);
+  if (free.length < 10) throw new Error('Harita üretimi başarısız: yeterli boş alan yok');
+
+  // Doğuş havuzunu haritanın iç bölgesiyle sınırla. Eskiden tüm boş noktalar
+  // havuzdaydı ve "birbirinden en uzak noktaları seç" mantığı doğal olarak
+  // köşeleri kazandırıyordu — herkes kenarda doğuyordu.
+  const inset = insetPoints(free, map, SPAWN_EDGE_INSET);
+  const core = inset.length >= 12 ? inset : free;
+
+  const teamBand = (side) => {
+    const band = side === 1
+      ? core.filter((p) => p.x < map.w * 0.34)
+      : core.filter((p) => p.x > map.w * 0.66);
+    return band.length >= 4 ? band : core;
+  };
+
+  const spawns = {
+    all: spreadPick(core, Math.min(56, core.length), rnd),
+    1: spreadPick(teamBand(1), 16, rnd),
+    2: spreadPick(teamBand(2), 16, rnd),
+  };
+  if (spawns[1].length === 0) spawns[1] = spawns.all;
+  if (spawns[2].length === 0) spawns[2] = spawns.all;
+
+  // Can kutusu yok (can kendiliğinden yenileniyor); haritadaki kutular cephane.
+  const packCount = isRoyale ? 22 : 12;
+  const packPts = spreadPick(free, Math.min(packCount, free.length), rnd);
+  const pickups = packPts.map((p, i) => ({
+    id: i + 1,
+    x: p.x, y: p.y,
+    kind: 'ammo',
+    active: true,
+    respawnAt: 0,
+  }));
+
+  return { map, idx, spawns, pickups, walkable };
+}
+
+__exp.analyzeWalkable = analyzeWalkable;
+__exp.insetPoints = insetPoints;
+__exp.createMap = createMap;
+
+  };
+
+  __defs["/shared/sim/bot.js"] = function (__exp, __req) {
+// Bot yapay zekası. Botlar gerçek oyuncularla aynı girdi kanalını kullanır
+// (tuş maskesi + nişan açısı), böylece simülasyon tarafında ayrıcalıkları yoktur.
+
+const { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE, IN_RELOAD, WEAPONS, PLAYER_RADIUS, BUSH_REVEAL_DIST, BOT_LEVELS, DEFAULT_BOT_LEVEL } = __req("/shared/constants.js");
+const { lineBlocked, clamp } = __req("/shared/physics.js");
+
+// Botun zorluk ayarları. Seviye oyuncuya ait (lobide seçiliyor); tanınmayan
+// bir değer gelirse sessizce ortaya düşüyoruz.
+function level(p) {
+  return BOT_LEVELS[p.botLevel] || BOT_LEVELS[DEFAULT_BOT_LEVEL];
+}
+
+function resetBot(p) {
+  p.brain = {
+    targetId: 0,
+    retargetAt: 0,
+    wander: null,
+    strafe: Math.random() < 0.5 ? 1 : -1,
+    strafeUntil: 0,
+    detourUntil: 0,
+    detourDir: 1,
+    lastX: p.x, lastY: p.y, progressAt: 0,
+    aim: p.aim,
+    // Yetenek seviyenin aralığından çekiliyor: aynı zorluktaki botlar
+    // birbirinin kopyası olmasın diye aralık, tek sayı değil.
+    skill: p.brain?.skill ?? (() => {
+      const [lo, hi] = level(p).skill;
+      return lo + Math.random() * (hi - lo);
+    })(),
+    fireHold: 0,
+    throwStart: 0,
+    fireReadyAt: 0,
+    seq: p.brain?.seq || 0,
+  };
+}
+
+function keysFromDir(dx, dy) {
+  let k = 0;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = dx / len, ny = dy / len;
+  if (nx > 0.38) k |= IN_RIGHT; else if (nx < -0.38) k |= IN_LEFT;
+  if (ny > 0.38) k |= IN_DOWN; else if (ny < -0.38) k |= IN_UP;
+  return k;
+}
+
+function angDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function botThink(p, game, dtMs) {
+  if (!p.brain) resetBot(p);
+  const b = p.brain;
+  b.seq++;
+
+  if (!p.alive) {
+    p.inputQueue.push({ s: b.seq, d: dtMs, k: 0, a: p.aim });
+    return;
+  }
+
+  const wep = WEAPONS[p.weapon];
+  const gorus = level(p).view;
+  const now = game.time;
+  let keys = 0;
+
+  // --- Hedef seçimi -------------------------------------------------------
+  if (now >= b.retargetAt) {
+    b.retargetAt = now + 350 + Math.random() * 350;
+    let best = null, bestD = Infinity;
+    for (const o of game.players.values()) {
+      if (o === p || !o.alive) continue;
+      if (game.mode.teams && o.team === p.team) continue;
+      if (o.protectUntil > now) continue;
+      const d = Math.hypot(o.x - p.x, o.y - p.y);
+      if (d > gorus) continue;
+      // Çalıda saklanan hedefi bot da uzaktan göremez
+      if (o.hidden && d > BUSH_REVEAL_DIST) continue;
+      if (lineBlocked(p.x, p.y, o.x, o.y, game.idx)) continue;
+      // Yakın ve düşük canlı hedefi tercih et
+      const score = d * (0.6 + o.hp / (o.maxHp * 2.5));
+      if (score < bestD) { bestD = score; best = o; }
+    }
+    const newId = best ? best.id : 0;
+    if (newId !== b.targetId) {
+      // Tepki süresi: bot yeni gördüğü hedefe anında ateş açmasın
+      b.fireReadyAt = now + level(p).reactMs + (1 - b.skill) * 620 + (wep.id === 'sniper' ? 260 : 0);
+      b.targetId = newId;
+    }
+  }
+
+  let target = b.targetId ? game.players.get(b.targetId) : null;
+  if (target && (!target.alive || Math.hypot(target.x - p.x, target.y - p.y) > gorus * 1.15)) target = null;
+  const hasLos = target ? !lineBlocked(p.x, p.y, target.x, target.y, game.idx) : false;
+
+  // --- Amaç noktası -------------------------------------------------------
+  let goalX, goalY;
+  const lowHp = p.hp < p.maxHp * 0.32;
+  const lowAmmo = p.reserve < wep.reserve * 0.3 && p.ammo < wep.mag * 0.5;
+
+  const zone = game.zone;
+  const outsideZone = zone && Math.hypot(p.x - zone.cx, p.y - zone.cy) > zone.r * 0.88;
+
+  if (outsideZone) {
+    // Her şeyden önce güvenli alana dön
+    const ang = Math.atan2(zone.cy - p.y, zone.cx - p.x);
+    goalX = zone.cx - Math.cos(ang) * zone.r * 0.55;
+    goalY = zone.cy - Math.sin(ang) * zone.r * 0.55;
+  } else if (lowAmmo) {
+    // Cephane sınırlı: en yakın kutuya git
+    let pack = null, pd = 1600;
+    for (const k of game.pickups) {
+      if (!k.active) continue;
+      const d = Math.hypot(k.x - p.x, k.y - p.y);
+      if (d < pd) { pd = d; pack = k; }
+    }
+    if (pack) { goalX = pack.x; goalY = pack.y; }
+  } else if (lowHp && target) {
+    // Can kutusu yok, can zamanla dolar — geri çekilip beklemek mantıklı
+    const ang = Math.atan2(target.y - p.y, target.x - p.x);
+    goalX = p.x - Math.cos(ang) * 420;
+    goalY = p.y - Math.sin(ang) * 420;
+  }
+
+  if (goalX === undefined) {
+    if (target && hasLos) {
+      // İdeal mesafeyi koru
+      const ideal = wep.id === 'shotgun' ? 150 : wep.id === 'sniper' ? 620 : 340;
+      const d = Math.hypot(target.x - p.x, target.y - p.y);
+      const ang = Math.atan2(target.y - p.y, target.x - p.x);
+      const approach = clamp((d - ideal) / 160, -1, 1);
+      if (now >= b.strafeUntil) {
+        b.strafe = Math.random() < 0.5 ? 1 : -1;
+        b.strafeUntil = now + 500 + Math.random() * 900;
+      }
+      const sx = Math.cos(ang + Math.PI / 2) * b.strafe;
+      const sy = Math.sin(ang + Math.PI / 2) * b.strafe;
+      goalX = p.x + (Math.cos(ang) * approach + sx * 0.85) * 200;
+      goalY = p.y + (Math.sin(ang) * approach + sy * 0.85) * 200;
+    } else {
+      if (!b.wander || Math.hypot(b.wander.x - p.x, b.wander.y - p.y) < 90 || now > b.wanderUntil) {
+        const pool = game.spawns.all;
+        let pick = pool[Math.floor(Math.random() * pool.length)];
+        if (zone) {
+          const inside = pool.filter((s) => Math.hypot(s.x - zone.cx, s.y - zone.cy) < zone.r * 0.7);
+          if (inside.length) pick = inside[Math.floor(Math.random() * inside.length)];
+        }
+        b.wander = pick;
+        b.wanderUntil = now + 12000;
+      }
+      goalX = b.wander.x; goalY = b.wander.y;
+    }
+  }
+
+  // --- Engelden kaçınma (bıyık ışınları) ----------------------------------
+  let dx = goalX - p.x, dy = goalY - p.y;
+  const dLen = Math.hypot(dx, dy) || 1;
+  dx /= dLen; dy /= dLen;
+
+  const probe = 78;
+  const fwdBlocked = lineBlocked(p.x, p.y, p.x + dx * probe, p.y + dy * probe, game.idx);
+  if (fwdBlocked || now < b.detourUntil) {
+    if (now >= b.detourUntil) {
+      const lx = -dy, ly = dx;
+      const leftBlocked = lineBlocked(p.x, p.y, p.x + lx * probe * 1.3, p.y + ly * probe * 1.3, game.idx);
+      const rightBlocked = lineBlocked(p.x, p.y, p.x - lx * probe * 1.3, p.y - ly * probe * 1.3, game.idx);
+      b.detourDir = leftBlocked && !rightBlocked ? -1 : (rightBlocked && !leftBlocked ? 1 : (Math.random() < 0.5 ? 1 : -1));
+      b.detourUntil = now + 450 + Math.random() * 400;
+    }
+    const lx = -dy * b.detourDir, ly = dx * b.detourDir;
+    dx = dx * 0.25 + lx; dy = dy * 0.25 + ly;
+  }
+
+  // Takılma tespiti: 900 ms boyunca ilerleme yoksa rastgele yön dene
+  if (now - b.progressAt > 900) {
+    b.progressAt = now;
+    if (Math.hypot(p.x - b.lastX, p.y - b.lastY) < 26) {
+      b.detourDir = -b.detourDir;
+      b.detourUntil = now + 600;
+      b.wander = null;
+    }
+    b.lastX = p.x; b.lastY = p.y;
+  }
+
+  keys |= keysFromDir(dx, dy);
+
+  // --- Nişan --------------------------------------------------------------
+  let desiredAim = b.aim;
+  if (target) {
+    const d = Math.hypot(target.x - p.x, target.y - p.y);
+    const flight = d / wep.speed;
+    // Hedefin hareketini kabaca tahmin et (son konum farkından)
+    const lead = 0.85 * b.skill;
+    const px = target.x + (target.vxEst || 0) * flight * lead;
+    const py = target.y + (target.vyEst || 0) * flight * lead;
+    desiredAim = Math.atan2(py - p.y, px - p.x);
+    const err = (1 - b.skill) * 0.22 * (d / 380 + 0.4);
+    desiredAim += (Math.random() - 0.5) * 2 * err;
+  } else {
+    desiredAim = Math.atan2(dy, dx);
+  }
+  const turnRate = (3.2 + b.skill * 5.5) * (dtMs / 1000);
+  const diff = angDiff(b.aim, desiredAim);
+  b.aim += clamp(diff, -turnRate, turnRate);
+
+  // --- Ateş / şarjör ------------------------------------------------------
+  const canShoot = target && hasLos
+    && now >= (b.fireReadyAt || 0)
+    && Math.hypot(target.x - p.x, target.y - p.y) < wep.range * 0.92
+    && Math.abs(angDiff(b.aim, Math.atan2(target.y - p.y, target.x - p.x))) < (wep.id === 'shotgun' ? 0.26 : 0.1);
+
+  if (canShoot && p.ammo > 0 && !p.reloadUntil) {
+    if (wep.throwable) {
+      // Bomba: tuşu BASILI TUTARAK menzili doldurup BIRAKARAK atıyoruz —
+      // oyuncuyla tamamen aynı mekanik, botun ayrıcalığı yok.
+      // Ne kadar tutacağımızı hedefin uzaklığından hesaplıyoruz; yetenek
+      // düştükçe biraz şaşırıyor, yani kolay botlar bombayı ıskalıyor.
+      const d = Math.hypot(target.x - p.x, target.y - p.y);
+      const oran = clamp((d - wep.minRange) / (wep.maxRange - wep.minRange), 0, 1);
+      const sapma = (1 - b.skill) * 0.35 * (Math.random() - 0.5) * 2;
+      const hedefTut = clamp(oran + sapma, 0, 1) * wep.chargeMs;
+      if (!b.throwStart) b.throwStart = now;
+      if (now - b.throwStart < hedefTut) keys |= IN_FIRE;    // tut
+      else b.throwStart = 0;                                  // bırak → atılır
+    } else if (wep.auto) {
+      keys |= IN_FIRE;
+    } else {
+      // Tek atışlılarda tetiği bırakıp basma (kenar tetikleme gerekiyor)
+      b.fireHold = (b.fireHold + 1) % 2;
+      if (b.fireHold === 0) keys |= IN_FIRE;
+    }
+  } else if (b.throwStart) {
+    // Hedef kayboldu: elinde bombayla kalma, bırak gitsin.
+    b.throwStart = 0;
+  }
+  if (!p.reloadUntil && p.reserve > 0
+    && (p.ammo === 0 || (!target && p.ammo < wep.mag * 0.4))) keys |= IN_RELOAD;
+
+  p.inputQueue.push({ s: b.seq, d: dtMs, k: keys, a: Math.round(b.aim * 1000) / 1000 });
+}
+
+// Hedeflerin hız tahminini güncelle (nişan öngörüsü için).
+function updateVelocityEstimates(game, dtMs) {
+  const dt = dtMs / 1000;
+  for (const p of game.players.values()) {
+    if (p._px === undefined) { p._px = p.x; p._py = p.y; }
+    p.vxEst = (p.x - p._px) / dt;
+    p.vyEst = (p.y - p._py) / dt;
+    p._px = p.x; p._py = p.y;
+  }
+}
+
+const BOT_PROBE_RADIUS = PLAYER_RADIUS;
+
+__exp.resetBot = resetBot;
+__exp.botThink = botThink;
+__exp.updateVelocityEstimates = updateVelocityEstimates;
+__exp.BOT_PROBE_RADIUS = BOT_PROBE_RADIUS;
+
+  };
+
+  __defs["/js/input.js"] = function (__exp, __req) {
+// Klavye / fare / dokunmatik girdileri tek bir duruma indirger.
+
+const { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE, IN_RELOAD } = __req("/shared/constants.js");
+
+class Input {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.down = new Set();
+    this.mouseX = window.innerWidth / 2;
+    this.mouseY = window.innerHeight / 2;
+    this.firing = false;
+    this.reloadPulse = 0;
+    this.typing = false;
+    this.enabled = false;
+    this.aim = 0;
+
+    // weaponAuto: otomatik silahlarda (tüfek, makineli) çubuk basılıyken ateş
+    // edilir. Tek atışlılarda (keskin tüfek, pompalı) çubukla NİŞAN ALINIR,
+    // parmağı kaldırınca ateş edilir — oyun kodu bunu her kareye günceller.
+    this.weaponAuto = true;
+    // Atılabilir silah (bomba): nişan çubuğu basılı tutulurken menzil dolar,
+    // BIRAKINCA atılır. Yani tutarken IN_FIRE gönderilir, bırakınca kesilir —
+    // tek atışlılardaki "bırakınca tek darbe" davranışı burada YANLIŞ olur.
+    this.weaponThrowable = false;
+    this.firePulse = 0;
+    // Oyun içi ayarlar paneli açıkken girdiler oyuna gitmemeli.
+    this.menuOpen = false;
+
+    this.touch = {
+      active: false,
+      move: { id: null, dx: 0, dy: 0, mag: 0 },
+      aim: { id: null, dx: 0, dy: 0, mag: 0, firing: false, aiming: false },
+    };
+
+    this.onKeyDown = this.onKeyDown.bind(this);
+    this.onKeyUp = this.onKeyUp.bind(this);
+    this.bind();
+  }
+
+  bind() {
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', () => { this.down.clear(); this.firing = false; });
+
+    this.canvas.addEventListener('mousemove', (e) => {
+      this.mouseX = e.clientX; this.mouseY = e.clientY;
+    });
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { this.firing = true; e.preventDefault(); }
+    });
+    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    this.bindTouch();
+  }
+
+  bindTouch() {
+    const stickMove = document.getElementById('stickMove');
+    const stickAim = document.getElementById('stickAim');
+    const btnReload = document.getElementById('btnTouchReload');
+    const btnScore = document.getElementById('btnTouchScore');
+    if (!stickMove || !stickAim) return;
+
+    const setup = (el, slot, isAimStick) => {
+      const knob = el.querySelector('.knob');
+      const radius = 52;
+
+      const update = (t, rect) => {
+        let dx = t.clientX - (rect.left + rect.width / 2);
+        let dy = t.clientY - (rect.top + rect.height / 2);
+        const len = Math.hypot(dx, dy);
+        const clamped = Math.min(len, radius);
+        const nx = len ? (dx / len) : 0, ny = len ? (dy / len) : 0;
+        knob.style.transform = `translate(${nx * clamped}px, ${ny * clamped}px)`;
+        slot.dx = len > 12 ? nx : 0;
+        slot.dy = len > 12 ? ny : 0;
+        // dx/dy YÖN bilgisidir (birim uzunluk). Çubuğun ne kadar itildiğini
+        // ayrıca saklıyoruz: bomba menzili buna bağlı. Yönü normalize edip
+        // büyüklüğü atmak, "ne kadar ittiğim" bilgisini yok ediyordu.
+        slot.mag = radius > 0 ? Math.min(1, clamped / radius) : 0;
+        if (isAimStick) {
+          slot.aiming = len > 20;
+          // Otomatik silah: basılı tuttukça ateş. Tek atışlı: sadece nişan al.
+          slot.firing = (this.weaponAuto || this.weaponThrowable) && len > 20;
+          el.classList.toggle('aiming', slot.aiming && !this.weaponAuto);
+        }
+      };
+
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        this.touch.active = true;
+        const t = e.changedTouches[0];
+        slot.id = t.identifier;
+        update(t, el.getBoundingClientRect());
+      }, { passive: false });
+
+      el.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        for (const t of e.changedTouches) if (t.identifier === slot.id) update(t, rect);
+      }, { passive: false });
+
+      const end = (e) => {
+        for (const t of e.changedTouches) {
+          if (t.identifier !== slot.id) continue;
+          // Tek atışlı silahta parmağı kaldırmak = ateş etmek
+          if (isAimStick && !this.weaponAuto && !this.weaponThrowable && slot.aiming) this.firePulse = 3;
+          slot.id = null; slot.dx = 0; slot.dy = 0;
+          // slot.mag BİLEREK sıfırlanmıyor: bomba tam da parmağı kaldırınca
+          // atılır ve menzili "bırakma anındaki itilme miktarı" belirler.
+          // Burada sıfırlarsak her bomba en yakına düşer.
+          if (isAimStick) { slot.firing = false; slot.aiming = false; }
+          el.classList.remove('aiming');
+          knob.style.transform = '';
+        }
+      };
+      el.addEventListener('touchend', end);
+      el.addEventListener('touchcancel', end);
+    };
+
+    setup(stickMove, this.touch.move, false);
+    setup(stickAim, this.touch.aim, true);
+
+    if (btnReload) {
+      btnReload.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        this.reloadPulse = 3;
+      }, { passive: false });
+    }
+
+    // Skor tablosu: basılı tutunca açılır
+    if (btnScore) {
+      const show = (e) => { e.preventDefault(); this.onScoreboard?.(true); };
+      const hide = (e) => { e.preventDefault(); this.onScoreboard?.(false); };
+      btnScore.addEventListener('touchstart', show, { passive: false });
+      btnScore.addEventListener('touchend', hide, { passive: false });
+      btnScore.addEventListener('touchcancel', hide, { passive: false });
+    }
+
+    // --- Dokunmatik mi, fare/klavye mi? --------------------------------------
+    //
+    // Eski hâli "cihazda dokunmatik VAR mı" diye soruyordu. Dokunmatik ekranlı
+    // Windows dizüstülerinde bu her zaman doğru çıkıyor ve masaüstünde oyun
+    // telefon arayüzüne (sanal çubuklar) düşüyordu — babanın bilgisayarında
+    // olan buydu.
+    //
+    // Doğru soru: "şu an hangi girdiyi KULLANIYOR?" Cihazda gerçek bir fare
+    // varsa (pointer: fine) masaüstü arayüzüyle başlıyoruz; sonra kullanıcı
+    // hangi girdiyi kullanırsa arayüz ona geçiyor.
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const hasMouse = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+    this.setTouchMode(hasTouch && !hasMouse);
+
+    // Dokunma olunca dokunmatik arayüze geç
+    const toTouch = () => { this.lastTouchAt = performance.now(); this.setTouchMode(true); };
+    window.addEventListener('touchstart', toTouch, { passive: true });
+    window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') toTouch(); }, { passive: true });
+
+    // Fare/klavye kullanılınca masaüstü arayüzüne dön.
+    // Telefonlarda dokunma sonrası sahte fare olayları üretilir; dokunmadan
+    // hemen sonra gelen fare olaylarını yok sayıyoruz.
+    const toDesktop = () => {
+      if (performance.now() - (this.lastTouchAt || 0) < 800) return;
+      // Telefonlar dokunmadan sonra SAHTE fare olayları üretir. Cihazda
+      // gerçekten ince bir işaretçi (fare/kalem) yoksa bu olaylara bakıp
+      // masaüstü arayüzüne geçmek yanlış olur — telefonda kumanda kaybolurdu.
+      const fine = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+      if (!fine) return;
+      this.setTouchMode(false);
+    };
+    window.addEventListener('mousemove', (e) => { if (e.movementX || e.movementY) toDesktop(); }, { passive: true });
+    window.addEventListener('mousedown', toDesktop, { passive: true });
+    window.addEventListener('keydown', toDesktop, { passive: true });
+  }
+
+  /** Dokunmatik arayüzü açar/kapatır ve yarım kalmış girdileri temizler. */
+  setTouchMode(on) {
+    on = !!on;
+    if (this.touch.active === on && this._touchModeSet) return;
+    this._touchModeSet = true;
+    this.touch.active = on;
+    document.body.classList.toggle('touch', on);
+    document.getElementById('touchUI')?.classList.toggle('hidden', !on);
+    if (!on) {
+      for (const slot of [this.touch.move, this.touch.aim]) {
+        slot.id = null; slot.dx = 0; slot.dy = 0; slot.mag = 0;
+        if ('firing' in slot) { slot.firing = false; slot.aiming = false; }
+      }
+      for (const id of ['stickMove', 'stickAim']) {
+        const knob = document.getElementById(id)?.querySelector('.knob');
+        if (knob) knob.style.transform = '';
+      }
+    }
+  }
+
+  onKeyDown(e) {
+    if (this.typing) return;
+    if (e.repeat) return;
+    const k = e.code;
+    this.down.add(k);
+    if (k === 'KeyR') this.reloadPulse = 3;
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(k)) {
+      e.preventDefault();
+    }
+  }
+
+  onKeyUp(e) { this.down.delete(e.code); }
+
+  isDown(...codes) { return codes.some((c) => this.down.has(c)); }
+
+  /**
+   * Ayarlar paneli açılıp kapanınca çağrılır. Basılı kalan tuşları ve
+   * dokunmatik çubukları sıfırlar; yoksa panel kapandığında karakter
+   * kendiliğinden yürümeye devam ederdi.
+   */
+  setMenuOpen(on) {
+    this.menuOpen = !!on;
+    if (!on) return;
+    this.down.clear();
+    this.firing = false;
+    this.firePulse = 0;
+    this.reloadPulse = 0;
+    for (const slot of [this.touch.move, this.touch.aim]) {
+      slot.id = null; slot.dx = 0; slot.dy = 0;
+      if ('firing' in slot) { slot.firing = false; slot.aiming = false; }
+    }
+    for (const id of ['stickMove', 'stickAim']) {
+      const knob = document.getElementById(id)?.querySelector('.knob');
+      if (knob) knob.style.transform = '';
+    }
+  }
+
+  /**
+   * @param {number} sx oyuncunun ekran üzerindeki x'i
+   * @param {number} sy oyuncunun ekran üzerindeki y'si
+   */
+  sample(sx, sy) {
+    // Panel açıkken hareket ve ateş yok; sadece son nişan açısı korunur.
+    if (this.menuOpen) return { keys: 0, aim: Math.round(this.aim * 1000) / 1000 };
+
+    let keys = 0;
+    if (!this.typing) {
+      if (this.isDown('KeyW', 'ArrowUp')) keys |= IN_UP;
+      if (this.isDown('KeyS', 'ArrowDown')) keys |= IN_DOWN;
+      if (this.isDown('KeyA', 'ArrowLeft')) keys |= IN_LEFT;
+      if (this.isDown('KeyD', 'ArrowRight')) keys |= IN_RIGHT;
+      if (this.firing || this.isDown('Space')) keys |= IN_FIRE;
+    }
+
+    // Dokunmatik
+    const tm = this.touch.move, ta = this.touch.aim;
+    if (tm.dx || tm.dy) {
+      if (tm.dy < -0.38) keys |= IN_UP;
+      if (tm.dy > 0.38) keys |= IN_DOWN;
+      if (tm.dx < -0.38) keys |= IN_LEFT;
+      if (tm.dx > 0.38) keys |= IN_RIGHT;
+    }
+
+    if (this.reloadPulse > 0) { keys |= IN_RELOAD; this.reloadPulse--; }
+    // Nişan çubuğu bırakıldığında tetiklenen tek atış
+    if (this.firePulse > 0) { keys |= IN_FIRE; this.firePulse--; }
+
+    if (ta.dx || ta.dy) {
+      this.aim = Math.atan2(ta.dy, ta.dx);
+      if (ta.firing) keys |= IN_FIRE;
+    } else if (!this.touch.active) {
+      this.aim = Math.atan2(this.mouseY - sy, this.mouseX - sx);
+    }
+    // Farenin oyuncuya EKRAN üzerindeki uzaklığı. Bombanın nişangâhın tam
+    // olduğu yere düşmesi için gerekiyor; dünya birimine çevirmeyi çağıran
+    // yapıyor (yakınlaştırma oranını orası biliyor).
+    this.aimScreenDist = this.touch.active ? 0 : Math.hypot(this.mouseX - sx, this.mouseY - sy);
+    // Dokunmatikte nişan çubuğu bırakılınca son bakılan yön korunur.
+
+    // --- Bomba menzili -----------------------------------------------------
+    // Bilgisayarda menzil TUTMA SÜRESİYLE dolar. Dokunmatikte bu çalışmıyordu:
+    // nişan çubuğunu tutmak aynı zamanda ateş tuşunu basılı tutmak demek, yani
+    // nişan alırken geçen süre menzili kendiliğinden dolduruyordu ve bomba hep
+    // en uzağa gidiyordu — oyuncunun elinde hiçbir kontrol kalmıyordu.
+    //
+    // Çözüm: dokunmatikte menzili SÜRE değil, çubuğu ne kadar ittiğin belirler.
+    // Az it → yakına, sonuna kadar it → en uzağa. Nişan alırken ne kadar
+    // beklediğin hiç önemli değil ve hedef halkası parmağınla birlikte kayar.
+    let guc;
+    if (this.touch.active && this.weaponThrowable) {
+      const uz = Math.max(0, Math.min(1, ta.mag || 0));
+      // Çubuğun ilk %25'i "yön verme" bölgesi; menzil ondan sonra artmaya
+      // başlar, yoksa hafifçe dokunmak bile bombayı fırlatırdı.
+      guc = Math.max(0, Math.min(1, (uz - 0.25) / 0.7));
+    }
+
+    const out = { keys, aim: Math.round(this.aim * 1000) / 1000 };
+    // p: 0..100 arası menzil doluluğu. Sadece dokunmatikte gönderiliyor;
+    // yoksa sunucu eskisi gibi tutma süresine bakar.
+    if (guc !== undefined) out.p = Math.round(guc * 100);
+    return out;
+  }
+}
+
+__exp.Input = Input;
+
+  };
+
+  __defs["/js/game.js"] = function (__exp, __req) {
+// İstemci tarafı maç mantığı:
+//  - girdi toplama ve sunucuya gönderme
+//  - kendi hareketini tahmin etme (client-side prediction) ve sunucuyla uzlaştırma
+//  - diğer oyuncuları geçmişe göre yumuşatma (entity interpolation)
+//  - HUD güncelleme
+
+const { INTERP_DELAY_MS, INPUT_RATE, MAX_INPUT_DT_MS, CLASSES, WEAPONS, MODES, TEAMS, PLAYER_RADIUS, IN_FIRE, CLASS_IDS, WEAPON_IDS, MATCH_MS } = __req("/shared/constants.js");
+const { C, PS_FIELDS, BS_FIELDS, SC_FIELDS, F_ALIVE, F_PROTECTED, F_MUZZLE, F_HIDDEN } = __req("/shared/protocol.js");
+const { buildObstacleIndex, applyMovement, angleLerp } = __req("/shared/physics.js");
+const { Renderer, FX } = __req("/js/render.js");
+const { WALK_FRAMES } = __req("/js/sprites.js");
+const sfx = __req("/js/audio.js");
+
+const $ = (id) => document.getElementById(id);
+
+// Maç sırasında sohbet yazıları ekranda görünsün mü? Kullanıcı görünmesin
+// dedi. Tek yerden açılıp kapanabilsin diye sabit olarak duruyor.
+const CHAT_IN_GAME = false;
+
+// ÖLDÜRÜNCE çıkan kuru kafa — piksel piksel çizilmiş.
+//
+// Harita 24x24'lük bir ızgara; her harf bir renk. Kareler SVG dikdörtgeni
+// olarak üretiliyor ve `shape-rendering="crispEdges"` sayesinde hangi boyutta
+// gösterilirse gösterilsin kenarlar keskin kalıyor. Yumuşak/gradyanlı bir
+// çizim piksel oyununun içinde yabancı duruyordu.
+//
+// Dosya eklemiyoruz: her şey kodun içinde, yani çevrimdışı sürüm ve tek
+// dosyalık paket için ek bir kaynak indirmek gerekmiyor.
+//
+//   K = siyah kontur   W = beyaz   G = açık gri   D = koyu gri
+const SKULL_PALETTE = { K: '#1a1a1e', W: '#ffffff', G: '#cecED2', D: '#9a9aa0' };
+const SKULL_PIXELS = [
+  '........KKKKKKKK........',
+  '......KKWWWWWWWWKK......',
+  '.....KWWWWWWWWWWWWK.....',
+  '....KWWWWWWWWWWWWWWK....',
+  '...KWWWWWWWWWWWWWWWWK...',
+  '...KGWWWWWWWWWWWWWWDK...',
+  '..KGGWWWWWWWWWWWWWWDDK..',
+  '..KGGWWWWWWWWWWWWWWDDK..',
+  '..KGWWKKKKWWWWKKKKWWDK..',
+  '..KGWKKKKKKWWKKKKKKWDK..',
+  '..KGWKKKKKKWWKKKKKKWDK..',
+  '..KGWKKKKKKWWKKKKKKWDK..',
+  '..KGWWKKKKWWWWKKKKWWDK..',
+  '..KGWWWWWWWKKWWWWWWWDK..',
+  '...KWWWWWWWKKWWWWWWWK...',
+  '...KWWWWWWKKKKWWWWWWK...',
+  '....KWWWWWWWWWWWWWWK....',
+  '.....KKWWWWWWWWWWKK.....',
+  '.......KWWWWWWWWK.......',
+  '.......KWKWKWKWKK.......',
+  '.......KWKWKWKWKK.......',
+  '.......KKKKKKKKKK.......',
+  '........KKKKKKKK........',
+  '........................',
+];
+
+function pixelSkullSvg() {
+  const n = SKULL_PIXELS.length;
+  let kareler = '';
+  for (let y = 0; y < n; y++) {
+    const satir = SKULL_PIXELS[y];
+    let x = 0;
+    while (x < satir.length) {
+      const c = satir[x];
+      if (c === '.') { x++; continue; }
+      // Yan yana aynı renkteki pikselleri tek dikdörtgende birleştir: hem
+      // daha az düğüm hem de aralarında saç teli kalınlığında boşluk kalmaz.
+      let uz = 1;
+      while (x + uz < satir.length && satir[x + uz] === c) uz++;
+      kareler += `<rect x="${x}" y="${y}" width="${uz}" height="1" fill="${SKULL_PALETTE[c]}"/>`;
+      x += uz;
+    }
+  }
+  return `<svg viewBox="0 0 ${SKULL_PIXELS[0].length} ${n}" width="100%" height="100%"
+    shape-rendering="crispEdges" aria-hidden="true">${kareler}</svg>`;
+}
+
+const SKULL_SVG = pixelSkullSvg();
+
+class ClientGame {
+  constructor(net, input) {
+    this.net = net;
+    this.input = input;
+    this.renderer = new Renderer($('canvas'), $('minimap'));
+    // Zemin dokusunu daha menüdeyken yüklemeye başla: maç açılınca ilk
+    // kareler yedek çimenle çizilip sonra değişmesin.
+    this.renderer.preloadTextures();
+    this.fx = new FX();
+    this.running = false;
+
+    this.el = {
+      hpFill: $('hpFill'), hpText: $('hpText'),
+      ammo: $('ammoText'), weapon: $('weaponName'),
+      reloadBar: $('reloadBar'), reloadFill: $('reloadFill'),
+      matchInfo: $('matchInfo'), killfeed: $('killfeed'),
+      netInfo: $('netInfo'), centerMsg: $('centerMsg'),
+      respawn: $('respawnMsg'), dmgDirs: $('dmgDirs'),
+      scoreboard: $('scoreboard'), chatLog: $('gameChatLog'),
+      hideHint: $('hideHint'),
+      reserve: $('reserveText'),
+    };
+
+    this.reset();
+    this.loop = this.loop.bind(this);
+
+    // Elendikten sonra tıklayarak izlenen oyuncuyu değiştir
+    $('canvas').addEventListener('mousedown', () => { if (this.spectating) this.cycleSpectate(); });
+  }
+
+  reset() {
+    this.map = null;
+    this.idx = null;
+    this.mode = null;
+    this.teams = false;
+    this.myId = 0;
+    this.myTeam = 0;
+    this.roster = new Map();
+    this.pickups = [];
+    this.snaps = [];
+    this.pending = [];
+    this.seq = 0;
+    this.me = { x: 0, y: 0 };
+    this.err = { x: 0, y: 0 };
+    this.you = null;
+    this.alive = true;
+    this.aim = 0;
+    this.speed = 220;
+    this.weapon = 'rifle';
+    this.serverOffset = null;
+    this.inputAccum = 0;
+    this.lastFrame = 0;
+    this.localNextFire = 0;
+    this.killfeed = [];
+    this.dmgMarks = [];
+    this.hitMarkerUntil = 0;
+    this.scores = null;
+    this.showScoreboard = false;
+    this.chatLines = [];
+    this.playersRender = [];
+    this.bulletsRender = [];
+    this.zone = null;
+    this.zoneWarnPhase = -1;
+    this.hudTimer = 0;
+    this.meRender = { x: 0, y: 0 };
+    this.chargeStart = 0;      // bomba: tuşu ne zaman tutmaya başladık
+    this.charge = 0;           // 0..1 menzil doluluğu (sadece gösterim)
+    this.anim = new Map();          // id -> yürüyüş animasyonu durumu
+  }
+
+  // ---------------------------------------------------------------- başlat
+  start(payload) {
+    this.reset();
+    this.map = payload.map;
+    this.idx = buildObstacleIndex(this.map);
+    this.mode = MODES[payload.mode] || MODES.ffa;
+    this.teams = this.mode.teams;
+    this.myId = payload.youId;
+    this.pickups = payload.pickups.map((k) => ({ ...k }));
+    // Maçın başladığı oyun saati (sunucu belirler). Işık ve gölgeler buradan.
+
+    for (const p of payload.players) {
+      this.roster.set(p.id, { name: p.name, team: p.team, cls: p.cls, bot: p.bot, char: p.char });
+      if (p.id === this.myId) {
+        this.myTeam = p.team;
+        this.speed = (CLASSES[p.cls] || CLASSES.komando).speed;
+        this.weapon = (CLASSES[p.cls] || CLASSES.komando).weapon;
+      }
+    }
+
+    this.renderer.seen.clear();
+    this.running = true;
+    this.input.enabled = true;
+    this.lastFrame = performance.now();
+    this.el.killfeed.innerHTML = '';
+    this.el.chatLog.innerHTML = '';
+    this.el.respawn.classList.add('hidden');
+    this.setCenterMsg(`${this.mode.name}`, 1800);
+    requestAnimationFrame(this.loop);
+  }
+
+  stop() {
+    this.running = false;
+    this.input.enabled = false;
+    this.el.scoreboard.classList.add('hidden');
+    this.el.respawn.classList.add('hidden');
+  }
+
+  serverNow() {
+    if (this.serverOffset === null) return 0;
+    return performance.now() + this.serverOffset;
+  }
+
+  // -------------------------------------------------------------- snapshot
+  onSnapshot(snap) {
+    if (!this.running) return;
+
+    // Sunucu saati tahmini: en hızlı gelen paketi referans al, sonra yumuşat.
+    const off = snap.t - performance.now();
+    if (this.serverOffset === null || off > this.serverOffset) this.serverOffset = off;
+    else this.serverOffset += (off - this.serverOffset) * 0.03;
+
+    // Düz sayı dizilerini çöz (bkz. shared/protocol.js)
+    const players = new Map();
+    const ps = snap.ps || [];
+    for (let i = 0; i + PS_FIELDS <= ps.length; i += PS_FIELDS) {
+      players.set(ps[i], {
+        i: ps[i],
+        x: ps[i + 1], y: ps[i + 2],
+        a: ps[i + 3] / 100,
+        h: ps[i + 4], m: ps[i + 5],
+        c: CLASS_IDS[ps[i + 6]] || 'komando',
+        f: ps[i + 7],
+      });
+    }
+    const bullets = new Map();
+    const bs = snap.bs || [];
+    for (let i = 0; i + BS_FIELDS <= bs.length; i += BS_FIELDS) {
+      bullets.set(bs[i], {
+        i: bs[i], x: bs[i + 1], y: bs[i + 2],
+        a: bs[i + 3] / 100,
+        w: WEAPON_IDS[bs[i + 4]] || 'rifle',
+      });
+    }
+
+    this.snaps.push({ t: snap.t, players, bullets, zone: snap.zn || null });
+    while (this.snaps.length > 40) this.snaps.shift();
+
+    if (snap.sc) this.scores = snap.sc;
+    if (snap.zn) this.zone = snap.zn;
+
+    // --- Kendi durumumuz: uzlaştırma -------------------------------------
+    const you = snap.you;
+    this.you = you;
+    this.alive = !!you.al;
+    if (you.cl && CLASSES[you.cl]) {
+      this.speed = you.sp || CLASSES[you.cl].speed;
+      this.weapon = you.wp || CLASSES[you.cl].weapon;
+    }
+    // Dokunmatik kumanda tek atışlı silahlarda "bırakınca ateşle" moduna geçsin
+    const _w = WEAPONS[this.weapon] || WEAPONS.rifle;
+    this.input.weaponAuto = _w.auto !== false;
+    this.input.weaponThrowable = !!_w.throwable;
+
+    const before = { x: this.me.x, y: this.me.y };
+    this.me.x = you.x; this.me.y = you.y;
+    this.pending = this.pending.filter((i) => i.seq > snap.ack);
+    for (const i of this.pending) {
+      applyMovement(this.me, i.keys, this.speed, i.dt / 1000, this.idx);
+    }
+
+    // Fark varsa anında zıplamak yerine hatayı zamanla erit
+    const ex = before.x - this.me.x, ey = before.y - this.me.y;
+    if (Math.hypot(ex, ey) < 220) {          // büyük fark = ışınlanma/doğuş, düzeltme yapma
+      this.err.x = ex; this.err.y = ey;
+    } else {
+      this.err.x = 0; this.err.y = 0;
+    }
+
+    if (snap.ev) this.handleEvents(snap.ev);
+    if (snap.pe) this.handlePrivate(snap.pe);
+  }
+
+  // ---------------------------------------------------------------- olaylar
+  handleEvents(events) {
+    for (const ev of events) {
+      switch (ev.e) {
+        case 'shot': {
+          if (ev.i === this.myId) break;    // kendi sesimizi yerel çalıyoruz
+          const d = Math.hypot(ev.x - this.me.x, ev.y - this.me.y);
+          if (d < 1400) {
+            const pan = Math.max(-1, Math.min(1, (ev.x - this.me.x) / 700));
+            sfx.sfxShot(ev.w, pan, d);
+          }
+          this.fx.spawn(ev.x, ev.y, {
+            count: 4, angle: ev.a, spread: 0.5, speed: 260, life: 0.12, size: 3,
+            color: '#ffd28a', glow: true,
+          });
+          break;
+        }
+        case 'imp': {
+          if (ev.t === 1) {
+            this.fx.spawn(ev.x, ev.y, { count: 9, speed: 190, life: 0.42, size: 3.4, color: '#c8323c' });
+          } else {
+            this.fx.spawn(ev.x, ev.y, { count: 6, speed: 150, life: 0.3, size: 2.6, color: '#9fb0c2' });
+          }
+          break;
+        }
+        case 'boom': {
+          const d = Math.hypot(ev.x - this.me.x, ev.y - this.me.y);
+          // Ateş topu + kıvılcım + duman
+          this.fx.spawn(ev.x, ev.y, { count: 26, speed: 520, life: 0.5, size: 6, color: '#ffcf6a', glow: true, drag: 2.6 });
+          this.fx.spawn(ev.x, ev.y, { count: 18, speed: 330, life: 0.75, size: 8, color: '#c2410c', drag: 2.2 });
+          this.fx.spawn(ev.x, ev.y, { count: 14, speed: 180, life: 1.1, size: 11, color: '#3a3a3a', drag: 1.6 });
+          this.blasts = this.blasts || [];
+          this.blasts.push({ x: ev.x, y: ev.y, r: ev.r, t: performance.now() });
+          if (d < 900) this.fx.addShake(Math.max(2, 13 - d / 90));
+          if (d < 2200) {
+            const pan = Math.max(-1, Math.min(1, (ev.x - this.me.x) / 800));
+            sfx.sfxBoom(pan, d);
+          }
+          break;
+        }
+        case 'kill': this.addKillfeed(ev); break;
+        case 'join':
+          this.roster.set(ev.i, { name: ev.n, team: ev.t, cls: ev.c, bot: !!ev.b, char: ev.ch });
+          break;
+        case 'pk': {
+          const k = this.pickups.find((q) => q.id === ev.i);
+          if (k) {
+            k.active = !!ev.a;
+            if (!ev.a) this.fx.spawn(k.x, k.y, { count: 10, speed: 150, life: 0.4, size: 3, color: k.kind === 'heal' ? '#48d17a' : '#ffc14d', glow: true });
+          }
+          break;
+        }
+        case 'zone': {
+          if (ev.p !== this.zoneWarnPhase) {
+            this.zoneWarnPhase = ev.p;
+            this.setCenterMsg('⚠ GÜVENLİ ALAN DARALIYOR', 2600, '#ff7a7a');
+            sfx.sfxAlarm();
+          }
+          break;
+        }
+        default: break;
+      }
+    }
+  }
+
+  handlePrivate(events) {
+    for (const ev of events) {
+      if (ev.e === 'hit') {
+        this.hitMarkerUntil = performance.now() + (ev.k ? 320 : 160);
+        sfx.sfxHit();
+      } else if (ev.e === 'hurt') {
+        sfx.sfxHurt();
+        this.fx.addShake(ev.z ? 2 : 4);
+        this.addDamageDir(ev.a, ev.z);
+      } else if (ev.e === 'pick') {
+        sfx.sfxPickup();
+      } else if (ev.e === 'dry') {
+        this.setCenterMsg('CEPHANE BİTTİ — kutu bul', 1800, '#ff9b6b');
+      }
+    }
+  }
+
+  // Öldürme kuru kafası: ekranın solunda kısa süre görünür.
+  // Ölünce DEĞİL, öldürünce çıkar — öldüğünde zaten "ÖLDÜN" ekranı var.
+  showKillSkull() {
+    const el = $('killSkull');
+    if (!el) return;
+    if (!el.innerHTML) el.innerHTML = SKULL_SVG;
+    // Üst üste öldürmelerde animasyon baştan başlasın diye sınıfı sıfırlıyoruz.
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this._skullTimer);
+    this._skullTimer = setTimeout(() => el.classList.remove('show'), 1500);
+  }
+
+  addKillfeed(ev) {
+    // Öldüren ben miyim? (Kendini öldürmek sayılmaz.)
+    if (ev.k && ev.k === this.myId && ev.v !== this.myId) this.showKillSkull();
+    const wepName = ev.w === 'zone' ? 'alan' : (WEAPONS[ev.w]?.name || '');
+    const kc = ev.kt === 1 ? '#ff8080' : ev.kt === 2 ? '#8fc4ff' : '#e8eef5';
+    const vc = ev.vt === 1 ? '#ff8080' : ev.vt === 2 ? '#8fc4ff' : '#98a6b5';
+    const div = document.createElement('div');
+    div.className = 'kf-item';
+    const killer = ev.kn
+      ? `<span class="kf-k" style="color:${kc}">${esc(ev.kn)}</span>`
+      : '<span class="kf-k" style="color:#98a6b5">—</span>';
+    div.innerHTML = `${killer}<span class="kf-w">${esc(wepName)}</span><span class="kf-v" style="color:${vc}">${esc(ev.vn)}</span>`;
+    this.el.killfeed.appendChild(div);
+    while (this.el.killfeed.children.length > 6) this.el.killfeed.removeChild(this.el.killfeed.firstChild);
+    setTimeout(() => div.remove(), 6500);
+
+    if (ev.v === this.myId) {
+      sfx.sfxDeath();
+      this.fx.addShake(12);
+      this.deathKiller = ev.kn || 'Güvenli alan';
+    }
+    // Uzaktaki ölümlerde sunucu konum göndermez (bilgi sızmasın) — efekt yok.
+    if (ev.x !== undefined) {
+      this.fx.spawn(ev.x, ev.y, { count: 26, speed: 260, life: 0.7, size: 4, color: '#b8242f' });
+    }
+  }
+
+  addDamageDir(angle, isZone) {
+    const div = document.createElement('div');
+    div.className = 'dmg-dir';
+    // angle: saldırganın oyuncuya göre dünya açısı
+    div.style.transform = `rotate(${angle + Math.PI / 2}rad)`;
+    if (isZone) div.style.opacity = '0.5';
+    this.el.dmgDirs.appendChild(div);
+    setTimeout(() => {
+      div.style.transition = 'opacity .5s';
+      div.style.opacity = '0';
+      setTimeout(() => div.remove(), 520);
+    }, 380);
+  }
+
+  setCenterMsg(text, ms, color) {
+    const el = this.el.centerMsg;
+    el.textContent = text;
+    el.style.color = color || '#ffd9a3';
+    el.classList.add('show');
+    clearTimeout(this._centerTimer);
+    this._centerTimer = setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  pushChat(msg) {
+    // Maç içinde sohbet yazıları GÖSTERİLMİYOR — istenmedi. Mesajlar lobide
+    // görünmeye devam ediyor; burada sadece ekrana basmıyoruz.
+    if (!CHAT_IN_GAME) return;
+    const div = document.createElement('div');
+    div.className = 'chat-line' + (msg.sys ? ' sys' : '');
+    div.innerHTML = msg.sys ? esc(msg.text) : `<span class="cf">${esc(msg.from)}:</span> ${esc(msg.text)}`;
+    this.el.chatLog.appendChild(div);
+    while (this.el.chatLog.children.length > 6) this.el.chatLog.removeChild(this.el.chatLog.firstChild);
+    setTimeout(() => div.remove(), 12000);
+  }
+
+  // ------------------------------------------------------------- ana döngü
+  loop(ts) {
+    if (!this.running) return;
+    requestAnimationFrame(this.loop);
+
+    let dtMs = ts - this.lastFrame;
+    this.lastFrame = ts;
+    if (dtMs > 120) dtMs = 120;
+    if (dtMs <= 0) dtMs = 1;
+    const dt = dtMs / 1000;
+
+    this.step(dtMs);
+    this.fx.update(dt);
+    this.buildRenderState(dtMs);
+    this.renderer.draw(this);
+    this.drawHitMarker();
+
+    this.hudTimer += dtMs;
+    if (this.hudTimer >= 60) { this.hudTimer = 0; this.updateHud(); }
+  }
+
+  step(dtMs) {
+    // Girdiyi sabit hızda örnekle ve gönder
+    this.inputAccum += dtMs;
+    const stepMs = 1000 / INPUT_RATE;
+
+    while (this.inputAccum >= stepMs) {
+      this.inputAccum -= stepMs;
+      const sc = this.renderer.worldToScreen(this.meRender.x || this.me.x, this.meRender.y || this.me.y);
+      const sample = this.input.sample(sc.x, sc.y);
+      this.aim = sample.aim;
+
+      // BOMBA NİŞANGÂHI TAKİP ETSİN.
+      //
+      // Eskiden menzil, ateş tuşunu ne kadar tuttuğuna bağlıydı; nişangâhın
+      // nerede olduğunun hiç önemi yoktu ve bomba imlecin çok ötesine ya da
+      // berisine düşüyordu. Oysa fare zaten hem YÖNÜ hem UZAKLIĞI söylüyor.
+      // Artık bomba doğrudan imlecin bulunduğu noktaya gidiyor; silahın
+      // asgari/azami menzili dışına taşarsa oraya kırpılıyor.
+      // (Dokunmatikte menzili çubuğun itilme miktarı belirliyor — bkz. input.js)
+      const wep0 = WEAPONS[this.weapon];
+      if (wep0 && wep0.throwable && !this.input.touch.active) {
+        const uzak = (this.input.aimScreenDist || 0) / (this.renderer.zoom || 1);
+        const aralik = wep0.maxRange - wep0.minRange;
+        const oran = aralik > 0 ? (uzak - wep0.minRange) / aralik : 0;
+        sample.p = Math.round(Math.max(0, Math.min(1, oran)) * 100);
+      }
+
+      const dt = Math.max(1, Math.min(MAX_INPUT_DT_MS, Math.round(stepMs)));
+      const packet = { seq: ++this.seq, dt, keys: sample.keys, aim: sample.aim, power: sample.p };
+
+      if (this.alive) {
+        applyMovement(this.me, sample.keys, this.speed, dt / 1000, this.idx);
+        this.pending.push(packet);
+        if (this.pending.length > 180) this.pending.shift();
+        this.predictFire(sample.keys, sample.p);
+      }
+
+      const msg = { s: packet.seq, d: packet.dt, k: packet.keys, a: packet.aim };
+      if (packet.power !== undefined) msg.p = packet.power;   // dokunmatik menzil
+      this.net.send(C.INPUT, msg);
+    }
+
+    // Tahmin hatasını yumuşakça sıfırla
+    const decay = Math.pow(0.001, dtMs / 1000);
+    this.err.x *= decay; this.err.y *= decay;
+    if (Math.abs(this.err.x) < 0.05) this.err.x = 0;
+    if (Math.abs(this.err.y) < 0.05) this.err.y = 0;
+  }
+
+  // Ateş sesi/efekti gecidikmesin diye görsel-işitsel kısmı yerelde tahmin ediyoruz.
+  predictFire(keys, guc) {
+    const wep = WEAPONS[this.weapon] || WEAPONS.rifle;
+
+    // Bomba: tuşu TUTARKEN menzil dolar, BIRAKINCA atılır. Sunucu da aynı
+    // kuralla çalışıyor; buradaki iş sadece göstergeyi ve sesi gecikmesiz
+    // vermek (yetkili karar hep sunucuda).
+    if (wep.throwable) {
+      const basili = !!(keys & IN_FIRE);
+      const now0 = performance.now();
+      if (basili) {
+        if (!this.chargeStart) this.chargeStart = now0;
+        // Dokunmatikte menzili çubuğun itilme miktarı belirliyor (input.js),
+        // bilgisayarda tutma süresi. Gösterge hangisi geçerliyse onu çizsin.
+        this.charge = (guc !== undefined)
+          ? Math.max(0, Math.min(1, guc / 100))
+          : Math.max(0, Math.min(1, (now0 - this.chargeStart) / wep.chargeMs));
+        this.firePrev = true;
+        return;
+      }
+      if (this.firePrev && this.chargeStart) {
+        // bıraktı → attı
+        this.chargeStart = 0;
+        this.charge = 0;
+        this.firePrev = false;
+        if (now0 >= this.localNextFire && !(this.you && (this.you.rl > 0 || this.you.am <= 0))) {
+          this.localNextFire = now0 + wep.fireMs;
+          sfx.sfxShot(wep.id, 0, 0);
+        }
+        return;
+      }
+      this.firePrev = false;
+      this.charge = 0;
+      return;
+    }
+
+    if (!(keys & IN_FIRE)) { this.firePrev = false; return; }
+    if (!wep.auto && this.firePrev) return;
+    this.firePrev = true;
+
+    const now = performance.now();
+    if (now < this.localNextFire) return;
+    if (this.you && (this.you.rl > 0 || this.you.am <= 0)) return;   // dolduruyor ya da şarjör boş
+    this.localNextFire = now + wep.fireMs;
+
+    const mx = this.me.x + Math.cos(this.aim) * (PLAYER_RADIUS + 8);
+    const my = this.me.y + Math.sin(this.aim) * (PLAYER_RADIUS + 8);
+    sfx.sfxShot(wep.id, 0, 0);
+    this.fx.spawn(mx, my, {
+      count: 6, angle: this.aim, spread: 0.55, speed: 300, life: 0.13, size: 3.2,
+      color: '#ffe0a0', glow: true,
+    });
+    this.fx.addShake(wep.id === 'sniper' ? 7 : wep.id === 'shotgun' ? 5 : 1.6);
+  }
+
+  // --------------------------------------------------- çizim durumu kurulumu
+  buildRenderState(dtMs) {
+    this.meRender.x = this.me.x + this.err.x;
+    this.meRender.y = this.me.y + this.err.y;
+
+    const renderT = this.serverNow() - INTERP_DELAY_MS;
+    const { s0, s1, alpha } = this.findSnapshots(renderT);
+
+    const out = [];
+    const bullets = [];
+
+    if (s1) {
+      for (const [id, p1] of s1.players) {
+        const info = this.roster.get(id) || { name: '?', team: 0, cls: 'komando' };
+        const alive = !!(p1.f & F_ALIVE);
+        let x = p1.x, y = p1.y, a = p1.a;
+
+        if (s0 && s0.players.has(id) && alpha > 0) {
+          const p0 = s0.players.get(id);
+          x = p0.x + (p1.x - p0.x) * alpha;
+          y = p0.y + (p1.y - p0.y) * alpha;
+          a = angleLerp(p0.a, p1.a, alpha);
+        }
+
+        if (id === this.myId) {
+          out.push({
+            id, name: info.name, team: info.team, cls: p1.c || info.cls,
+            char: info.char,
+            x: this.meRender.x, y: this.meRender.y, aim: this.aim,
+            hp: p1.h, maxHp: p1.m, alive: this.alive,
+            protected: !!(p1.f & F_PROTECTED),
+            hidden: !!(p1.f & F_HIDDEN),
+            muzzle: performance.now() < this.localNextFire - (WEAPONS[this.weapon]?.fireMs || 120) + 60,
+          });
+        } else {
+          out.push({
+            id, name: info.name, team: info.team, cls: p1.c || info.cls,
+            char: info.char,
+            x, y, aim: a, hp: p1.h, maxHp: p1.m, alive,
+            protected: !!(p1.f & F_PROTECTED),
+            hidden: !!(p1.f & F_HIDDEN),
+            muzzle: !!(p1.f & F_MUZZLE),
+          });
+        }
+      }
+
+      // Mermiler
+      for (const [id, b1] of s1.bullets) {
+        let x = b1.x, y = b1.y;
+        if (s0 && s0.bullets.has(id) && alpha > 0) {
+          const b0 = s0.bullets.get(id);
+          x = b0.x + (b1.x - b0.x) * alpha;
+          y = b0.y + (b1.y - b0.y) * alpha;
+        } else if (s0) {
+          // Yeni doğmuş mermi: hızıyla geriye doğru tahmin et
+          const wep = WEAPONS[b1.w] || WEAPONS.rifle;
+          const back = (s1.t - renderT) / 1000;
+          x = b1.x - Math.cos(b1.a) * wep.speed * back;
+          y = b1.y - Math.sin(b1.a) * wep.speed * back;
+        }
+        bullets.push({ x, y, a: b1.a, w: b1.w });
+      }
+
+      // Alan (zone) yumuşatma
+      if (s1.zone) {
+        if (s0 && s0.zone && alpha > 0) {
+          const z0 = s0.zone, z1 = s1.zone;
+          this.zone = {
+            x: z0.x + (z1.x - z0.x) * alpha,
+            y: z0.y + (z1.y - z0.y) * alpha,
+            r: z0.r + (z1.r - z0.r) * alpha,
+            tx: z1.tx, ty: z1.ty, tr: z1.tr, s: z1.s, w: z1.w, p: z1.p,
+          };
+        } else this.zone = s1.zone;
+      }
+    }
+
+    // Yürüyüş animasyonu: kat edilen mesafeye göre adım karesi ilerler.
+    for (const e of out) {
+      let a = this.anim.get(e.id);
+      if (!a) { a = { x: e.x, y: e.y, phase: 0, moving: false }; this.anim.set(e.id, a); }
+      const d = Math.hypot(e.x - a.x, e.y - a.y);
+      a.x = e.x; a.y = e.y;
+      // Kare, kat edilen mesafeyle ilerler: hızlı koşan hızlı adımlar.
+      if (d > 0.35) { a.phase += d / 7; a.moving = true; a.idle = 0; }
+      else { a.idle = (a.idle || 0) + 1; if (a.idle > 6) a.moving = false; }
+      e.moving = a.moving && e.alive;
+      const frame = Math.floor(a.phase) % WALK_FRAMES;
+      e.walkFrame = frame;
+      // Kesirli faz: çizim tarafı bunu sürekli bir eğriye çevirip gövdeyi
+      // yumuşakça indirip kaldırıyor. Kare sayısından bağımsız akıcılık.
+      e.walkPhase = a.phase;
+
+      // Ayak yere bastığı karelerde (temas: 1 ve 4) küçük bir toz bulutu.
+      if (e.moving && frame !== a.lastFrame && (frame === 2 || frame === 6)) {
+        this.fx.spawn(e.x, e.y + 6, {
+          count: 3, speed: 26, life: 0.34, size: 2.2, drag: 6,
+          color: 'rgba(126,150,104,0.50)',
+        });
+      }
+      a.lastFrame = frame;
+    }
+    if (this.anim.size > 64) {
+      const live = new Set(out.map((e) => e.id));
+      for (const id of [...this.anim.keys()]) if (!live.has(id)) this.anim.delete(id);
+    }
+
+    this.aiming = this.input.touch.active && this.input.touch.aim.aiming;
+    this.playersRender = out;
+    this.bulletsRender = bullets;
+
+    // İzleme kamerası: yeniden doğuş olmayan modlarda elenince başkasını izle
+    this.spectating = !this.alive && this.mode && !this.mode.respawn;
+    if (this.spectating) {
+      const alive = out.filter((p) => p.alive && p.id !== this.myId);
+      if (alive.length) {
+        let t = alive.find((p) => p.id === this.spectateId);
+        if (!t) { t = alive[0]; this.spectateId = t.id; }
+        this.meRender.x = t.x;
+        this.meRender.y = t.y;
+        this.spectateName = t.name;
+      }
+    }
+    void dtMs;
+  }
+
+  cycleSpectate() {
+    if (!this.spectating) return;
+    const alive = this.playersRender.filter((p) => p.alive && p.id !== this.myId);
+    if (!alive.length) return;
+    const i = alive.findIndex((p) => p.id === this.spectateId);
+    this.spectateId = alive[(i + 1) % alive.length].id;
+  }
+
+  findSnapshots(renderT) {
+    const s = this.snaps;
+    if (s.length === 0) return { s0: null, s1: null, alpha: 0 };
+    if (s.length === 1) return { s0: null, s1: s[0], alpha: 0 };
+
+    for (let i = s.length - 1; i > 0; i--) {
+      if (s[i - 1].t <= renderT && renderT <= s[i].t) {
+        const span = s[i].t - s[i - 1].t;
+        return { s0: s[i - 1], s1: s[i], alpha: span > 0 ? (renderT - s[i - 1].t) / span : 1 };
+      }
+    }
+    // Zaman aralığın dışında: en yakın uca yaslan
+    if (renderT > s[s.length - 1].t) return { s0: s[s.length - 2], s1: s[s.length - 1], alpha: 1 };
+    return { s0: null, s1: s[0], alpha: 0 };
+  }
+
+  drawHitMarker() {
+    if (performance.now() > this.hitMarkerUntil) return;
+    const ctx = this.renderer.ctx;
+    const x = this.input.mouseX, y = this.input.mouseY;
+    ctx.save();
+    ctx.strokeStyle = '#ff5c5c';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      ctx.moveTo(x + dx * 7, y + dy * 7);
+      ctx.lineTo(x + dx * 15, y + dy * 15);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ------------------------------------------------------------------ HUD
+  updateHud() {
+    const you = this.you;
+    if (!you) return;
+
+    const ratio = Math.max(0, Math.min(1, you.hp / you.mx));
+    this.el.hpFill.style.width = `${ratio * 100}%`;
+    this.el.hpFill.classList.toggle('mid', ratio <= 0.55 && ratio > 0.25);
+    this.el.hpFill.classList.toggle('low', ratio <= 0.25);
+    this.el.hpText.textContent = you.hp;
+    this.el.hpText.style.color = ratio > 0.5 ? '#e6edf4' : ratio > 0.25 ? '#ffb84d' : '#ff5f5f';
+
+    // Cephane "şarjördeki / yedek" biçiminde: 30 / 60
+    this.el.ammo.textContent = you.am;
+    this.el.ammo.classList.toggle('low', you.am <= Math.max(1, you.mg * 0.2));
+    if (this.el.reserve) {
+      const reserve = you.ar ?? 0;
+      this.el.reserve.textContent = reserve;
+      this.el.reserve.classList.toggle('empty', reserve === 0);
+    }
+    this.el.weapon.textContent = (WEAPONS[this.weapon] || WEAPONS.rifle).name;
+
+    // Çalıda gizlenme durumu
+    if (this.el.hideHint) {
+      this.el.hideHint.classList.toggle('hidden', !(you.hd && you.al));
+    }
+
+    if (you.rl > 0) {
+      this.el.reloadBar.classList.remove('hidden');
+      this.el.reloadFill.style.width = `${(1 - you.rl / you.rt) * 100}%`;
+    } else {
+      this.el.reloadBar.classList.add('hidden');
+    }
+
+    // Ölüm ekranı
+    if (!this.alive) {
+      this.el.respawn.classList.remove('hidden');
+      const canRespawn = this.mode.respawn;
+      this.el.respawn.innerHTML = `
+        <div class="rm-title">ÖLDÜN</div>
+        <div class="rm-killer">${this.deathKiller ? esc(this.deathKiller) + ' seni indirdi' : ''}</div>
+        <div class="rm-sub">${canRespawn
+          ? `Yeniden doğuş: ${(you.rs / 1000).toFixed(1)} sn`
+          : `${you.pl ? `Sıralaman: #${you.pl}` : 'Elendin'}${this.spectateName ? ` · İzliyorsun: ${esc(this.spectateName)}` : ''}`}</div>
+        ${canRespawn ? '' : '<div class="rm-killer">Başkasını izlemek için tıkla</div>'}`;
+    } else {
+      this.el.respawn.classList.add('hidden');
+    }
+
+    // Üst bilgi: sadece kalan süre
+    const sc = this.scores;
+    if (sc) {
+      const left = Math.max(0, sc.left | 0);
+      const mm = Math.floor(left / 60);
+      const ss = String(left % 60).padStart(2, '0');
+      this.el.matchInfo.innerHTML = `<div class="mi-time-only${left <= 30 ? ' urgent' : ''}">${mm}:${ss}</div>`;
+    }
+
+    const pingMs = this.net.mode === 'local' ? 0 : (you.pg ?? 0);
+    this.el.netInfo.textContent = this.net.mode === 'local'
+      ? `çevrimdışı · ${this.playersRender.length} birim`
+      : `${pingMs} ms · ${this.playersRender.length} birim`;
+
+    if (this.showScoreboard) this.renderScoreboard();
+  }
+
+  toggleScoreboard(on) {
+    this.showScoreboard = on;
+    this.el.scoreboard.classList.toggle('hidden', !on);
+    if (on) this.renderScoreboard();
+  }
+
+  renderScoreboard() {
+    const rows = decodeScores(this.scores).map((s) => {
+      const info = this.roster.get(s.id) || { name: '?', team: 0, cls: 'komando' };
+      return { name: info.name, team: info.team, cls: info.cls, bot: info.bot, ...s };
+    });
+    rows.sort((a, b) => b.k - a.k || b.as - a.as || a.d - b.d || b.dm - a.dm);
+
+    let html = `<h3>${esc(this.mode.name)}</h3><div class="sb-sub">Kapatmak için tekrar Tab (ya da Esc) · liste uzunsa kaydır</div>`;
+    if (this.teams && this.scores?.team) {
+      html += `<div class="sb-teamline">
+        <span style="color:${TEAMS[1].color}">${TEAMS[1].name} ${this.scores.team[1] || 0}</span>
+        <span style="color:${TEAMS[2].color}">${TEAMS[2].name} ${this.scores.team[2] || 0}</span></div>`;
+    }
+    html += '<div class="sb-scroll"><table class="sb-table"><tr><th>Oyuncu</th><th>Sınıf</th><th class="num">Öldürme</th><th class="num">Asist</th><th class="num">Ölüm</th><th class="num">Hasar</th><th class="num">Durum</th></tr>';
+    for (const r of rows) {
+      html += `<tr class="${r.id === this.myId ? 'me ' : ''}${this.teams ? 't' + r.team : ''}">
+        <td>${esc(r.name)}${r.bot ? '<span class="sb-bot">BOT</span>' : ''}</td>
+        <td>${esc(CLASSES[r.cls]?.name || '')}</td>
+        <td class="num">${r.k}</td>
+        <td class="num">${r.as}</td>
+        <td class="num">${r.d}</td>
+        <td class="num">${r.dm}</td>
+        <td class="num">${r.a ? '<span class="sb-alive">yaşıyor</span>' : '<span class="sb-dead">öldü</span>'}</td>
+      </tr>`;
+    }
+    html += '</table></div>';
+    this.el.scoreboard.innerHTML = html;
+  }
+}
+
+// sc.ps düz dizisini nesne listesine çevirir.
+function decodeScores(sc) {
+  const out = [];
+  const a = sc?.ps || [];
+  for (let i = 0; i + SC_FIELDS <= a.length; i += SC_FIELDS) {
+    out.push({ id: a[i], k: a[i + 1], d: a[i + 2], dm: a[i + 3], a: a[i + 4], as: a[i + 5] || 0 });
+  }
+  return out;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+
+
+__exp.ClientGame = ClientGame;
+__exp.esc = esc;
+
+  };
+
+  __defs["/js/render.js"] = function (__exp, __req) {
+// Canvas çizimi: dünya, oyuncular, mermiler, efektler, mini harita.
+
+const { PLAYER_RADIUS, CLASSES, TEAMS, WEAPONS } = __req("/shared/constants.js");
+const { lineBlocked, rayHitDistance } = __req("/shared/physics.js");
+const { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H, WALK_FRAMES } = __req("/js/sprites.js");
+const { CHARACTERS, DEFAULT_CHAR } = __req("/shared/constants.js");
+
+// GÜN DÖNGÜSÜ VE GÖLGELER KALDIRILDI.
+//
+// Eskiden her maç günün rastgele bir saatinde geçiyor, sahneye çarpma
+// (multiply) ile renk bindiriliyor, binalar ve karakterler güneşin tersine
+// gölge düşürüyordu. İstenmediği için tamamı çıkarıldı: sahne her zaman düz
+// gündüz ışığında. Bunun iki faydası da var — parça önbelleği artık güneş
+// kaydıkça boşaltılmıyor ve gölge çizimi (bina başına bulanık gölge) tamamen
+// kalktı.
+
+// Duvar arkası ve çok uzaktaki düşmanlar çizilmez (wallhack yok).
+const VIS_DIST = 1300;
+
+// ---------------------------------------------------------------- efektler
+// Zemin dokusunun bir kiremitinin kaç dünya pikselini kapladığı.
+// Küçültmek çim tellerini inceltir (karaktere göre daha doğru orantı),
+// büyütmek kabalaştırır. Oyuncu boyu ~63 px olduğu için 190 iyi oturuyor.
+const GRASS_TILE_PX = 190;
+
+// Sabit dünya katmanının parça boyutu ve önbellekte tutulacak parça sayısı.
+// 512 px'lik parçalar 1280x720 ekranda ~12 parça eder; 48 parça hem yeterli
+// hem de bellekte ~48 MB yerine ~48*512*512*4 ≈ 50 MB... değil: parçalar
+// yalnızca ihtiyaç oldukça üretilir ve en eskisi atılır.
+const TILE_PX = 512;
+const MAX_TILES = 40;
+
+class FX {
+  constructor() { this.parts = []; this.shake = 0; }
+
+  spawn(x, y, opts = {}) {
+    const n = opts.count ?? 8;
+    for (let i = 0; i < n; i++) {
+      const a = opts.angle !== undefined
+        ? opts.angle + (Math.random() - 0.5) * (opts.spread ?? 1.2)
+        : Math.random() * Math.PI * 2;
+      const sp = (opts.speed ?? 120) * (0.4 + Math.random() * 0.9);
+      this.parts.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: (opts.life ?? 0.4) * (0.6 + Math.random() * 0.8),
+        maxLife: opts.life ?? 0.4,
+        size: (opts.size ?? 3) * (0.6 + Math.random() * 0.8),
+        color: opts.color ?? '#ffcc66',
+        drag: opts.drag ?? 3.5,
+        glow: opts.glow ?? false,
+      });
+    }
+    if (this.parts.length > 900) this.parts.splice(0, this.parts.length - 900);
+  }
+
+  addShake(v) { this.shake = Math.min(16, this.shake + v); }
+
+  update(dt) {
+    this.shake *= Math.pow(0.0025, dt);
+    if (this.shake < 0.05) this.shake = 0;
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const p = this.parts[i];
+      p.life -= dt;
+      if (p.life <= 0) { this.parts.splice(i, 1); continue; }
+      const d = Math.pow(0.5, dt * p.drag);
+      p.vx *= d; p.vy *= d;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+  }
+
+  draw(ctx) {
+    for (const p of this.parts) {
+      const a = Math.max(0, Math.min(1, p.life / p.maxLife));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      if (p.glow) { ctx.shadowColor = p.color; ctx.shadowBlur = 10; }
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      if (p.glow) ctx.shadowBlur = 0;
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// --------------------------------------------------------------- renderer
+class Renderer {
+  constructor(canvas, minimap) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.mini = minimap;
+    this.mctx = minimap ? minimap.getContext('2d') : null;
+    this.dpr = 1;
+    this.w = 0; this.h = 0;
+    this.camX = 0; this.camY = 0;
+    this.zoom = 1;
+    this.seen = new Map();       // id -> son görülme zamanı (ms)
+    // id -> yürüyüş salınımının açıklığı (0..1). Oyuncu nesneleri her karede
+    // yeniden kurulduğu için bu değeri burada saklamak zorundayız.
+    this.gait = new Map();
+    // Sabit dünya parçaları (zemin + binalar). Bkz. drawWorld().
+    this.tiles = new Map();
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  resize() {
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.w = window.innerWidth;
+    this.h = window.innerHeight;
+    this.canvas.width = Math.floor(this.w * this.dpr);
+    this.canvas.height = Math.floor(this.h * this.dpr);
+    if (this.mini) {
+      const mw = this.mini.clientWidth || 200, mh = this.mini.clientHeight || 150;
+      this.mini.width = Math.floor(mw * this.dpr);
+      this.mini.height = Math.floor(mh * this.dpr);
+    }
+    // Küçük ekranlarda biraz uzaklaş, büyük ekranlarda yakınlaş
+    this.zoom = Math.max(0.62, Math.min(1.15, Math.min(this.w, this.h) / 900));
+  }
+
+  worldToScreen(x, y) {
+    return {
+      x: (x - this.camX) * this.zoom + this.w / 2,
+      y: (y - this.camY) * this.zoom + this.h / 2,
+    };
+  }
+
+  setCamera(x, y, map) {
+    // Kamera hedefe yumuşak takip eder ve harita dışına taşmaz
+    const halfW = this.w / (2 * this.zoom);
+    const halfH = this.h / (2 * this.zoom);
+    let cx = x, cy = y;
+    if (map.w > halfW * 2) cx = Math.max(halfW, Math.min(map.w - halfW, cx));
+    else cx = map.w / 2;
+    if (map.h > halfH * 2) cy = Math.max(halfH, Math.min(map.h - halfH, cy));
+    else cy = map.h / 2;
+    this.camX = cx; this.camY = cy;
+  }
+
+  /**
+   * @param {object} g  istemci oyun durumu
+   */
+  draw(g) {
+    const ctx = this.ctx;
+    const now = performance.now();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.w, this.h);
+
+    const me = g.meRender;
+    this.setCamera(me.x, me.y, g.map);
+
+    // Ekran sarsıntısı
+    let shx = 0, shy = 0;
+    if (g.fx.shake > 0.05) {
+      shx = (Math.random() - 0.5) * g.fx.shake;
+      shy = (Math.random() - 0.5) * g.fx.shake;
+    }
+
+    ctx.save();
+    ctx.translate(this.w / 2 + shx, this.h / 2 + shy);
+    ctx.scale(this.zoom, this.zoom);
+    ctx.translate(-this.camX, -this.camY);
+
+    const view = this.viewRect();
+
+    // Zemin + binalar tek seferde, önbellekten
+    this.drawWorld(ctx, g.map, view);
+    this.drawPickups(ctx, g, view);
+    this.drawAimLaser(ctx, g);
+    this.drawBullets(ctx, g, view);
+    this.drawBlasts(ctx, g);
+    g.fx.draw(ctx);
+    this.drawPlayers(ctx, g, now);
+    this.drawBushes(ctx, g, view);      // oyuncuların üstünde: içindekini örter
+    // Kendini ve takım arkadaşlarını çalının üstünde soluk göster: nerede
+    // olduğunu görebilmelisin, düşman yine de seni göremez.
+    this.drawFriendliesOverBushes(ctx, g, now);
+    if (g.zone) this.drawZone(ctx, g.zone, g.map);
+
+    ctx.restore();
+
+    this.drawVignette(ctx);
+    this.drawCrosshair(ctx, g);
+    if (this.mctx) this.drawMinimap(g, now);
+  }
+
+
+  viewRect() {
+    const hw = this.w / (2 * this.zoom) + 80;
+    const hh = this.h / (2 * this.zoom) + 80;
+    return { x0: this.camX - hw, y0: this.camY - hh, x1: this.camX + hw, y1: this.camY + hh };
+  }
+
+  // Çimen zemin dokusu.
+  //
+  // Amaç: yakından bakınca "gürültü" gibi durmayan, yumuşak bir çimen.
+  // Nasıl:
+  //   1) Doku 3x3 döşenmiş büyük bir tuvale çiziliyor,
+  //   2) tamamına bulanıklık uygulanıyor,
+  //   3) ortadaki kare kırpılıyor.
+  // Bu üç adım olmadan bulanıklık kenarlarda saydamlığa karışır ve döşeme
+  // yerlerinde dikiş izi çıkardı. Böylece kenarlar da yumuşak ve kusursuz
+  // tekrar ediyor.
+  // Zemin dokusu olarak kullanılacak görsel. Sunucudan servis edilen sürüm
+  // dosyayı normal yolla yükler; tek dosyalık (internetsiz) sürümde ise
+  // build-single.mjs görseli data URL olarak gömer ve bu değişkeni ayarlar.
+  grassImage() {
+    if (this._grassImg !== undefined) return this._grassImg;
+    const url = (typeof window !== 'undefined' && window.__GRASS_URL) || '/textures/grass.jpg';
+    const img = new Image();
+    img.onload = () => {
+      // KRİTİK: sadece deseni tazelemek YETMİYOR.
+      //
+      // Zemin, 512 px'lik parçalara bir kez çizilip önbelleğe alınıyor
+      // (staticTile). Görsel geç yüklenirse ilk parçalar kodla üretilen YEDEK
+      // çimenle pişiyor ve orada kalıyor — kullanıcı "çimen bazen yüklenmiyor"
+      // diye görüyordu. Aslında yüklenmişti; ekrandaki parçalar eskiydi.
+      //
+      // O yüzden görsel gelince pişmiş parçaları da atıyoruz; bir sonraki
+      // karede gerçek dokuyla yeniden çiziliyorlar.
+      this._grass = null;
+      this._grassFromImg = null;
+      this.tiles.clear();
+    };
+    img.onerror = () => {
+      // Görsel hiç gelmedi: kodla üretilen çimene düş ve parçaları tazele
+      // (yarım kalmış bir görselle pişmiş parça kalmasın).
+      this._grassImg = null;
+      this._grassFromImg = null;
+      this.tiles.clear();
+    };
+    img.src = url;
+    this._grassImg = img;
+    return img;
+  }
+
+  // Dokuyu maç başlamadan yüklemeye başla: ilk karelerde yedek çimen görünüp
+  // sonra değişmesin. Yükleme bitmemişse yine de sorun değil — üstteki
+  // onload parçaları tazeliyor.
+  preloadTextures() { this.grassImage(); }
+
+  grassPattern(ctx) {
+    // Görsel hazırsa onu kullan.
+    const img = this.grassImage();
+    if (img && img.complete && img.naturalWidth > 0) {
+      if (!this._grassFromImg) {
+        // Ölçek meselesi: dokuyu 1:1 döşersen çim telleri karakter boyuna
+        // yaklaşır ve orantı bozuk görünür. Bir kiremit GRASS_TILE_PX kadar
+        // dünya pikseli kaplamalı.
+        //
+        // Bunu pattern.setTransform ile yapmak ÇALIŞIR ama pahalıdır: her
+        // pikselde ek bir dönüşüm hesabı demek. Onun yerine görseli bir kez
+        // hedef boyuta çizip deseni ondan üretiyoruz — desen artık 1:1,
+        // örnekleme ucuz. (Ölçüm: zemin çizimi ~8 ms'den ~1 ms'ye indi.)
+        const t = document.createElement('canvas');
+        t.width = GRASS_TILE_PX;
+        t.height = GRASS_TILE_PX;
+        t.getContext('2d').drawImage(img, 0, 0, GRASS_TILE_PX, GRASS_TILE_PX);
+        this._grassFromImg = ctx.createPattern(t, 'repeat');
+      }
+      if (this._grassFromImg) return this._grassFromImg;
+    }
+
+    // Görsel yoksa ya da henüz yüklenmediyse: kodla üretilen çimen.
+    if (this._grass) return this._grass;
+
+    const S = 256;
+
+    // --- 1) ham doku ---
+    const raw = document.createElement('canvas');
+    raw.width = S; raw.height = S;
+    const g = raw.getContext('2d');
+
+    let seed = 20260819;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    g.fillStyle = '#1e2c1f';
+    g.fillRect(0, 0, S, S);
+
+    // Geniş, çok yumuşak lekeler — çimenin tekdüze görünmemesi için
+    for (let i = 0; i < 22; i++) {
+      const x = rnd() * S, y = rnd() * S, r = 30 + rnd() * 60;
+      const light = rnd() > 0.5;
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, light ? 'rgba(66,98,58,0.22)' : 'rgba(16,26,17,0.20)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Çim telleri: keskin çizgi yerine soluk, ince ve kısa. Bulanıklık sonrası
+    // tek tek seçilmiyor, sadece yüzeye canlılık katıyor.
+    g.lineCap = 'round';
+    g.lineWidth = 1.4;
+    for (let i = 0; i < 520; i++) {
+      const x = rnd() * S, y = rnd() * S;
+      const len = 3 + rnd() * 4;
+      const lean = (rnd() - 0.5) * 2.4;
+      const tone = rnd();
+      g.strokeStyle = tone > 0.7 ? 'rgba(112,150,88,0.16)'
+        : tone > 0.34 ? 'rgba(74,108,62,0.18)'
+          : 'rgba(20,32,21,0.18)';
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + lean, y - len);
+      g.stroke();
+    }
+
+    // --- 2) 3x3 döşe, bulanıklaştır, ortayı kırp ---
+    const big = document.createElement('canvas');
+    big.width = S * 3; big.height = S * 3;
+    const bg = big.getContext('2d');
+    for (let ty = 0; ty < 3; ty++) {
+      for (let tx = 0; tx < 3; tx++) bg.drawImage(raw, tx * S, ty * S);
+    }
+
+    const tile = document.createElement('canvas');
+    tile.width = S; tile.height = S;
+    const tg = tile.getContext('2d');
+    tg.filter = 'blur(1.6px)';
+    tg.drawImage(big, -S, -S);
+    tg.filter = 'none';
+
+    this._grass = ctx.createPattern(tile, 'repeat');
+    return this._grass;
+  }
+
+  // Döşemenin tekrar ettiği gözle seçilmesin diye harita ölçeğinde birkaç çok
+  // büyük, çok yumuşak leke. Konumları haritadan türetiliyor, sabit.
+  grassBlotches(map) {
+    if (this._blotch && this._blotchKey === `${map.w}x${map.h}`) return this._blotch;
+    let seed = (map.w * 73856093) ^ (map.h * 19349663);
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const list = [];
+    const n = Math.round((map.w * map.h) / 240000);
+    for (let i = 0; i < n; i++) {
+      list.push({
+        x: rnd() * map.w,
+        y: rnd() * map.h,
+        r: 220 + rnd() * 360,
+        light: rnd() > 0.5,
+      });
+    }
+    this._blotchKey = `${map.w}x${map.h}`;
+    this._blotch = list;
+    return list;
+  }
+
+  // Harita ölçeğindeki yumuşak lekeler ve kenar kararması SABİTTİR. Her karede
+  // 34 ayrı radyal gradyan çizmek yerine hepsini bir kez küçük bir tuvale
+  // basıp o tuvali gerdirerek çiziyoruz: 34 gradyan yerine tek drawImage.
+  // Lekeler zaten bulanık olduğu için düşük çözünürlük fark ettirmiyor.
+  groundOverlay(map) {
+    const key = `${map.w}x${map.h}`;
+    if (this._overlay && this._overlayKey === key) return this._overlay;
+
+    const S = 256;                       // küçük: bulanık lekeler için fazlasıyla yeter
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = Math.max(1, Math.round(S * map.h / map.w));
+    const g = c.getContext('2d');
+    const sx = c.width / map.w, sy = c.height / map.h;
+
+    for (const b of this.grassBlotches(map)) {
+      const x = b.x * sx, y = b.y * sy, r = b.r * sx;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, b.light ? 'rgba(84,116,70,0.16)' : 'rgba(10,20,12,0.18)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Kenarlara doğru yumuşak kararma
+    const e = 90;
+    const bands = [
+      [0, 0, map.w, e, 0, 1], [0, map.h - e, map.w, e, 0, -1],
+      [0, 0, e, map.h, 1, 0], [map.w - e, 0, e, map.h, -1, 0],
+    ];
+    for (const [bx, by, bw, bh, dx, dy] of bands) {
+      const x0 = (dx > 0 ? bx : dx < 0 ? bx + bw : bx) * sx;
+      const y0 = (dy > 0 ? by : dy < 0 ? by + bh : by) * sy;
+      const x1 = (dx > 0 ? bx + bw : dx < 0 ? bx : bx) * sx;
+      const y1 = (dy > 0 ? by + bh : dy < 0 ? by : by) * sy;
+      const gr = g.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, 'rgba(0,0,0,0.30)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(bx * sx, by * sy, bw * sx, bh * sy);
+    }
+
+    this._overlayKey = key;
+    this._overlay = c;
+    return c;
+  }
+
+  // --- Sabit dünya katmanı (zemin + binalar) --------------------------------
+  //
+  // Zemin ve binalar maç boyunca değişmez, ama her karede yeniden çizmek
+  // ölçülen kare süresinin yarısından fazlasını yiyordu (desen doldurma,
+  // 34 radyal gradyan, bina başına bulanık gölge...).
+  //
+  // Bunun yerine dünyayı TILE x TILE'lik parçalara bölüp her parçayı bir kez
+  // çiziyor ve saklıyoruz; her karede sadece görünen parçaları kopyalıyoruz.
+  // Bellek sınırlı tutuluyor (en son kullanılanlar kalır).
+  //
+  // Tek istisna: güneş hareket ettikçe gölgelerin yönü değişir. Güneş konumu
+  // gözle görülür şekilde değiştiğinde önbellek boşaltılıyor — maç boyunca
+  // birkaç kez olur, fark edilmez.
+  staticTile(map, tx, ty) {
+    const key = `${tx},${ty}`;
+    const cached = this.tiles.get(key);
+    if (cached) {
+      this.tiles.delete(key);          // en son kullanılan sona gitsin
+      this.tiles.set(key, cached);
+      return cached;
+    }
+
+    const S = TILE_PX;
+    const c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    const g = c.getContext('2d');
+    const ox = tx * S, oy = ty * S;
+    g.translate(-ox, -oy);
+
+    // harita dışı
+    g.fillStyle = '#0b110c';
+    g.fillRect(ox, oy, S, S);
+
+    const gx0 = Math.max(0, ox), gy0 = Math.max(0, oy);
+    const gx1 = Math.min(map.w, ox + S), gy1 = Math.min(map.h, oy + S);
+    if (gx1 > gx0 && gy1 > gy0) {
+      // çimen
+      g.fillStyle = this.grassPattern(g);
+      g.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+
+      // lekeler + kenar kararması (hazır küçük katmandan)
+      const ov = this.groundOverlay(map);
+      const sx = ov.width / map.w, sy = ov.height / map.h;
+      g.drawImage(ov,
+        gx0 * sx, gy0 * sy, (gx1 - gx0) * sx, (gy1 - gy0) * sy,
+        gx0, gy0, gx1 - gx0, gy1 - gy0);
+
+      // sınır duvarı
+      g.strokeStyle = '#46523c';
+      g.lineWidth = 6;
+      g.strokeRect(0, 0, map.w, map.h);
+    }
+
+    // Binalar: parçanın biraz DIŞINDAKİLERİ de çiziyoruz, yoksa komşu binanın
+    // bu parçaya düşen gölgesi kaybolur ve parça sınırlarında dikiş görünür.
+    const pay = 140;
+    this.paintObstacles(g, map, {
+      x0: ox - pay, y0: oy - pay, x1: ox + S + pay, y1: oy + S + pay,
+    });
+
+    this.tiles.set(key, c);
+    if (this.tiles.size > MAX_TILES) {
+      const enEski = this.tiles.keys().next().value;
+      this.tiles.delete(enEski);
+    }
+    return c;
+  }
+
+  drawWorld(ctx, map, view) {
+    // Harita değiştiyse önbelleği tazele. (Güneş kalktığı için başka bir
+    // tazeleme sebebi kalmadı: dünya katmanı maç boyunca sabit.)
+    if (this._tileMapKey !== `${map.w}x${map.h}`) {
+      this._tileMapKey = `${map.w}x${map.h}`;
+      this.tiles.clear();
+    }
+
+    const S = TILE_PX;
+    const tx0 = Math.floor(view.x0 / S), tx1 = Math.floor(view.x1 / S);
+    const ty0 = Math.floor(view.y0 / S), ty1 = Math.floor(view.y1 / S);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        ctx.drawImage(this.staticTile(map, tx, ty), tx * S, ty * S);
+      }
+    }
+  }
+
+  paintObstacles(ctx, map, view) {
+    for (const o of map.obstacles) {
+      if (o.x > view.x1 || o.x + o.w < view.x0 || o.y > view.y1 || o.y + o.h < view.y0) continue;
+
+      // Binanın kendine ait sabit rastgeleliği
+      let h = ((o.x * 73856093) ^ (o.y * 19349663) ^ (o.w * 83492791)) >>> 0;
+      const rnd = () => { h = (h * 1664525 + 1013904223) >>> 0; return h / 4294967296; };
+
+      // --- yere düşen gölge: güneşin tam tersine, güneş alçaldıkça uzun ---
+      ctx.save();
+      ctx.fillStyle = '#1d242c';
+      this.roundRect(ctx, o.x, o.y, o.w, o.h, 4);
+      ctx.fill();
+      ctx.restore();
+
+      // --- çatı yüzeyi (biraz içeride: duvar kalınlığı hissi) ---
+      const t = 5;
+      const rx = o.x + t, ry = o.y + t;
+      const rw = Math.max(2, o.w - t * 2), rh = Math.max(2, o.h - t * 2);
+      const tone = 58 + Math.floor(rnd() * 12);
+      ctx.fillStyle = `rgb(${tone},${tone + 5},${tone + 12})`;
+      this.roundRect(ctx, rx, ry, rw, rh, 3);
+      ctx.fill();
+
+      // Çatı yüzeyine köşegen bir ışık geçişi: düz renk yerine hafif hacim
+      const lit = ctx.createLinearGradient(o.x, o.y, o.x + o.w, o.y + o.h);
+      lit.addColorStop(0, 'rgba(255,255,255,0.07)');
+      lit.addColorStop(0.55, 'rgba(255,255,255,0)');
+      lit.addColorStop(1, 'rgba(0,0,0,0.16)');
+      ctx.fillStyle = lit;
+      this.roundRect(ctx, rx, ry, rw, rh, 3);
+      ctx.fill();
+
+      // Çatı panelleri: soluk çizgiler
+      ctx.strokeStyle = 'rgba(0,0,0,0.13)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = rx + 40; x < rx + rw; x += 40) { ctx.moveTo(x, ry); ctx.lineTo(x, ry + rh); }
+      for (let y = ry + 40; y < ry + rh; y += 40) { ctx.moveTo(rx, y); ctx.lineTo(rx + rw, y); }
+      ctx.stroke();
+
+      // --- parapet: sert şerit yerine kenardan içeri sönen geçiş ---
+      const band = (x, y, w, h, x0, y0, x1, y1, col) => {
+        const gr = ctx.createLinearGradient(x0, y0, x1, y1);
+        gr.addColorStop(0, col);
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gr;
+        ctx.fillRect(x, y, w, h);
+      };
+      const T = t + 3;
+      band(o.x, o.y, o.w, T, o.x, o.y, o.x, o.y + T, 'rgba(255,255,255,0.16)');
+      band(o.x, o.y, T, o.h, o.x, o.y, o.x + T, o.y, 'rgba(255,255,255,0.16)');
+      band(o.x, o.y + o.h - T, o.w, T, o.x, o.y + o.h, o.x, o.y + o.h - T, 'rgba(0,0,0,0.40)');
+      band(o.x + o.w - T, o.y, T, o.h, o.x + o.w, o.y, o.x + o.w - T, o.y, 'rgba(0,0,0,0.40)');
+
+      // --- çatı üstü detaylar (yeterince büyük binalarda) ---
+      if (rw > 70 && rh > 70) {
+        const n = 1 + Math.floor(rnd() * 3);
+        for (let i = 0; i < n; i++) {
+          const dw = 14 + rnd() * 16;
+          const dh = 14 + rnd() * 16;
+          const dx = rx + 8 + rnd() * Math.max(1, rw - dw - 16);
+          const dy = ry + 8 + rnd() * Math.max(1, rh - dh - 16);
+          ctx.save();
+          ctx.shadowColor = 'rgba(0,0,0,0.45)';
+          ctx.shadowBlur = 7;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 3;
+          if (rnd() > 0.45) {
+            // havalandırma / makine dairesi
+            ctx.fillStyle = '#4c5663';
+            this.roundRect(ctx, dx, dy, dw, dh, 3);
+            ctx.fill();
+            ctx.restore();
+            ctx.fillStyle = 'rgba(255,255,255,0.11)';
+            this.roundRect(ctx, dx, dy, dw, Math.min(4, dh), 3);
+            ctx.fill();
+          } else {
+            // çatı penceresi
+            ctx.fillStyle = '#5d7488';
+            this.roundRect(ctx, dx, dy, dw, dh, 3);
+            ctx.fill();
+            ctx.restore();
+            ctx.fillStyle = 'rgba(190,220,255,0.18)';
+            this.roundRect(ctx, dx + 2, dy + 2, dw - 4, dh - 4, 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // --- dış hat: ince ve yumuşak ---
+      ctx.strokeStyle = 'rgba(14,18,23,0.75)';
+      ctx.lineWidth = 1.5;
+      this.roundRect(ctx, o.x + 0.75, o.y + 0.75, o.w - 1.5, o.h - 1.5, 4);
+      ctx.stroke();
+    }
+  }
+
+  // Yuvarlatılmış dikdörtgen yolu (eski tarayıcılarda roundRect olmayabilir).
+  roundRect(ctx, x, y, w, h, r) {
+    const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, rad); return; }
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+
+  // Çalılar: engel değil, örtü. Oyuncuların üstüne çizilir ki içindeki gizlensin.
+  drawBushes(ctx, g, view) {
+    const bushes = g.map.bushes;
+    if (!bushes || !bushes.length) return;
+    const t = performance.now() / 1000;
+    const me = g.meRender;
+
+    for (let i = 0; i < bushes.length; i++) {
+      const b = bushes[i];
+      if (b.x + b.r < view.x0 || b.x - b.r > view.x1 || b.y + b.r < view.y0 || b.y - b.r > view.y1) continue;
+
+      // İçinde durduğun çalı saydamlaşır: dışarıyı görebilmelisin.
+      const inside = Math.hypot(me.x - b.x, me.y - b.y) < b.r;
+      const cover = inside ? 0.30 : 1;
+
+      // Hafif rüzgar salınımı (çalıya göre sabit faz)
+      const sway = Math.sin(t * 0.9 + i * 1.7) * 2.2;
+
+      // zemin gölgesi
+      ctx.globalAlpha = 0.45 * cover;
+      ctx.fillStyle = '#0b1410';
+      ctx.beginPath();
+      ctx.ellipse(b.x + 4, b.y + 6, b.r * 0.98, b.r * 0.82, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // yaprak kümeleri — üç katman, gitgide açılan yeşil
+      const layers = [
+        { s: 1.00, c: '#1e3d24', a: 0.94 },
+        { s: 0.78, c: '#2b5730', a: 0.94 },
+        { s: 0.50, c: '#3a7040', a: 0.90 },
+      ];
+      for (const L of layers) {
+        ctx.globalAlpha = L.a * cover;
+        ctx.fillStyle = L.c;
+        ctx.beginPath();
+        const blobs = 6;
+        for (let k = 0; k < blobs; k++) {
+          const ang = (k / blobs) * Math.PI * 2 + i * 0.9;
+          const rr = b.r * L.s * 0.62;
+          const cx = b.x + Math.cos(ang) * b.r * L.s * 0.42 + sway * L.s;
+          const cy = b.y + Math.sin(ang) * b.r * L.s * 0.42;
+          ctx.moveTo(cx + rr, cy);
+          ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+      if (inside) {
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = '#5aa564';
+        ctx.setLineDash([10, 8]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Nereye ateş edileceğini gösteren yardım:
+  //   • keskin tüfek → uzun kesikli çizgi (her zaman)
+  //   • pompalı      → saçılma konisi (dokunmatikte nişan alınırken)
+  drawAimLaser(ctx, g) {
+    if (!g.alive) return;
+    const wep = WEAPONS[g.weapon];
+    if (!wep) return;
+
+    // Bomba: tuşu tuttukça menzil doluyor. Nereye düşeceğini GÖSTERMEDEN
+    // ayarlanabilir menzil işkence olurdu; o yüzden hedef noktayı ve patlama
+    // yarıçapını canlı çiziyoruz.
+    if (wep.throwable) {
+      this.drawThrowArc(ctx, g, wep);
+      return;
+    }
+
+    if (!wep.laser) {
+      if (g.aiming && !wep.auto) this.drawSpreadCone(ctx, g, wep);
+      return;
+    }
+
+    const me = g.meRender;
+    const dist = rayHitDistance(me.x, me.y, g.aim, wep.range, g.idx);
+    const sx = me.x + Math.cos(g.aim) * (PLAYER_RADIUS + 10);
+    const sy = me.y + Math.sin(g.aim) * (PLAYER_RADIUS + 10);
+    const ex = me.x + Math.cos(g.aim) * Math.max(dist, PLAYER_RADIUS + 12);
+    const ey = me.y + Math.sin(g.aim) * Math.max(dist, PLAYER_RADIUS + 12);
+
+    ctx.save();
+    const grad = ctx.createLinearGradient(sx, sy, ex, ey);
+    grad.addColorStop(0, 'rgba(255,90,90,0.70)');
+    grad.addColorStop(1, 'rgba(255,90,90,0.12)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.7;
+    ctx.setLineDash([16, 10]);
+    ctx.lineDashOffset = -(performance.now() / 22) % 26;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // çarpma noktası
+    ctx.fillStyle = 'rgba(255,110,110,0.9)';
+    ctx.beginPath();
+    ctx.arc(ex, ey, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Pompalının saçılma konisi: parmağını kaldırınca merminin gideceği alan.
+  drawSpreadCone(ctx, g, wep) {
+    const me = g.meRender;
+    const half = wep.spread;
+    const start = PLAYER_RADIUS + 8;
+
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#ffcf7a';
+    ctx.beginPath();
+    ctx.moveTo(me.x + Math.cos(g.aim) * start, me.y + Math.sin(g.aim) * start);
+    const steps = 12;
+    for (let i = 0; i <= steps; i++) {
+      const a = g.aim - half + (2 * half * i) / steps;
+      const d = rayHitDistance(me.x, me.y, a, wep.range, g.idx);
+      ctx.lineTo(me.x + Math.cos(a) * d, me.y + Math.sin(a) * d);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#ffd79a';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawPickups(ctx, g, view) {
+    const t = performance.now() / 1000;
+    for (const k of g.pickups) {
+      if (!k.active) continue;
+      if (k.x < view.x0 || k.x > view.x1 || k.y < view.y0 || k.y > view.y1) continue;
+      const bob = Math.sin(t * 2.4 + k.id) * 3;
+      const col = '#ffc14d';
+
+      ctx.save();
+      ctx.translate(k.x, k.y + bob);
+      ctx.shadowColor = col; ctx.shadowBlur = 14;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(-13, -13, 26, 26);
+      ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+      ctx.strokeRect(-13, -13, 26, 26);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = col;
+      ctx.fillRect(-6, -7, 4, 14); ctx.fillRect(-1, -7, 4, 14); ctx.fillRect(4, -7, 4, 14);
+      ctx.restore();
+    }
+  }
+
+  // Bomba menzil göstergesi: atış hattı, düşeceği nokta ve patlama alanı.
+  // g.charge 0..1 arası (istemci kendi tuttuğu süreden hesaplıyor).
+  drawThrowArc(ctx, g, wep) {
+    const me = g.meRender;
+    const t = Math.max(0, Math.min(1, g.charge || 0));
+    const menzil = wep.minRange + t * (wep.maxRange - wep.minRange);
+    // Duvar varsa bomba oraya kadar gider.
+    const engel = rayHitDistance(me.x, me.y, g.aim, menzil, g.idx);
+    const d = Math.min(menzil, engel);
+    const hx = me.x + Math.cos(g.aim) * d;
+    const hy = me.y + Math.sin(g.aim) * d;
+    const tutuyor = !!g.aiming || t > 0.02;
+
+    ctx.save();
+    // atış hattı
+    ctx.strokeStyle = tutuyor ? 'rgba(255,159,90,0.55)' : 'rgba(255,159,90,0.22)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -(performance.now() / 26) % 18;
+    ctx.beginPath();
+    ctx.moveTo(me.x + Math.cos(g.aim) * (PLAYER_RADIUS + 8), me.y + Math.sin(g.aim) * (PLAYER_RADIUS + 8));
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // patlama alanı
+    ctx.strokeStyle = tutuyor ? 'rgba(255,120,60,0.75)' : 'rgba(255,120,60,0.32)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hx, hy, wep.blastR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = tutuyor ? 'rgba(255,120,60,0.13)' : 'rgba(255,120,60,0.05)';
+    ctx.fill();
+
+    // menzil doluluk halkası (hedefin üstünde küçük bir yay)
+    if (tutuyor) {
+      ctx.strokeStyle = '#ffd479';
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(hx, hy, wep.blastR + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    ctx.restore();
+  }
+
+  // Patlama halkası: hızla büyüyüp sönen turuncu bir dalga. Oyuncuya patlamanın
+  // NEREDE ve NE KADAR GENİŞ olduğunu gösteriyor — hasar alanıyla aynı yarıçap.
+  drawBlasts(ctx, g) {
+    if (!g.blasts || !g.blasts.length) return;
+    const now = performance.now();
+    const SURE = 620;   // patlama halkasının ömrü (ms)
+    for (let i = g.blasts.length - 1; i >= 0; i--) {
+      const b = g.blasts[i];
+      const t = (now - b.t) / SURE;
+      if (t >= 1) { g.blasts.splice(i, 1); continue; }
+      const r = b.r * (0.25 + t * 0.85);
+      ctx.save();
+      ctx.globalAlpha = (1 - t) * 0.9;
+      const gr = ctx.createRadialGradient(b.x, b.y, r * 0.2, b.x, b.y, r);
+      gr.addColorStop(0, 'rgba(255,236,180,0.85)');
+      gr.addColorStop(0.55, 'rgba(255,140,50,0.42)');
+      gr.addColorStop(1, 'rgba(255,90,30,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,190,110,${(1 - t) * 0.8})`;
+      ctx.lineWidth = 3 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (g.blasts.length > 24) g.blasts.splice(0, g.blasts.length - 24);
+  }
+
+  drawBullets(ctx, g, view) {
+    for (const b of g.bulletsRender) {
+      if (b.x < view.x0 || b.x > view.x1 || b.y < view.y0 || b.y > view.y1) continue;
+      const wep = WEAPONS[b.w] || WEAPONS.rifle;
+
+      // Bomba mermi gibi çizilmez: havada dönen koyu bir küre, fitili kıvılcım
+      // saçıyor. Böylece oyuncu "bu bir bomba, kaçmam lazım" diye anlıyor.
+      if (wep.throwable) {
+        const t = (performance.now() / 1000) % 1;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        // yere düşen gölge
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.beginPath();
+        ctx.ellipse(3, 6, wep.bulletR * 1.05, wep.bulletR * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.rotate(t * Math.PI * 4);
+        // gövde
+        const gr = ctx.createRadialGradient(-2, -3, 1, 0, 0, wep.bulletR + 2);
+        gr.addColorStop(0, '#5a6472');
+        gr.addColorStop(1, '#1b2029');
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(0, 0, wep.bulletR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // fitil + kıvılcım
+        ctx.strokeStyle = '#8a6a3f';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -wep.bulletR);
+        ctx.lineTo(2, -wep.bulletR - 5);
+        ctx.stroke();
+        ctx.fillStyle = '#ffd479';
+        ctx.shadowColor = '#ff9f43';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(2, -wep.bulletR - 5, 2 + Math.sin(t * Math.PI * 8) * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+        continue;
+      }
+
+      const len = wep.id === 'sniper' ? 34 : wep.id === 'shotgun' ? 12 : 20;
+      const tailX = b.x - Math.cos(b.a) * len;
+      const tailY = b.y - Math.sin(b.a) * len;
+
+      const grad = ctx.createLinearGradient(tailX, tailY, b.x, b.y);
+      grad.addColorStop(0, 'rgba(255,190,90,0)');
+      grad.addColorStop(1, 'rgba(255,225,150,0.95)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = wep.bulletR * 0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff3d0';
+      ctx.shadowColor = '#ffb347'; ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, wep.bulletR * 0.62, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  drawPlayers(ctx, g, now) {
+    const me = g.meRender;
+    const myTeam = g.myTeam;
+
+    for (const p of g.playersRender) {
+      // Ölen oyuncu çizilmez. Eskiden kendi ölü bedenimiz soluk olarak
+      // ekranda kalıyordu ve yerde ceset varmış gibi görünüyordu.
+      if (!p.alive) continue;
+
+      const isMe = p.id === g.myId;
+      const friendly = myTeam !== 0 && p.team === myTeam;
+
+      // Görüş hattı: duvar arkasındaki düşmanlar görünmez (kısa süre soluklaşır)
+      let alpha = 1;
+      if (g.spectating) {
+        // Elendikten sonra izleme modunda her şey görünür
+      } else if (!isMe && !friendly) {
+        const far = Math.hypot(p.x - me.x, p.y - me.y) > VIS_DIST;
+        const visible = !far && !lineBlocked(me.x, me.y, p.x, p.y, g.idx);
+        if (visible) this.seen.set(p.id, now);
+        const last = this.seen.get(p.id) || 0;
+        const age = now - last;
+        if (age > 500) continue;
+        alpha = visible ? 1 : Math.max(0, 1 - age / 500);
+      } else if (!isMe && friendly) {
+        alpha = lineBlocked(me.x, me.y, p.x, p.y, g.idx) ? 0.45 : 1;
+      }
+
+      if (p.hidden) alpha *= 0.55;        // çalıdaysa siluet gibi görünsün
+
+      ctx.globalAlpha = alpha;
+      this.drawPlayer(ctx, p, g, isMe, friendly, now);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  drawPlayer(ctx, p, g, isMe, friendly, now) {
+    const chr = CHARACTERS[p.char] || CHARACTERS[DEFAULT_CHAR];
+    const cls = CLASSES[p.cls] || CLASSES.komando;
+
+    // Takım modunda üniforma takım rengini alır; serbest modda karakterin kendi rengi.
+    const jacket = g.teams ? (TEAMS[p.team]?.color || chr.jacket) : chr.jacket;
+    const set = getCharacterSprites({
+      jacket, hair: chr.hair, skin: chr.skin, accent: chr.accent,
+      eye: chr.eye, style: chr.style,
+    });
+
+    const dir = dirFromAngle(p.aim);
+    const frames = set[dir];
+    // Dururken nötr duruş (0. kare), yürürken 8 kareli döngü.
+    const frame = p.moving ? frames[p.walkFrame % WALK_FRAMES] : frames[0];
+
+    // --- yumuşak geçiş -------------------------------------------------------
+    // Kareler ayrık, ama gövdenin inip kalkması ve hafif yana salınımı SÜREKLİ:
+    // kesirli yürüyüş fazından sinüsle hesaplanıyor. Böylece kareden kareye
+    // atlama görünmüyor, hareket akıp gidiyor. Dururken de sıfıra doğru eriyor.
+    // DİKKAT: playersRender listesi her karede sıfırdan kuruluyor, bu yüzden
+    // yumuşatma değerini oyuncu nesnesinde tutamayız — kaybolur. Oyuncu
+    // kimliğine göre çizicide saklıyoruz.
+    const ph = p.walkPhase || 0;
+    const target = p.moving ? 1 : 0;
+    const prev = this.gait.get(p.id);
+    const gait = (prev ?? target) + (target - (prev ?? target)) * 0.18;
+    this.gait.set(p.id, gait);
+    p._gait = gait;                     // testlerin ve hata ayıklamanın görmesi için
+    // İki adımda bir tam iniş-çıkış (8 karelik döngüde 2 kez)
+    const bob = Math.sin(ph * Math.PI / 2) * 2.2 * gait;
+    const sway = Math.sin(ph * Math.PI / 4) * 0.9 * gait;
+
+    const scale = 1.75;
+    const w = SPRITE_W * scale, h = SPRITE_H * scale;
+    // Ayaklar oyuncunun konumunda dursun, gövde yukarı doğru uzasın.
+    const left = p.x - w / 2 + sway;
+    const top = p.y + PLAYER_RADIUS * 0.55 - h - Math.abs(bob);
+
+    // --- zemin izi -----------------------------------------------------------
+    // Güneş ve gölgeler kaldırıldı. Karakterin zeminden kopuk durmaması için
+    // altında yönü olmayan, hafif bir koyuluk bırakıyoruz.
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.26)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + 5, PLAYER_RADIUS * 0.86, PLAYER_RADIUS * 0.40, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // --- doğuş koruması ------------------------------------------------------
+    if (p.protected) {
+      ctx.strokeStyle = 'rgba(140,200,255,0.75)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + 3, PLAYER_RADIUS + 6 + Math.sin(now / 130) * 1.6,
+        PLAYER_RADIUS * 0.6 + 4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // --- kim kim: ayak altı halkası -----------------------------------------
+    if (isMe || friendly) {
+      ctx.strokeStyle = isMe ? 'rgba(255,255,255,0.65)' : 'rgba(79,209,139,0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + 4, PLAYER_RADIUS * 1.05, PLAYER_RADIUS * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const wep = WEAPONS[cls.weapon];
+    const facingUp = dir === 'up';
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(frame, left, top, w, h);
+    ctx.imageSmoothingEnabled = true;
+
+    // Sırtı dönükken silah gövdenin daha yanında dursun ki görünsün
+    this.drawWeapon(ctx, p, wep, chr, facingUp ? 10 : 5);
+
+    // --- can çubuğu + isim ---------------------------------------------------
+    if (!isMe) {
+      const bw = 40, bh = 5;
+      const ratio = Math.max(0, Math.min(1, p.hp / (p.maxHp || 100)));
+      const bx = p.x - bw / 2, by = top - 9;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ctx.fillStyle = friendly ? '#4fd18b' : (ratio > 0.5 ? '#e0e6ec' : ratio > 0.25 ? '#ffb84d' : '#ff5f5f');
+      ctx.fillRect(bx, by, bw * ratio, bh);
+
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillText(p.name, p.x + 1, by - 4);
+      ctx.fillStyle = friendly ? '#9fe8c0' : '#dfe7ef';
+      ctx.fillText(p.name, p.x, by - 5);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  // Silah elde durur ve nişan yönünü gösterir.
+  drawWeapon(ctx, p, wep, chr, sideOffset = 5) {
+    const handY = p.y - PLAYER_RADIUS * 1.15;      // ellerin yüksekliği
+    ctx.save();
+    ctx.translate(p.x, handY);
+    ctx.rotate(p.aim);
+
+    // Silahı gövdenin biraz yanına al: yukarı/aşağı nişan alırken de
+    // siluetin arkasında kaybolmasın (sağ elini kullanan bir asker gibi).
+    const oy = sideOffset;
+    const len = wep.id === 'sniper' ? 34 : wep.id === 'shotgun' ? 25 : 28;
+    const gx = 4;
+
+    // dipçik
+    ctx.fillStyle = '#3a2b1e';
+    ctx.fillRect(gx - 8, oy - 2.4, 8, 4.8);
+    // namlu
+    ctx.fillStyle = '#20272f';
+    ctx.fillRect(gx, oy - 2.8, len, 5.6);
+    ctx.fillStyle = '#3d4854';
+    ctx.fillRect(gx, oy - 2.8, len, 1.8);
+    // şarjör
+    ctx.fillStyle = '#2a323b';
+    ctx.fillRect(gx + 5, oy + 2.4, 5, 5);
+    if (wep.id === 'sniper') {
+      ctx.fillStyle = '#151a20';
+      ctx.fillRect(gx + 9, oy - 6.4, 10, 3.6);       // dürbün
+    }
+
+    // eller silahın üstünde
+    ctx.fillStyle = chr.skin;
+    ctx.fillRect(gx + 1, oy - 3.6, 4, 7.2);
+    ctx.fillRect(gx + len - 10, oy - 3.4, 4, 6.8);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(gx + 1, oy + 2.2, 4, 1.4);
+
+    // namlu alevi
+    if (p.muzzle) {
+      ctx.fillStyle = 'rgba(255,220,140,0.95)';
+      ctx.shadowColor = '#ffb347'; ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.moveTo(gx + len, oy - 6);
+      ctx.lineTo(gx + len + 15, oy);
+      ctx.lineTo(gx + len, oy + 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
+  drawFriendliesOverBushes(ctx, g, now) {
+    for (const p of g.playersRender) {
+      if (!p.alive || !p.hidden) continue;
+      const isMe = p.id === g.myId;
+      const friendly = g.myTeam !== 0 && p.team === g.myTeam;
+      if (!isMe && !friendly) continue;
+      ctx.globalAlpha = isMe ? 0.72 : 0.5;
+      this.drawPlayer(ctx, p, g, isMe, friendly, now);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  drawZone(ctx, z, map) {
+    ctx.save();
+    // Alan dışını karart
+    ctx.beginPath();
+    ctx.rect(-500, -500, map.w + 1000, map.h + 1000);
+    ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2, true);
+    ctx.fillStyle = 'rgba(140,20,40,0.30)';
+    ctx.fill('evenodd');
+
+    // Sınır
+    ctx.strokeStyle = 'rgba(255,90,110,0.9)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Hedef çember
+    if (z.tr && (z.tr !== z.r)) {
+      ctx.strokeStyle = 'rgba(120,220,255,0.65)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([16, 12]);
+      ctx.beginPath();
+      ctx.arc(z.tx, z.ty, z.tr, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  drawVignette(ctx) {
+    const g = ctx.createRadialGradient(
+      this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.34,
+      this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.78,
+    );
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.w, this.h);
+  }
+
+  drawCrosshair(ctx, g) {
+    if (!g.alive) return;
+    // Dokunmatikte fare imleci yok; nişan çubuğu yönü zaten oyuncu üzerinde görünüyor.
+    if (g.input.touch.active) return;
+    const x = g.input.mouseX, y = g.input.mouseY;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.6;
+    const gap = 5, len = 9;
+    ctx.beginPath();
+    ctx.moveTo(x - gap - len, y); ctx.lineTo(x - gap, y);
+    ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
+    ctx.moveTo(x, y - gap - len); ctx.lineTo(x, y - gap);
+    ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + len);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(x - 1, y - 1, 2, 2);
+  }
+
+  drawMinimap(g, now) {
+    const ctx = this.mctx;
+    const W = this.mini.width, H = this.mini.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const pad = 4 * this.dpr;
+    const s = Math.min((W - pad * 2) / g.map.w, (H - pad * 2) / g.map.h);
+    const ox = (W - g.map.w * s) / 2;
+    const oy = (H - g.map.h * s) / 2;
+    const X = (x) => ox + x * s;
+    const Y = (y) => oy + y * s;
+
+    ctx.fillStyle = 'rgba(20,28,36,0.9)';
+    ctx.fillRect(X(0), Y(0), g.map.w * s, g.map.h * s);
+
+    // çalılar önce (duvarların altında kalsın)
+    if (g.map.bushes) {
+      ctx.fillStyle = 'rgba(46,92,52,0.85)';
+      for (const b of g.map.bushes) {
+        ctx.beginPath();
+        ctx.arc(X(b.x), Y(b.y), Math.max(1.5, b.r * s), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = '#38485a';
+    for (const o of g.map.obstacles) {
+      ctx.fillRect(X(o.x), Y(o.y), Math.max(1, o.w * s), Math.max(1, o.h * s));
+    }
+
+    if (g.zone) {
+      ctx.strokeStyle = 'rgba(255,90,110,0.9)';
+      ctx.lineWidth = 1.5 * this.dpr;
+      ctx.beginPath(); ctx.arc(X(g.zone.x), Y(g.zone.y), g.zone.r * s, 0, Math.PI * 2); ctx.stroke();
+      if (g.zone.tr !== g.zone.r) {
+        ctx.strokeStyle = 'rgba(120,220,255,0.8)';
+        ctx.setLineDash([4 * this.dpr, 3 * this.dpr]);
+        ctx.beginPath(); ctx.arc(X(g.zone.tx), Y(g.zone.ty), g.zone.tr * s, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    for (const k of g.pickups) {
+      if (!k.active) continue;
+      ctx.fillStyle = '#ffc14d';
+      ctx.fillRect(X(k.x) - 1.5 * this.dpr, Y(k.y) - 1.5 * this.dpr, 3 * this.dpr, 3 * this.dpr);
+    }
+
+    const me = g.meRender;
+    for (const p of g.playersRender) {
+      if (!p.alive) continue;
+      const isMe = p.id === g.myId;
+      const friendly = g.myTeam !== 0 && p.team === g.myTeam;
+      if (!isMe && !friendly && !g.spectating) {
+        const last = this.seen.get(p.id) || 0;
+        if (now - last > 900) continue;         // sadece yakın zamanda görülen düşmanlar
+      }
+      ctx.fillStyle = isMe ? '#ffffff' : friendly ? '#4fd18b' : '#ff5f5f';
+      ctx.beginPath();
+      ctx.arc(X(p.x), Y(p.y), (isMe ? 3.2 : 2.4) * this.dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // görüş konisi
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1 * this.dpr;
+    ctx.beginPath();
+    ctx.moveTo(X(me.x), Y(me.y));
+    ctx.lineTo(X(me.x + Math.cos(g.aim) * 260), Y(me.y + Math.sin(g.aim) * 260));
+    ctx.stroke();
+  }
+}
+
+__exp.FX = FX;
+__exp.Renderer = Renderer;
+
+  };
+
+  __defs["/js/audio.js"] = function (__exp, __req) {
+// Dosyasız ses: tüm efektler WebAudio ile sentezleniyor.
+
+let ctx = null;
+let master = null;
+let enabled = true;
+
+function ensure() {
+  if (ctx) return ctx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  ctx = new AC();
+  master = ctx.createGain();
+  master.gain.value = 0.35;
+  master.connect(ctx.destination);
+  return ctx;
+}
+
+function unlockAudio() {
+  const c = ensure();
+  if (c && c.state === 'suspended') c.resume();
+}
+
+function setVolume(v) { if (master) master.gain.value = v; }
+function setEnabled(v) { enabled = v; }
+
+function noiseBuffer(c, dur) {
+  const len = Math.max(1, Math.floor(c.sampleRate * dur));
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+// 3B his: kaynak uzaklığına göre ses seviyesi ve hafif kanal kaydırması
+function place(node, pan, dist, maxDist) {
+  const c = ensure();
+  const g = c.createGain();
+  const att = Math.max(0, 1 - dist / maxDist);
+  g.gain.value = att * att;
+  if (c.createStereoPanner) {
+    const p = c.createStereoPanner();
+    p.pan.value = Math.max(-1, Math.min(1, pan));
+    node.connect(p); p.connect(g);
+  } else {
+    node.connect(g);
+  }
+  g.connect(master);
+  return g;
+}
+
+function sfxShot(weapon, pan = 0, dist = 0) {
+  const c = ensure();
+  if (!c || !enabled) return;
+  const now = c.currentTime;
+
+  const cfg = {
+    rifle: { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 },
+    shotgun: { dur: 0.26, f0: 500, f1: 60, gain: 0.9, lp: 1500 },
+    sniper: { dur: 0.34, f0: 1400, f1: 90, gain: 1.0, lp: 3400 },
+    // Bomba fırlatma: kısa, boğuk bir savurma sesi (patlama ayrı → sfxBoom).
+    bomba: { dur: 0.16, f0: 420, f1: 70, gain: 0.4, lp: 900 },
+  }[weapon] || { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 };
+
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, cfg.dur);
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(cfg.lp, now);
+  filt.frequency.exponentialRampToValueAtTime(220, now + cfg.dur);
+
+  const env = c.createGain();
+  env.gain.setValueAtTime(cfg.gain, now);
+  env.gain.exponentialRampToValueAtTime(0.001, now + cfg.dur);
+
+  src.connect(filt); filt.connect(env);
+  place(env, pan, dist, 1400);
+  src.start(now); src.stop(now + cfg.dur + 0.02);
+
+  // Alçak "gövde" vuruşu
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(cfg.f0 * 0.25, now);
+  osc.frequency.exponentialRampToValueAtTime(cfg.f1 * 0.5, now + cfg.dur * 0.8);
+  const oe = c.createGain();
+  oe.gain.setValueAtTime(cfg.gain * 0.5, now);
+  oe.gain.exponentialRampToValueAtTime(0.001, now + cfg.dur);
+  osc.connect(oe);
+  place(oe, pan, dist, 1400);
+  osc.start(now); osc.stop(now + cfg.dur + 0.02);
+}
+
+// Patlama: alçak bir gümbürtü + geniş bir gürültü kuyruğu.
+function sfxBoom(pan = 0, dist = 0) {
+  const c = ensure();
+  if (!c || !enabled) return;
+  const now = c.currentTime;
+
+  // Gürültü gövdesi
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, 0.9);
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(1800, now);
+  filt.frequency.exponentialRampToValueAtTime(120, now + 0.75);
+  const env = c.createGain();
+  env.gain.setValueAtTime(1.05, now);
+  env.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+  src.connect(filt); filt.connect(env);
+  place(env, pan, dist, 2200);
+  src.start(now); src.stop(now + 0.9);
+
+  // Alçak gümbürtü
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(120, now);
+  osc.frequency.exponentialRampToValueAtTime(28, now + 0.5);
+  const oe = c.createGain();
+  oe.gain.setValueAtTime(0.95, now);
+  oe.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc.connect(oe);
+  place(oe, pan, dist, 2200);
+  osc.start(now); osc.stop(now + 0.65);
+}
+
+// Kazanma fanfarı: yükselen üç nota + parıltı.
+function sfxWin() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const notalar = [523.25, 659.25, 783.99, 1046.5];   // do-mi-sol-do
+  notalar.forEach((f, i) => {
+    const t = now + i * 0.13;
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, t);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    osc.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + 0.55);
+  });
+}
+
+function sfxHit() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(1500, now);
+  osc.frequency.exponentialRampToValueAtTime(900, now + 0.06);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.16, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+  osc.connect(g); g.connect(master);
+  osc.start(now); osc.stop(now + 0.08);
+}
+
+function sfxHurt() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, 0.18);
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass'; f.frequency.value = 320; f.Q.value = 1.2;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.4, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(now); src.stop(now + 0.2);
+}
+
+function sfxDeath() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(320, now);
+  osc.frequency.exponentialRampToValueAtTime(48, now + 0.75);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.3, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+  osc.connect(g); g.connect(master);
+  osc.start(now); osc.stop(now + 0.85);
+}
+
+function sfxPickup() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  [660, 990].forEach((f, i) => {
+    const o = c.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = f;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, now + i * 0.07);
+    g.gain.linearRampToValueAtTime(0.2, now + i * 0.07 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.16);
+    o.connect(g); g.connect(master);
+    o.start(now + i * 0.07); o.stop(now + i * 0.07 + 0.18);
+  });
+}
+
+function sfxReload() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, 0.05);
+  const f = c.createBiquadFilter();
+  f.type = 'highpass'; f.frequency.value = 1800;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.22, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(now); src.stop(now + 0.06);
+}
+
+function sfxUi() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const o = c.createOscillator();
+  o.type = 'sine'; o.frequency.value = 880;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.10, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+  o.connect(g); g.connect(master);
+  o.start(now); o.stop(now + 0.1);
+}
+
+function sfxAlarm() {
+  const c = ensure(); if (!c || !enabled) return;
+  const now = c.currentTime;
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(180, now);
+  o.frequency.linearRampToValueAtTime(300, now + 0.35);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.14, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  o.connect(g); g.connect(master);
+  o.start(now); o.stop(now + 0.62);
+}
+
+__exp.unlockAudio = unlockAudio;
+__exp.setVolume = setVolume;
+__exp.setEnabled = setEnabled;
+__exp.sfxShot = sfxShot;
+__exp.sfxBoom = sfxBoom;
+__exp.sfxWin = sfxWin;
+__exp.sfxHit = sfxHit;
+__exp.sfxHurt = sfxHurt;
+__exp.sfxDeath = sfxDeath;
+__exp.sfxPickup = sfxPickup;
+__exp.sfxReload = sfxReload;
+__exp.sfxUi = sfxUi;
+__exp.sfxAlarm = sfxAlarm;
+
+  };
+
+  __req("/js/main.js");
+})();
+</script>
+</body>
+</html>
