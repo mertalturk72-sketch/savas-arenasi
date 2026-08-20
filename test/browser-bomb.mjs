@@ -193,6 +193,65 @@ async function acikYereGit(page, koridor = 560) {
   await ctx.close();
 }
 
+// ===== 1b) Parmak merkeze çekilince bomba ATILMAMALI ====================
+// Kullanıcının şikâyeti: "menzil sıfıra gelince elimi bırakmasam bile atıyor."
+// Sebep: ateş bayrağı çubuğun İTİLME MİKTARINA bağlıydı; parmak merkeze
+// çekilince şart bozuluyor ve oyun "parmak kalktı" sanıp bombayı fırlatıyordu.
+// Doğrusu: bomba SADECE parmak gerçekten kalkınca atılır.
+{
+  const ctx = await browser.newContext({ ...devices['Pixel 5'] });
+  const page = await macaGir(ctx);
+  await acikYereGit(page);
+  await page.waitForTimeout(300);
+
+  const st = await page.locator('#stickAim').boundingBox();
+  const cx = st.x + st.width / 2, cy = st.y + st.height / 2;
+  const yari = st.width / 2;
+
+  // Playwright'ın touchscreen'i "bas-çek-bırak" ayrımı yapmıyor; parmağı
+  // basılı tutup kaydırmayı ancak ham TouchEvent ile kurabiliyoruz.
+  const dokun = (tip, x, y) => page.evaluate(({ tip, x, y }) => {
+    const el = document.getElementById('stickAim');
+    const t = new Touch({ identifier: 77, target: el, clientX: x, clientY: y });
+    const bos = tip === 'touchend' || tip === 'touchcancel';
+    el.dispatchEvent(new TouchEvent(tip, {
+      bubbles: true, cancelable: true,
+      touches: bos ? [] : [t], targetTouches: bos ? [] : [t], changedTouches: [t],
+    }));
+  }, { tip, x, y });
+
+  await page.evaluate(() => { window.__game.blasts = []; });
+
+  await dokun('touchstart', cx + yari * 0.9, cy);
+  await page.waitForTimeout(350);
+
+  // Parmağı KALDIRMADAN merkeze çek → menzil sıfırlanır ama atılmamalı
+  await dokun('touchmove', cx + 2, cy + 2);
+  await page.waitForTimeout(900);
+  const d = await page.evaluate(() => ({
+    patlama: (window.__game.blasts || []).length,
+    tetik: !!(window.__input && window.__input.touch.aim.firing),
+  }));
+  console.log('1b) merkeze çekince atıldı mı:', d.patlama ? 'EVET ✗' : 'hayır ✓', '· tetik basılı:', d.tetik);
+  if (d.patlama) errors.push('parmak kalkmadan, merkeze çekilince bomba atıldı');
+  if (!d.tetik) errors.push('parmak basılıyken tetik bırakılmış görünüyor');
+
+  // Parmağı kaldır → şimdi atılmalı.
+  // DİKKAT: patlama halkası 620 ms yaşayıp listeden siliniyor. Sabit bir süre
+  // bekleyip bakmak yanıltıcı: geç bakarsan patlama olmuş ama iz kalmamış olur.
+  // O yüzden kısa aralıklarla yoklayıp ilk görüşte çıkıyoruz.
+  await dokun('touchend', cx + 2, cy + 2);
+  let atildi = false;
+  for (let i = 0; i < 25; i++) {
+    await page.waitForTimeout(120);
+    atildi = await page.evaluate(() => (window.__game.blasts || []).length > 0);
+    if (atildi) break;
+  }
+  console.log('   parmak kalkınca atıldı mı:', atildi ? '✓' : '✗');
+  if (!atildi) errors.push('parmak kalktığı hâlde bomba atılmadı');
+  await ctx.close();
+}
+
 // ===== 2) Öldürünce kuru kafa (ölünce DEĞİL) ============================
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 700 } });

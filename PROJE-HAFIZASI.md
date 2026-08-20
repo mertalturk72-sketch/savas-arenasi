@@ -207,6 +207,8 @@ düzeltti.
 | Çimen bazen yüklenmiyor | Zemin 512 px parçalara **bir kez** çizilip saklanıyor; doku geç indiyse parçalar yedek çimenle pişip kalıyordu | Doku gelince parça önbelleği boşaltılıyor + doku menüdeyken yüklenmeye başlıyor |
 | Oyun kasıyor (27,6 ms/kare) | Her karede desen dönüşümü + 34 radyal gradyan + bina gölgeleri | Desen önceden ölçekleniyor, lekeler pişiriliyor, dünya parçalara bölünüp önbelleğe alınıyor → **~11 ms** |
 | Bombanın menzili ayarlanamıyor (telefon) | Nişan çubuğunu tutmak = ateş tuşunu tutmak; nişan alma süresi menzili dolduruyordu | Telefonda menzil **çubuğun itilme miktarından** geliyor (`mag` alanı; `dx/dy` normalize edildiği için büyüklük kayboluyordu) |
+| Bomba parmak kalkmadan atılıyor (telefon) | Ateş bayrağı çubuğun itilme miktarına bağlıydı (`len > 20`); menzili kısaltmak için parmak merkeze çekilince "parmak kalktı" sanılıyordu | Atılabilir silahta ateş = parmak basılı; itilme yalnızca menzili belirler |
+| APK "Uygulama yüklenmedi" diyor | Debug imzası her derlemede yeniden üretiliyordu (GitHub makineleri sıfırdan kuruluyor); Android aynı pakete farklı imzayı kabul etmez | Depoya sabit `android-config/debug.keystore` kondu, derleme onu kullanıyor |
 | Bomba nişangâhı takip etmiyor (bilgisayar) | Menzil tutma süresinden geliyordu, imlecin yeri hiç hesaba katılmıyordu | Menzil **imlecin uzaklığından** hesaplanıyor → bomba nişangâhın olduğu yere düşer |
 | APK'nın simgesi alakasız | `npx cap add android` kendi varsayılan simgesini koyuyor, Android'e simge verilmemişti | `scripts/make-icon.mjs` tek kaynaktan bütün boyutları üretiyor, derlemede kopyalanıyor |
 | Touchscreen dizüstünde dokunmatik arayüz | Dokunma yeteneği varlığı ölçüt alınmıştı | Son kullanılan girdi + `(any-pointer: fine)` ölçütü |
@@ -342,7 +344,7 @@ WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
 ## 14. Nerede kaldık
 
-- Son sürüm damgası: **5af5dfe0027f** (28 test takımının tamamı geçiyor)
+- Son sürüm damgası: **e821b4745761** (28 test takımının tamamı geçiyor)
 - Kullanıcının yapması gereken: zip'i GitHub'a yükle → Actions'ın ürettiği
   APK'yı kur (eskisini kaldırdıktan sonra)
 - Sonraki adım: kendini güncellemenin gerçek telefonda denenmesi

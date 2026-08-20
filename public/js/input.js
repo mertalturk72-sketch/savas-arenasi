@@ -81,7 +81,14 @@ export class Input {
         if (isAimStick) {
           slot.aiming = len > 20;
           // Otomatik silah: basılı tuttukça ateş. Tek atışlı: sadece nişan al.
-          slot.firing = (this.weaponAuto || this.weaponThrowable) && len > 20;
+          //
+          // ATILABİLİR SİLAH (bomba) BİR İSTİSNA: burada "ateş" demek "parmak
+          // basılı" demektir, çubuğun ne kadar itildiği DEĞİL. Eskiden
+          // `len > 20` şartı buna da uygulanıyordu; oyuncu menzili kısaltmak
+          // için parmağını merkeze çektiğinde şart bozuluyor, oyun "parmağını
+          // kaldırdı" sanıp bombayı elinde olmadan fırlatıyordu.
+          // İtilme miktarı yalnızca MENZİLİ belirler (bkz. sample()).
+          slot.firing = this.weaponThrowable ? true : (this.weaponAuto && len > 20);
           el.classList.toggle('aiming', slot.aiming && !this.weaponAuto);
         }
       };
@@ -260,9 +267,13 @@ export class Input {
     // Nişan çubuğu bırakıldığında tetiklenen tek atış
     if (this.firePulse > 0) { keys |= IN_FIRE; this.firePulse--; }
 
+    // Ateş bayrağı çubuğun İTİLMESİNDEN bağımsız: parmak basılıysa basılıdır.
+    // (Bomba merkeze çekilince kendiliğinden atılıyordu; sebebi bu iki şeyin
+    // birbirine bağlı olmasıydı.)
+    if (ta.firing) keys |= IN_FIRE;
+
     if (ta.dx || ta.dy) {
       this.aim = Math.atan2(ta.dy, ta.dx);
-      if (ta.firing) keys |= IN_FIRE;
     } else if (!this.touch.active) {
       this.aim = Math.atan2(this.mouseY - sy, this.mouseX - sx);
     }

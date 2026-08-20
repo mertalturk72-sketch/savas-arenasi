@@ -30,7 +30,8 @@
     "test:assist": "node test/browser-assist.mjs",
     "test:noday": "node test/browser-nodaynight.mjs",
     "build:bundle": "node scripts/build-www.mjs && node scripts/make-bundle.mjs",
-    "test:selfupdate": "node scripts/build-www.mjs && node scripts/make-bundle.mjs && node test/browser-selfupdate.mjs"
+    "test:selfupdate": "node scripts/build-www.mjs && node scripts/make-bundle.mjs && node test/browser-selfupdate.mjs",
+    "dump": "node scripts/make-source-dump.mjs"
   },
   "engines": {
     "node": ">=18"

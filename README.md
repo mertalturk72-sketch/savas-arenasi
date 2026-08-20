@@ -474,6 +474,12 @@ eskiden menzil tutma süresinden geliyordu ve imlecin nerede olduğunun hiç
 180 px uzaktayken bomba 196 px, 473 px uzaktayken 468 px gitti. Silahın
 asgari/azami menzili dışına taşarsan oraya kırpılır.
 
+**Bomba ne zaman atılır?** Sadece **parmağını kaldırınca**. Bu ayrım önemliydi:
+ateş bayrağı önceden çubuğun İTİLME MİKTARINA bağlıydı, dolayısıyla oyuncu
+menzili kısaltmak için parmağını merkeze çektiğinde oyun "parmak kalktı"
+sanıp bombayı elde olmadan fırlatıyordu. Artık itilme miktarı yalnızca
+menzili belirliyor; tetik parmak basılı olduğu sürece basılı sayılıyor.
+
 **Menzil telefonda nasıl ayarlanır?** Bilgisayarda tuşu ne kadar tuttuğun
 menzili belirler. Telefonda bu ÇALIŞMIYORDU: nişan çubuğunu tutmak aynı
 zamanda ateş tuşunu basılı tutmak demek, dolayısıyla nişan alırken geçen süre

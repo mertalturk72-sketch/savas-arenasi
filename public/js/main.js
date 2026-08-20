@@ -1438,6 +1438,7 @@ window.__sprites = spritesModule;
 window.__render = renderModule;
 window.__net = net;
 window.__state = state;
+window.__input = input;   // testler tetik durumunu okuyabilsin
 
 // Daha önce "GÜNCELLE" denmişse ve internet varsa doğrudan güncel sürüme git.
 // Bu, oyunun geri kalanını kurmadan önce olmalı — boşuna iş yapmayalım.
