@@ -8,7 +8,19 @@
 
 name: Android APK derle
 
+# İki şekilde çalışır:
+#
+#   push              → depoya dosya yükler yüklemez KENDİLİĞİNDEN derler.
+#                       Kullanıcının Actions sekmesine girip "Run workflow"
+#                       düğmesini bulması gerekmiyor; bu adım en çok
+#                       takılınan yerdi.
+#   workflow_dispatch → istersen elle de başlatabilirsin (Actions → Run workflow).
 on:
+  push:
+    branches: ['**']
+    # Sadece README değiştiyse boşuna derleme yapma.
+    paths-ignore:
+      - '**.md'
   workflow_dispatch:
 
 jobs:
@@ -43,6 +55,19 @@ jobs:
           if [ ! -d android ]; then npx cap add android; fi
           npx cap sync android
 
+      # Capacitor `cap add android` derken KENDİ varsayılan simgesini koyuyor.
+      # Bu yüzden telefonda alakasız bir ikon görünüyordu. Depoda hazır duran
+      # simgeleri (scripts/make-icon.mjs üretiyor) üstüne kopyalıyoruz, böylece
+      # APK'nın simgesi Chrome'daki simgeyle birebir aynı oluyor.
+      - name: Uygulama simgesini yerleştir
+        run: |
+          set -e
+          RES=android/app/src/main/res
+          cp -rv android-icons/mipmap-* "$RES"/
+          mkdir -p "$RES/values"
+          cp -v android-icons/values/ic_launcher_background.xml "$RES/values/"
+          ls -la "$RES"/mipmap-xxxhdpi
+
       - name: APK derle
         working-directory: android
         run: |
@@ -61,4 +86,3 @@ jobs:
           name: savas-arenasi-apk
           path: out/savas-arenasi.apk
           retention-days: 30
-
