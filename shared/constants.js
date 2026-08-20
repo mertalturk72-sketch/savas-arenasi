@@ -15,12 +15,24 @@ export const CLIENT_TIMEOUT_MS = 20000;      // ping cevabı gelmezse düşür
 
 // --- Lobi -----------------------------------------------------------------
 export const MAX_PLAYERS = 20;               // BİR LOBİDE EN FAZLA 20 KİŞİ
-export const MIN_PLAYERS_TO_START = 1;       // botlarla tek başına da başlanabilsin
+export const MIN_PLAYERS_TO_START = 1;       // lobide en az bir gerçek oyuncu
+// Maça girecek TOPLAM kişi (oyuncular + botlar) en az bu kadar olmalı.
+// Tek kişilik maç oynanabilir bir şey değil: rakip yok, skor tablosu boş.
+// Bot eklemek ya da bir arkadaş çağırmak şart.
+export const MIN_FIGHTERS = 2;
 export const MAX_NAME_LEN = 16;
 export const MAX_LOBBY_NAME_LEN = 24;
 export const MAX_CHAT_LEN = 140;
 export const LOBBY_CODE_LEN = 5;
-export const COUNTDOWN_MS = 5000;            // "başlıyor" geri sayımı
+// Geri sayım iki parçadan oluşur:
+//   5 4 3 2 1   → sayı gösterilen kısım
+//   BAŞLA!      → son COUNTDOWN_GO_MS kadarı
+// Eskiden tek parçaydı: sayı sıfıra inince "BAŞLA!" yazılıyor, ama sunucu
+// tam o anda maçı başlattığı için yazı göz kırpması kadar (bazen hiç)
+// görünüyordu. Şimdi sunucunun geri sayımına bu bir saniye EKLENİYOR, yani
+// "BAŞLA!" gerçekten bir saniye ekranda duruyor ve maç ondan sonra başlıyor.
+export const COUNTDOWN_GO_MS = 1000;         // "BAŞLA!" yazısının süresi
+export const COUNTDOWN_MS = 5000 + COUNTDOWN_GO_MS;
 export const POST_MATCH_MS = 12000;          // maç sonu skor tablosu süresi
 
 // --- Oyun modları ---------------------------------------------------------
@@ -94,6 +106,10 @@ export const RESPAWN_MS = 3500;
 // ölünce asist yazılmasın.
 export const ASSIST_WINDOW_MS = 9000;
 export const SPAWN_PROTECT_MS = 1500;
+// Öldürme ödülü: birini öldüren oyuncu bu kadar can kazanır.
+// ASLA azamiyi aşmaz — 90 canlıyken öldüren 140 değil, 100 olur.
+// (Tavan kontrolü shared/sim/game.js içindeki kill() fonksiyonunda.)
+export const KILL_HEAL = 50;
 
 // --- Doğuş noktaları ------------------------------------------------------
 // Oyuncular haritanın dış çerçevesinde doğmasın: her kenardan haritanın bu
@@ -121,6 +137,9 @@ export const UPDATE_SERVER = 'https://savas-arenasi.onrender.com';
 
 
 // --- Sınıflar -------------------------------------------------------------
+// CAN HERKESTE 100. Eskiden sınıflar farklı canlıydı (78–100); artık tek fark
+// hız ve silah. Böylece "kim kaç vuruşta ölür" hesabı herkes için aynı ve
+// sınıflar arasındaki denge sadece oynanışla kuruluyor.
 export const CLASSES = {
   komando: {
     id: 'komando',
@@ -134,9 +153,9 @@ export const CLASSES = {
   akinci: {
     id: 'akinci',
     name: 'Akıncı',
-    desc: 'Çok hızlı, az canlı. Pompalı ile yakın dövüş.',
+    desc: 'Çok hızlı. Pompalı ile yakın dövüş.',
     speed: 282,
-    hp: 78,
+    hp: 100,
     weapon: 'shotgun',
     color: '#ffd479',
   },
@@ -145,7 +164,7 @@ export const CLASSES = {
     name: 'Keskin Nişancı',
     desc: 'Yavaş ama tek atışta yıkıcı. Uzun menzil.',
     speed: 176,
-    hp: 88,
+    hp: 100,
     weapon: 'sniper',
     color: '#c39bff',
   },
@@ -154,7 +173,7 @@ export const CLASSES = {
     name: 'Bombacı',
     desc: 'Bomba atar. Basılı tut, menzili ayarla, bırak.',
     speed: 202,
-    hp: 94,
+    hp: 100,
     weapon: 'bomba',
     color: '#ff9f5a',
   },
@@ -252,20 +271,57 @@ export const WEAPONS = {
   // patlamada.
   bomba: {
     id: 'bomba', name: 'Bomba',
-    // Menzil, hasar ve patlama alanı yarıya indirildi; buna karşılık bomba
-    // %50 daha hızlı gidiyor. Böylece bombacı "uzaktan tarla süpüren" değil,
-    // yakın mesafede hızlı iş gören bir sınıf oluyor.
-    dmg: 0, fireMs: 620, speed: 840, spread: 0.02, pellets: 1,
-    mag: 3, reserve: 15, reloadMs: 2400, range: 450, bulletR: 8, auto: false,
+    // Bombacı güçlendirildi: menzil +%50, hız +%25, patlama hasarı +%50,
+    // patlama alanı (yarıçap) +%50. Alt menzil de aynı oranda büyüdü, yoksa
+    // "en yakın atış" oransal olarak dibe düşerdi. Yarıçap (125) hâlâ alt
+    // menzilden (143) küçük: en yakına atınca kendini havaya uçurmuyorsun.
+    dmg: 0, fireMs: 620, speed: 1050, spread: 0.02, pellets: 1,
+    mag: 6, reserve: 15, reloadMs: 2400, range: 675, bulletR: 8, auto: false,
     throwable: true,
-    minRange: 95,         // hiç beklemeden bırakınca bu kadar gider
-    maxRange: 450,        // tam dolunca bu kadar gider
+    minRange: 143,        // hiç beklemeden bırakınca bu kadar gider
+    maxRange: 675,        // tam dolunca bu kadar gider
     chargeMs: 850,        // menzilin dolması bu kadar sürer (bilgisayarda)
-    blastR: 83,           // patlama yarıçapı
-    blastDmg: 37,         // merkezdeki hasar (kenarda %25'e iner)
+    blastR: 125,          // patlama yarıçapı
+    blastDmg: 56,         // merkezdeki hasar (kenarda %25'e iner)
   },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);
+
+// --- Silahın elde durduğu yer (namlu ucu) --------------------------------
+// TEK KAYNAK. Burası hem çizimi hem de merminin doğduğu noktayı belirliyor.
+//
+// NEDEN TEK YERDE: mermi sunucuda oyuncunun TAM MERKEZİNDEN, 22 piksel ileriden
+// doğuyordu; silah ise ekranda gövdenin 18 piksel yukarısına, 32 piksel ileriye
+// çizilmişti. İkisi aynı yeri göstermediği için mermi "silahtan değil adamdan"
+// çıkıyor gibi görünüyordu. Artık iki taraf da aşağıdaki tek hesabı kullanıyor.
+//
+// Ölçüler çizim biriminde (dünya pikseli):
+//   tut  — namlunun kabzadan ileri başladığı yer
+//   boy  — namlu uzunluğu
+export const WEAPON_VIEW = {
+  rifle:   { tut: 4, boy: 28 },
+  shotgun: { tut: 4, boy: 25 },
+  sniper:  { tut: 4, boy: 34 },
+  // Bombacının elinde namlu YOK, bomba var: mermi doğrudan elden çıkar.
+  bomba:   { tut: 4, boy: 3 },
+};
+// Ellerin gövde merkezine göre yüksekliği (yukarısı eksi) ve yana kaçıklığı.
+export const HAND_Y = -PLAYER_RADIUS * 1.15;
+export const HAND_SIDE = 5;
+
+/**
+ * Namlu ucunun dünya koordinatı. Mermi buradan doğar, namlu alevi burada çakar.
+ * @returns {{x:number,y:number}}
+ */
+export function muzzleWorld(x, y, aim, wepId) {
+  const v = WEAPON_VIEW[wepId] || WEAPON_VIEW.rifle;
+  const ileri = v.tut + v.boy;
+  const c = Math.cos(aim), s = Math.sin(aim);
+  return {
+    x: x + c * ileri - s * HAND_SIDE,
+    y: y + HAND_Y + s * ileri + c * HAND_SIDE,
+  };
+}
 
 // --- Daralan alan (Son Hayatta Kalan) ------------------------------------
 export const ZONE = {

@@ -39,7 +39,9 @@ const errors = [];
 // Menüde görünmesini beklediğimiz sınıflar (shared/constants.js ile aynı olmalı)
 const BEKLENEN_SINIFLAR = ['Komando', 'Akıncı', 'Keskin Nişancı', 'Bombacı'];
 
-async function startMatch(page, { mode = 0, bots = 0 } = {}) {
+// Varsayılan bot sayısı 1: maça tek başına girilemiyor (en az iki savaşçı).
+// Bu testin ölçtüğü şey ayarlar paneli; rakip sayısı umurunda değil.
+async function startMatch(page, { mode = 0, bots = 1 } = {}) {
   await page.locator('#modePicker .mode-card').nth(mode).click();
   await page.evaluate((n) => {
     const b = document.getElementById('botCountInput');
@@ -232,7 +234,7 @@ async function startMatch(page, { mode = 0, bots = 0 } = {}) {
   await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
   await page.fill('#nameInput', 'Cep');
   await page.dispatchEvent('#nameInput', 'change');
-  await startMatch(page, { mode: 0, bots: 0 });
+  await startMatch(page, { mode: 0, bots: 1 });
 
   const b = await page.locator('#btnSettings').boundingBox();
   console.log('telefonda düğme boyutu:', b && `${Math.round(b.width)}×${Math.round(b.height)}`);

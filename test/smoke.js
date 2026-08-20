@@ -364,8 +364,8 @@ test('bombacı: menzili ayarlanabilir patlayıcı', () => {
   assert.equal(w.dmg, 0, 'bombanın doğrudan isabet hasarı olmamalı — iş patlamada');
 });
 
-test('cephane değerleri: komando 30/60, akıncı 5/15, nişancı 5/15, bombacı 3/15', () => {
-  const beklenen = { komando: [30, 60], akinci: [5, 15], nisanci: [5, 15], bombaci: [3, 15] };
+test('cephane değerleri: komando 30/60, akıncı 5/15, nişancı 5/15, bombacı 6/15', () => {
+  const beklenen = { komando: [30, 60], akinci: [5, 15], nisanci: [5, 15], bombaci: [6, 15] };
   for (const [cls, [mag, reserve]] of Object.entries(beklenen)) {
     const w = WEAPONS[CLASSES[cls].weapon];
     assert.equal(w.mag, mag, `${cls} şarjörü ${w.mag}, ${mag} olmalı`);

@@ -1,6 +1,9 @@
 // Canvas çizimi: dünya, oyuncular, mermiler, efektler, mini harita.
 
-import { PLAYER_RADIUS, CLASSES, TEAMS, WEAPONS } from '/shared/constants.js';
+import {
+  PLAYER_RADIUS, CLASSES, TEAMS, WEAPONS,
+  WEAPON_VIEW, HAND_Y, HAND_SIDE, muzzleWorld,
+} from '/shared/constants.js';
 import { lineBlocked, rayHitDistance } from '/shared/physics.js';
 import { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H, WALK_FRAMES } from './sprites.js';
 import { CHARACTERS, DEFAULT_CHAR } from '/shared/constants.js';
@@ -29,6 +32,31 @@ const GRASS_TILE_PX = 190;
 // yalnızca ihtiyaç oldukça üretilir ve en eskisi atılır.
 const TILE_PX = 512;
 const MAX_TILES = 40;
+
+// Haritanın "parmak izi". Sabit dünya katmanı (çim + binalar) parçalar hâlinde
+// önbelleğe alınıyor; harita değişince bu önbelleğin ATILMASI şart. Kimliği
+// en/boydan üretmek yetmiyordu: arena her maçta yeniden üretiliyor ama boyu
+// hep aynı kalıyor. Bu yüzden engellerin kendisinden bir özet çıkarıyoruz —
+// tek bir duvar bir piksel kaysa bile imza değişir.
+export function mapSignature(map) {
+  if (!map) return 'yok';
+  let h = 2166136261 >>> 0;                       // FNV-1a
+  const kat = (v) => { h ^= v | 0; h = Math.imul(h, 16777619) >>> 0; };
+  kat(map.w); kat(map.h);
+  const obs = map.obstacles || [];
+  kat(obs.length);
+  for (let i = 0; i < obs.length; i++) {
+    const o = obs[i];
+    kat(o.x); kat(o.y); kat(o.w); kat(o.h);
+  }
+  const bus = map.bushes || [];
+  kat(bus.length);
+  for (let i = 0; i < bus.length; i++) {
+    const b = bus[i];
+    kat(b.x); kat(b.y); kat(b.r);
+  }
+  return `${map.w}x${map.h}#${obs.length}#${h.toString(36)}`;
+}
 
 export class FX {
   constructor() { this.parts = []; this.shake = 0; }
@@ -472,8 +500,22 @@ export class Renderer {
   drawWorld(ctx, map, view) {
     // Harita değiştiyse önbelleği tazele. (Güneş kalktığı için başka bir
     // tazeleme sebebi kalmadı: dünya katmanı maç boyunca sabit.)
-    if (this._tileMapKey !== `${map.w}x${map.h}`) {
-      this._tileMapKey = `${map.w}x${map.h}`;
+    // "İÇİNDEN GEÇİLEN DUVAR" HATASININ KÖKÜ BURASIYDI.
+    //
+    // Anahtar eskiden sadece haritanın en/boyuydu. Arena her maçta yeniden
+    // ÜRETİLİYOR ama boyutları hep aynı — yani anahtar değişmiyordu. Bir
+    // sonraki maçta önbellekte duran eski kiremitler olduğu gibi ekrana
+    // geliyordu: ekranda ÖNCEKİ haritanın duvarları görünüyor, çarpışma ise
+    // YENİ haritaya göre işliyordu. Sonuç: "duvar var ama içinden geçiliyor"
+    // (ve tersi: görünmeyen duvara çarpma). Kiremit önbelleği 40 taneyle
+    // sınırlı olduğu için sadece bazı bölgelerde oluyordu — bu yüzden
+    // "bazen" diye tarif ediliyordu.
+    //
+    // Artık anahtar haritanın GEOMETRİSİNDEN üretiliyor: engeller değişirse
+    // anahtar da değişir, önbellek kendiliğinden sıfırlanır.
+    const key = mapSignature(map);
+    if (this._tileMapKey !== key) {
+      this._tileMapKey = key;
       this.tiles.clear();
     }
 
@@ -681,8 +723,11 @@ export class Renderer {
 
     const me = g.meRender;
     const dist = rayHitDistance(me.x, me.y, g.aim, wep.range, g.idx);
-    const sx = me.x + Math.cos(g.aim) * (PLAYER_RADIUS + 10);
-    const sy = me.y + Math.sin(g.aim) * (PLAYER_RADIUS + 10);
+    // Çizgi NAMLUDAN başlasın: mermi de oradan çıkıyor. Eskiden gövde
+    // merkezinden başlıyordu ve nişan çizgisi silahla hizasızdı.
+    const namlu = muzzleWorld(me.x, me.y, g.aim, wep.id);
+    const sx = namlu.x;
+    const sy = namlu.y;
     const ex = me.x + Math.cos(g.aim) * Math.max(dist, PLAYER_RADIUS + 12);
     const ey = me.y + Math.sin(g.aim) * Math.max(dist, PLAYER_RADIUS + 12);
 
@@ -1016,8 +1061,12 @@ export class Renderer {
     ctx.drawImage(frame, left, top, w, h);
     ctx.imageSmoothingEnabled = true;
 
-    // Sırtı dönükken silah gövdenin daha yanında dursun ki görünsün
-    this.drawWeapon(ctx, p, wep, chr, facingUp ? 10 : 5);
+    // Silah her zaman AYNI yerde duruyor (HAND_SIDE). Eskiden sırtı dönükken
+    // gövdeden daha yana kaydırılıyordu ki görünsün; buna gerek yok — silah
+    // karakterin ÜSTÜNE çiziliyor, zaten görünüyor. Sabit tutmak şart, çünkü
+    // merminin doğduğu nokta aynı hesaptan geliyor: kayarsa mermi yine
+    // "silahtan çıkmıyor" gibi görünür.
+    this.drawWeapon(ctx, p, wep, chr);
 
     // --- can çubuğu + isim ---------------------------------------------------
     if (!isMe) {
@@ -1040,17 +1089,27 @@ export class Renderer {
   }
 
   // Silah elde durur ve nişan yönünü gösterir.
-  drawWeapon(ctx, p, wep, chr, sideOffset = 5) {
-    const handY = p.y - PLAYER_RADIUS * 1.15;      // ellerin yüksekliği
+  //
+  // Ölçüler shared/constants.js'teki WEAPON_VIEW'dan geliyor — merminin doğduğu
+  // nokta da oradan hesaplanıyor. İkisi tek kaynaktan beslenmezse mermi yine
+  // silahın ucundan değil, başka bir yerden çıkıyormuş gibi görünür.
+  drawWeapon(ctx, p, wep, chr) {
+    const handY = p.y + HAND_Y;                    // ellerin yüksekliği
     ctx.save();
     ctx.translate(p.x, handY);
     ctx.rotate(p.aim);
 
-    // Silahı gövdenin biraz yanına al: yukarı/aşağı nişan alırken de
-    // siluetin arkasında kaybolmasın (sağ elini kullanan bir asker gibi).
-    const oy = sideOffset;
-    const len = wep.id === 'sniper' ? 34 : wep.id === 'shotgun' ? 25 : 28;
-    const gx = 4;
+    const oy = HAND_SIDE;
+    const gorunum = WEAPON_VIEW[wep.id] || WEAPON_VIEW.rifle;
+    const len = gorunum.boy;
+    const gx = gorunum.tut;
+
+    // BOMBACI: elinde tüfek değil BOMBA var. Ateşli silah çizmiyoruz.
+    if (wep.throwable) {
+      this.drawBombInHand(ctx, p, gx, oy, chr);
+      ctx.restore();
+      return;
+    }
 
     // dipçik
     ctx.fillStyle = '#3a2b1e';
@@ -1088,6 +1147,50 @@ export class Renderer {
       ctx.shadowBlur = 0;
     }
     ctx.restore();
+  }
+
+  // Bombacının elindeki bomba. Yerel koordinatta çizilir: (0,0) eller,
+  // +x nişan yönü. Namlu ucu hesabı (WEAPON_VIEW.bomba) buranın ucuna denk
+  // gelir — bomba elden çıkar.
+  drawBombInHand(ctx, p, gx, oy, chr) {
+    const R = 5.2;
+    const cx = gx + R * 0.6, cy = oy;
+
+    // el
+    ctx.fillStyle = chr.skin;
+    ctx.fillRect(gx - 4, oy - 3.2, 5, 6.4);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(gx - 4, oy + 2, 5, 1.2);
+
+    // gövde
+    ctx.fillStyle = '#23282e';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fill();
+    // üstten ışık
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath();
+    ctx.arc(cx - R * 0.3, cy - R * 0.35, R * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    // boyun
+    ctx.fillStyle = '#4a5561';
+    ctx.fillRect(cx - 1.6, cy - R - 2.2, 3.2, 2.6);
+    // fitil
+    ctx.strokeStyle = '#b98b4a';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - R - 2);
+    ctx.quadraticCurveTo(cx + 2.5, cy - R - 5.5, cx + 5, cy - R - 4);
+    ctx.stroke();
+    // kıvılcım — ateş etmeye hazırlanırken (tetik basılıyken) parlar
+    if (p.muzzle) {
+      ctx.fillStyle = 'rgba(255,196,90,0.95)';
+      ctx.shadowColor = '#ffb347'; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(cx + 5.4, cy - R - 4, 1.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
   }
 
   drawFriendliesOverBushes(ctx, g, now) {

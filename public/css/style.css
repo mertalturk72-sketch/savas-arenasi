@@ -337,7 +337,31 @@ button.ghost.tiny { padding: 3px 8px; font-size: 11px; }
   color: var(--accent); text-shadow: 0 0 60px rgba(255,138,61,.45);
   font-variant-numeric: tabular-nums;
 }
+/* "BAŞLA!" bir rakam değil KELİME. Rakam puntosu (22vw) telefonda kelimeyi
+   ekrandan taşırıyor, satır yüksekliği 1 olduğu için de Ş'nin çengeli kutunun
+   dışına sarkıp alttaki "MAÇ BAŞLIYOR" yazısının üstüne biniyordu. */
+.countdown-overlay #countdownNum.word {
+  font-size: clamp(38px, 11vw, 96px);
+  line-height: 1.25;
+  letter-spacing: .04em;
+  padding: 0 14px;
+  max-width: 96vw;
+  white-space: nowrap;
+}
 .countdown-overlay #countdownNum.pop { animation: cdPop .45s cubic-bezier(.2,.9,.3,1); }
+/* Kelimede vuruş daha yumuşak. ASIL "üstüne biniyor" ŞİKÂYETİNİN SEBEBİ BUYDU:
+   rakamın vuruşu scale(1.6) ile başlıyor; 190 px'lik bir yazı bir anlığına
+   304 px'e çıkıp altındaki "MAÇ BAŞLIYOR" satırını örtüyor. Rakamda göze
+   çarpmıyordu çünkü rakam dar ve yazı bir saniye boyunca duruyor. "BAŞLA!" ise
+   hem geniş hem de sadece bir göz kırpması kadar görünüyordu — yani görülen
+   TEK kare, çakışan kareydi. Kelimede sıçramayı 1,10'a çekiyoruz: 96 px'lik
+   yazı en fazla ~6 px büyüyor, aradaki 10 px'lik boşluğa sığıyor. */
+.countdown-overlay #countdownNum.word.pop { animation: cdPopWord .45s cubic-bezier(.2,.9,.3,1); }
+@keyframes cdPopWord {
+  0% { transform: scale(1.10); opacity: 0; }
+  40% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
 @keyframes cdPop {
   0% { transform: scale(1.6); opacity: 0; }
   40% { transform: scale(1); opacity: 1; }
@@ -726,6 +750,46 @@ body:not(.touch) .touch-ui { display: none !important; }
 .level-btn.lv-zor.sel    .lv-name { color: #ff8f87; }
 
 
+/* Bot sayısı 0 iken zorluk seçimi anlamsız: seçili kutunun rengi (sarı/yeşil/
+   kırmızı) sönüyor, hepsi griye düşüyor ve tıklanamıyor. Kural değil, sadece
+   "şu an bunun bir etkisi yok" demenin görsel yolu. */
+.level-picker.disabled { opacity: .45; filter: grayscale(1); pointer-events: none; }
+.level-picker.disabled .level-btn.sel { box-shadow: none; border-color: #2a323c; }
+.level-picker.disabled .level-btn .lv-name { color: #c9d1d9; }
+.level-note { font-size: 11px; color: #7d8796; margin: 2px 0 4px; }
+
+/* --- Ekran ortası uyarısı ------------------------------------------------ */
+.center-warn {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  padding: 20px;
+}
+.center-warn .cw-box {
+  display: flex; align-items: center; gap: 12px;
+  max-width: min(520px, 92vw);
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: rgba(20,10,10,.94);
+  border: 1px solid #f85149;
+  box-shadow: 0 0 0 1px #f8514933, 0 18px 50px rgba(0,0,0,.6), 0 0 40px rgba(248,81,73,.25);
+  color: #ffd7d3;
+  font-size: clamp(15px, 3.6vw, 19px);
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  animation: cwPop .28s cubic-bezier(.2,1.6,.4,1) both;
+}
+.center-warn .cw-icon { font-size: 1.6em; line-height: 1; color: #ff8f87; }
+.center-warn.fade .cw-box { opacity: 0; transition: opacity .35s ease; }
+@keyframes cwPop {
+  0%   { opacity: 0; transform: scale(.82); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .center-warn .cw-box { animation: none; }
+}
+
 /* --- Kazanma ekranı ------------------------------------------------------ */
 .win-overlay {
   position: fixed; inset: 0; z-index: 380;
@@ -749,6 +813,17 @@ body:not(.touch) .touch-ui { display: none !important; }
   -webkit-text-stroke: 2px #7a4600;
   padding: 0 16px;
   text-align: center;
+}
+/* KAYBETTİN — kazanma yazısıyla birebir aynı punto ve animasyon, sadece renk
+   kırmızı. Bilerek ayrı bir punto tanımı YOK: ikisi tek yerden besleniyor. */
+.win-text.lose-text {
+  color: #ff5f52;
+  text-shadow:
+    0 0 18px rgba(255,60,40,.80),
+    0 0 46px rgba(200,20,10,.55),
+    0 6px 0 #7d1208,
+    0 10px 30px rgba(0,0,0,.75);
+  -webkit-text-stroke: 2px #4d0a04;
 }
 .win-overlay.replay .win-text {
   animation: winPop .7s cubic-bezier(.2,1.7,.4,1) both, winFloat 2.6s ease-in-out .7s infinite;

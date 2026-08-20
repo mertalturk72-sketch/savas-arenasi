@@ -286,6 +286,29 @@ export function drawWeaponOnPreview(ctx, x, y, scale, wepId, skin) {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
+  // BOMBACI: elinde tüfek değil bomba. Oyun içindeki görünümle aynı olsun ki
+  // lobide seçtiğin şeyle sahada gördüğün şey birbirini tutsun.
+  if (wepId === 'bomba') {
+    const R = 4.2 * S;
+    const cx = hx + 2 * S, cy = hy;
+    ctx.fillStyle = skin;
+    ctx.fillRect(hx - 3 * S, hy - 2 * S, 3 * S, 4 * S);
+    ctx.fillStyle = '#23282e';
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath(); ctx.arc(cx - R * 0.3, cy - R * 0.35, R * 0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4a5561';
+    ctx.fillRect(cx - 1.2 * S, cy - R - 1.8 * S, 2.4 * S, 2 * S);
+    ctx.strokeStyle = '#b98b4a';
+    ctx.lineWidth = Math.max(1, 1.1 * S);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - R - 1.6 * S);
+    ctx.quadraticCurveTo(cx + 2 * S, cy - R - 4.4 * S, cx + 4 * S, cy - R - 3.2 * S);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
   // dipçik
   ctx.fillStyle = '#3a2b1e';
   ctx.fillRect(hx - 5 * S, hy - 1 * S, 5 * S, 3 * S);

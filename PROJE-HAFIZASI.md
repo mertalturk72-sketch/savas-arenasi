@@ -211,6 +211,9 @@ düzeltti.
 | APK "Uygulama yüklenmedi" diyor | Debug imzası her derlemede yeniden üretiliyordu (GitHub makineleri sıfırdan kuruluyor); Android aynı pakete farklı imzayı kabul etmez | Depoya sabit `android-config/debug.keystore` kondu, derleme onu kullanıyor |
 | Bomba nişangâhı takip etmiyor (bilgisayar) | Menzil tutma süresinden geliyordu, imlecin yeri hiç hesaba katılmıyordu | Menzil **imlecin uzaklığından** hesaplanıyor → bomba nişangâhın olduğu yere düşer |
 | APK'nın simgesi alakasız | `npx cap add android` kendi varsayılan simgesini koyuyor, Android'e simge verilmemişti | `scripts/make-icon.mjs` tek kaynaktan bütün boyutları üretiyor, derlemede kopyalanıyor |
+| **Duvar var ama içinden geçiliyor** ("bozuk duvar") | Sabit dünya katmanı 512 px parçalar hâlinde önbelleğe alınıyor; önbelleğin kimliği sadece `${map.w}x${map.h}` idi. Arena her maçta yeniden üretiliyor ama **boyutu hep aynı** → kimlik değişmiyor, önbellek temizlenmiyordu. Sonraki maçta ekranda ÖNCEKİ haritanın duvarları görünüyor, çarpışma YENİ haritaya göre işliyordu. En fazla 40 parça saklandığı için sadece bazı bölgelerde oluyordu — "bazen" denmesinin sebebi bu | Kimlik `mapSignature(map)` ile engellerin/çalıların geometrisinden üretiliyor; bir duvar bir piksel kaysa imza değişir. `test/browser-hayaletduvar.mjs` düzeltme geri alınınca düşüyor (doğrulandı) |
+| "BAŞLA!" göz kırpması kadar duruyor **ve alttaki yazının üstüne biniyor** | İkisi de tek sebepten: sayı sıfıra inince "BAŞLA!" yazılıyor ama sunucu tam o anda maçı başlatıyordu → yazı ~50 ms görünüyordu. Görünen o tek kare de vuruş (pop) animasyonunun `scale(1.6)` başlangıcıydı; 190 px'lik geniş bir kelime bir anlığına 304 px'e çıkıp altındaki "MAÇ BAŞLIYOR" satırını örtüyordu | Geri sayıma `COUNTDOWN_GO_MS = 1000` eklendi (sunucu 6000 ms sayıyor, ekranda 5→1 sonra 1 sn "BAŞLA!"); kelime kipinde punto `11vw` (rakam `22vw` idi), satır yüksekliği 1,25 ve vuruş `scale(1.10)` |
+| **Mermi silahtan değil adamdan çıkıyor** | İki ayrı hesap vardı: sunucu mermiyi oyuncunun TAM MERKEZİNDEN 22 px ileriden doğuruyordu (`PLAYER_RADIUS + 6`), istemci ise silahı gövdenin 18,4 px yukarısına / 5 px yanına / 32 px ileriye çiziyordu. Aradaki fark gözle görülüyordu | Tek kaynak: `muzzleWorld()` + `WEAPON_VIEW` (shared/constants.js). Çizim de mermi de aynı noktayı kullanıyor. Namlu ileri kaydığı için "duvara dayanıp ateş edince mermi duvarın ötesine doğar mı" riski doğdu; `namluyuDuvarinIcineSokma()` gövdeden namluya doğru ilerleyip duvara girmeden önceki son boş noktayı seçiyor. `test/namlu.mjs` |
 | Touchscreen dizüstünde dokunmatik arayüz | Dokunma yeteneği varlığı ölçüt alınmıştı | Son kullanılan girdi + `(any-pointer: fine)` ölçütü |
 
 ### Testlerin kendi kusurları (ürün değil)
@@ -238,19 +241,34 @@ Bunlar da kök nedeniyle düzeltildi, çünkü sahte hata gerçek hatayı gizler
 
 **Sınıflar**
 
+**CAN HERKESTE 100.** Eskiden sınıflar farklı canlıydı (78–100); kullanıcı
+isteğiyle eşitlendi. Artık tek fark hız ve silah.
+
 | Sınıf | Can | Hız | Silah |
 |---|---|---|---|
 | Komando | 100 | 218 | Tüfek |
-| Akıncı | 78 | 282 | Pompalı |
-| Keskin Nişancı | 88 | 176 | Keskin Tüfek |
-| Bombacı | — | — | Bomba |
+| Akıncı | 100 | 282 | Pompalı |
+| Keskin Nişancı | 100 | 176 | Keskin Tüfek |
+| Bombacı | 100 | 202 | Bomba |
 
 **Silahlar (şarjör/yedek)** — tüfek 30/60 · pompalı 5/15 · keskin 5/15 ·
-bomba 3/15
+bomba **6**/15
 
-**Bomba:** menzil 95–450 · hız 840 · patlama yarıçapı 83 · patlama hasarı 37 ·
+**Silahın elde durduğu yer** `WEAPON_VIEW` + `muzzleWorld()` ile tek yerde
+tanımlı. Mermi buradan doğuyor, namlu alevi burada çakıyor, keskin nişancının
+kırmızı çizgisi buradan başlıyor. Bombacının elinde ateşli silah YOK: namlu
+uzunluğu 3 px ve çizimde tüfek yerine bomba var (`drawBombInHand`), yani bomba
+elden çıkıyor.
+
+**Bomba:** menzil 143–675 · hız 1050 · patlama yarıçapı 125 · patlama hasarı 56 ·
 doğrudan isabet hasarı **yok**. Patlama duvarı delmez, dost ateşi geçmez,
 kendi bombandan zarar görürsün.
+
+Bombacı iki kez ayarlandı: önce zayıflatıldı (menzil/hasar/alan yarıya, hız
+1,5×), sonra güçlendirildi (**menzil +%50, hız +%25, patlama hasarı +%50,
+patlama alanı +%50**). Alt menzil de aynı oranda büyütüldü; **asgari menzil
+(143) patlama yarıçapından (125) büyük kalmalı**, yoksa en yakına atan oyuncu
+kendini havaya uçurur. `test/browser-bomb.mjs` bu ilişkiyi de sınıyor.
 
 **Bot seviyeleri:** kolay (yetenek 0,12–0,34 · görüş 780 · tepki 520 ms) ·
 orta (0,42–0,68 · 1150 · 220 ms) · zor (0,78–0,98 · 1400 · 90 ms).
@@ -259,6 +277,34 @@ kopyası olmasın.
 
 **Asist:** son 9 saniyede hasar veren herkes (öldüren ve kurban hariç) asist
 alır — `ASSIST_WINDOW_MS`.
+
+**Öldürme ödülü:** `KILL_HEAL = 50`. Birini öldüren oyuncu 50 can kazanır ama
+**canı taşmaz**: 90 canlıyken öldüren 140 değil 100 olur. Kendini öldürene ve
+alan hasarıyla ölene ödül yok; aynı anda ölen (artık hayatta olmayan) öldüren
+de ödül almaz. `test/oldurme-cani.mjs` bu tavanı 15 kontrolle koruyor —
+kullanıcının açık uyarısıydı, ileride ödül değişse bile tavan yerinde kalmalı.
+
+**Lobi kuralları**
+
+- `MIN_FIGHTERS = 2` — maça girecek toplam kişi (oyuncular + botlar) en az
+  iki olmalı. **Tek başına maç başlatılamaz.** Kural sunucuda
+  (`Lobby.startBlockReason()`), arayüzde değil; arayüz sadece sebebi ekranın
+  ortasında kırmızı bir kutuda gösteriyor (`#centerWarn`).
+- Lobi kurma formunda bot varsayılanı **0** (eskiden 7 idi).
+- **Bot zorluğu kurma formunda YOK**, sadece lobinin içinde. İki yerde olunca
+  hangisinin geçerli olduğu karışıyordu.
+- Bot sayısı 0 iken zorluk menüsü gri ve tıklanamaz (`.level-picker.disabled`).
+- `COUNTDOWN_MS = 6000`, `COUNTDOWN_GO_MS = 1000`: ekranda 5→1 sayılır, sonra
+  "BAŞLA!" tam bir saniye durur, maç ondan sonra başlar.
+
+**Maç sonu**
+
+Kazanan ve kaybeden aynı akışı görüyor: önce **sadece** sonuç yazısı
+(`WIN_SOLO_MS = 2000`), sonra skor tablosu. Kazananda sarı **KAZANDIN** +
+konfeti, kaybedende kırmızı **KAYBETTİN** (konfetisiz). İki yazı da aynı CSS
+sınıfından (`.win-text`) besleniyor — punto, yazı tipi ve animasyon tek yerde;
+sadece renk farklı. Skor tablosu yazının üstüne binmiyor, ikisi hiç aynı anda
+ekranda olmuyor.
 
 **Kaldırıldı:** gün döngüsü, gölgeler, Ağır Piyade sınıfı, maç içi sohbet
 görünürlüğü.
@@ -313,7 +359,7 @@ Simgeler `android-icons/`ten kopyalanıyor.
 
 ---
 
-## 12. Testler (28 takım)
+## 12. Testler (31 takım)
 
 Kapsam özeti: menü → lobi → sohbet → maç → skor → maç sonu → lobiye dönüş ·
 21. oyuncunun reddedilmesi · dost ateşi · harita kopukluğu · çalı kuralları ·
@@ -325,7 +371,11 @@ ayarlar paneli · doğuş noktaları · uyuyan sunucu · soğuk açılış · y�
 animasyonu · zemin/bina görünümü · **ikili paket birebir eşitliği** · **eski
 istemci uyumluluğu** · **gerçek APK ortamı** · **çim geç yüklenmesi** ·
 **bomba menzili ve kuru kafa** · **asist / sohbet / İPTAL** · **kendini
-güncelleme** · **gün döngüsünün kaldırıldığı**
+güncelleme** · **gün döngüsünün kaldırıldığı** · **hayalet duvar (bayat parça
+önbelleği)** · **lobi kuralları: tek başına başlatma engeli, bot varsayılanı,
+zorluk menüsünün grileşmesi, BAŞLA! süresi/çakışması, KAYBETTİN** ·
+**öldürme ödülünün canı taşırmaması** · **merminin namludan doğması ve
+bombacının elinde tüfek olmaması**
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
@@ -344,7 +394,35 @@ WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
 ## 14. Nerede kaldık
 
-- Son sürüm damgası: **e821b4745761** (28 test takımının tamamı geçiyor)
+- Son sürüm damgası: **f928e2450a00** — 31 test takımının tamamı geçiyor
+  (26 tarayıcı + 5 node)
 - Kullanıcının yapması gereken: zip'i GitHub'a yükle → Actions'ın ürettiği
   APK'yı kur (eskisini kaldırdıktan sonra)
 - Sonraki adım: kendini güncellemenin gerçek telefonda denenmesi
+
+### GitHub'a yükleme: 100 dosya sınırı
+
+GitHub'ın web arayüzü **tek seferde en fazla 100 dosya** kabul ediyor.
+Depo 99'a dayanmıştı — bir dosya daha eklense yüklenemeyecekti.
+
+**Yapılan:** `android-icons/` (16 dosya) depodan çıkarıldı. O klasör zaten
+`assets/icon-source.png`den **üretiliyor** (`scripts/make-icon.mjs`) ve üretim
+birebir tekrarlanabilir — aynı kaynaktan her zaman aynı baytlar çıkıyor
+(doğrulandı). Derleme akışına "Simgeleri üret" adımı eklendi, `.gitignore`a
+`android-icons/` yazıldı. Depo **99 → 83 dosya**.
+
+Neden `public/icons` da çıkarılmadı: o klasör **sürüm damgasına** giriyor
+(`server/stamp.js` `public/` ve `shared/` altını hashliyor). Üretim
+tekrarlanabilir olsa da damgayı üreten üç yerin (sunucu, www paketi, tek dosya)
+birbirinden ayrılma riskini almaya değmez — bedeli 6 dosya.
+
+Sınıra tekrar dayanılırsa: **iki parça hâlinde yükle**. Önce bir kısmını
+sürükleyip *Commit changes*, sonra kalanı. Her commit ayrı sayılır, sınır
+sıfırlanır; son commit derlemeyi başlatır.
+
+Kalıcı çözüm **GitHub Desktop**: klasörü bir kez bağlarsın, sonra her
+değişiklikte tek düğmeyle gönderirsin — dosya sayısı sınırı yoktur.
+
+`test/` klasörünü (32 dosya) çıkarmak da *teknik olarak* mümkün — ne Render ne
+de APK derlemesi ona bakıyor — ama **önerilmez**: testler projenin hafızası,
+kaybolurlarsa aynı hatalar geri gelir.

@@ -9,7 +9,7 @@ import {
   DEFAULT_CHAR,
   BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS,
   DEFAULT_BOT_LEVEL,
-  ASSIST_WINDOW_MS,
+  ASSIST_WINDOW_MS, KILL_HEAL, muzzleWorld,
 } from '../constants.js';
 import { F_ALIVE, F_PROTECTED, F_RELOADING, F_MUZZLE, F_HIDDEN } from '../protocol.js';
 import { applyMovement, queryObstacles, clamp, lineBlocked } from '../physics.js';
@@ -272,15 +272,43 @@ export class Game {
     if (take > 0) p.dryNotified = false;
   }
 
+  // Namlu ucu duvarın İÇİNE ya da ÖTESİNE düşerse mermi duvarı delmiş olurdu:
+  // burnunu duvara dayayıp ateş eden oyuncu karşı tarafı vurabilirdi. Namlu
+  // artık gövdeden 32 piksel ileride (eskiden 22'ydi), yani bu ihtimal gerçek.
+  //
+  // Çözüm: gövdeden namluya doğru ilerlerken duvara girmeden önceki son boş
+  // noktayı kullan. Açık alanda hiçbir şey değişmez.
+  namluyuDuvarinIcineSokma(p, namlu) {
+    const adimlar = 5;
+    let son = { x: p.x, y: p.y };
+    for (let i = 1; i <= adimlar; i++) {
+      const t = i / adimlar;
+      const x = p.x + (namlu.x - p.x) * t;
+      const y = p.y + (namlu.y - p.y) * t;
+      const list = queryObstacles(this.idx, x - 2, y - 2, x + 2, y + 2, this._scratch);
+      let carpti = false;
+      for (let j = 0; j < list.length; j++) {
+        const o = list[j];
+        if (x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h) { carpti = true; break; }
+      }
+      if (carpti) break;
+      son = { x, y };
+    }
+    return son;
+  }
+
   fire(p, wep, menzil = 0) {
     p.ammo--;
     p.nextFireAt = this.time + wep.fireMs;
     p.muzzle = this.time;
     if (p.protectUntil > this.time) p.protectUntil = this.time; // ateş edince koruma biter
 
-    const muzzleDist = PLAYER_RADIUS + 6;
-    const ox = p.x + Math.cos(p.aim) * muzzleDist;
-    const oy = p.y + Math.sin(p.aim) * muzzleDist;
+    // Mermi NAMLU UCUNDAN doğar, oyuncunun göbeğinden değil. Hesap
+    // shared/constants.js'te tek yerde: çizim de aynı noktayı kullanıyor.
+    const namlu = muzzleWorld(p.x, p.y, p.aim, wep.id);
+    const guvenli = this.namluyuDuvarinIcineSokma(p, namlu);
+    const ox = guvenli.x;
+    const oy = guvenli.y;
 
     for (let i = 0; i < wep.pellets; i++) {
       const ang = p.aim + (Math.random() - 0.5) * 2 * wep.spread;
@@ -477,6 +505,20 @@ export class Game {
     if (attacker && attacker !== victim) {
       attacker.kills++;
       if (this.mode.teams) this.teamScore[attacker.team] = (this.teamScore[attacker.team] || 0) + 1;
+
+      // ÖLDÜRME ÖDÜLÜ: öldüren oyuncu KILL_HEAL kadar can kazanır.
+      // TAVAN ÖNEMLİ: canı taşırmıyoruz — 90 canlıyken öldüren 140 değil,
+      // 100 (kendi azamisi) olur. Bunu Math.min ile değil, açıkça yazıyoruz
+      // ki niyet kodda görünsün.
+      //
+      // Ölmüş bir oyuncuya can vermek de anlamsız (aynı anda ikisi birden
+      // ölebilir), o yüzden hayatta olma şartı var.
+      // Can, durum paketinde zaten her karede gönderiliyor; HUD'daki çubuk
+      // kendiliğinden dolar, ayrıca bir olay göndermeye gerek yok.
+      if (attacker.alive && KILL_HEAL > 0) {
+        const hedef = attacker.hp + KILL_HEAL;
+        attacker.hp = hedef > attacker.maxHp ? attacker.maxHp : hedef;
+      }
     }
 
     if (!this.mode.respawn) {

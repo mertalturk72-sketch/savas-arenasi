@@ -85,7 +85,8 @@ BU DOSYADA OLMAYANLAR (ikili oldukları için)
   assets/icon-source.png      simgenin kaynağı
   public/icons/*.png          üretilmiş simgeler
   public/textures/grass.jpg   çim dokusu
-  android-icons/**            üretilmiş Android simgeleri
+  android-icons.pack.json     Android simgeleri (base64, tek dosya)
+  android-icons/**            paketten açılan Android simgeleri
   package-lock.json           "npm install" yeniden üretir
 
 Bunlar zip paketinde var. Kaybolurlarsa oyun yine çalışır: simge yerine

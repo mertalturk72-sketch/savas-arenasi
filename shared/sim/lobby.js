@@ -2,9 +2,9 @@
 // Bir lobide EN FAZLA 20 kişi bulunur (MAX_PLAYERS).
 
 import {
-  MAX_PLAYERS, MODES, DEFAULT_MODE, CLASSES, DEFAULT_CLASS, COUNTDOWN_MS,
+  MAX_PLAYERS, MODES, DEFAULT_MODE, CLASSES, DEFAULT_CLASS, COUNTDOWN_MS, COUNTDOWN_GO_MS,
   CHARACTERS, DEFAULT_CHAR, CHAR_IDS,
-  POST_MATCH_MS, SNAPSHOT_MS, MIN_PLAYERS_TO_START, BOT_NAMES, CLASS_IDS,
+  POST_MATCH_MS, SNAPSHOT_MS, MIN_PLAYERS_TO_START, MIN_FIGHTERS, BOT_NAMES, CLASS_IDS,
   MAX_LOBBY_NAME_LEN, MAX_CHAT_LEN,
   BOT_LEVELS, DEFAULT_BOT_LEVEL,
 } from '../constants.js';
@@ -248,8 +248,26 @@ export class Lobby {
   }
 
   // --- Başlatma -----------------------------------------------------------
+  // Maça girecek toplam kişi: gerçek oyuncular + botlar.
+  savascilar() {
+    return this.members.size + this.botCount;
+  }
+
+  // Maç neden başlayamıyor? Başlayabiliyorsa null.
+  //
+  // Kural sunucuda duruyor, arayüzde değil: arayüzü kapatmak "uyarı"dır,
+  // engel değil. Eskiden tek kişi hazır deyince bomboş bir haritada tek
+  // başına maç başlıyordu — kimse yok, skor tablosu anlamsız.
+  startBlockReason() {
+    if (this.members.size < MIN_PLAYERS_TO_START) return 'Lobide oyuncu yok.';
+    if (this.savascilar() < MIN_FIGHTERS) {
+      return 'Tek başına maç başlatılamaz. Bot ekle ya da bir arkadaşını çağır.';
+    }
+    return null;
+  }
+
   canStart() {
-    return this.members.size >= MIN_PLAYERS_TO_START;
+    return this.startBlockReason() === null;
   }
 
   // Lobi sahibi de dahil HERKES hazır olmadan maç başlamaz.
@@ -269,7 +287,8 @@ export class Lobby {
     if (clientId !== this.hostId) return 'Maçı sadece lobi sahibi başlatabilir.';
     if (this.state === 'playing') return 'Maç zaten sürüyor.';
     if (this.state === 'countdown') return null;
-    if (!this.canStart()) return 'Başlamak için en az 1 oyuncu gerekli.';
+    const engel = this.startBlockReason();
+    if (engel) return engel;
     this.beginCountdown();
     return null;
   }
@@ -277,7 +296,9 @@ export class Lobby {
   beginCountdown() {
     this.state = 'countdown';
     this.countdownEnd = Date.now() + COUNTDOWN_MS;
-    this.sysChat(`Herkes hazır — maç ${Math.round(COUNTDOWN_MS / 1000)} saniye içinde başlıyor!`);
+    // Sayılan saniye = toplam süre eksi "BAŞLA!" payı. Sohbette 6 yazıp
+    // ekranda 5'ten saymak kafa karıştırırdı.
+    this.sysChat(`Herkes hazır — maç ${Math.round((COUNTDOWN_MS - COUNTDOWN_GO_MS) / 1000)} saniye içinde başlıyor!`);
     this.broadcastState();
   }
 
@@ -415,6 +436,9 @@ export class Lobby {
       private: this.private,
       hostId: this.hostId,
       state: this.state,
+      // Maç başlayamıyorsa sebebi (yoksa null). Arayüz bunu ekranın ortasında
+      // uyarı olarak gösteriyor — oyuncu neden başlayamadığını görsün.
+      startBlock: this.startBlockReason(),
       readyCount: this.readyCount(),
       countdownLeft: this.state === 'countdown' ? Math.max(0, this.countdownEnd - Date.now()) : 0,
       postLeft: this.state === 'post' ? Math.max(0, this.postEnd - Date.now()) : 0,

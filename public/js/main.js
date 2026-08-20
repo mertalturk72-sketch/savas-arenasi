@@ -2,7 +2,7 @@
 
 import {
   MODES, CLASSES, TEAMS, MAX_PLAYERS, WEAPONS, MAX_NAME_LEN, CHARACTERS,
-  UPDATE_SERVER, BOT_LEVELS, DEFAULT_BOT_LEVEL,
+  UPDATE_SERVER, BOT_LEVELS, DEFAULT_BOT_LEVEL, COUNTDOWN_GO_MS,
 } from '/shared/constants.js';
 import { getCharacterSprites, drawWeaponOnPreview } from './sprites.js';
 import * as spritesModule from './sprites.js';
@@ -51,6 +51,23 @@ function toast(msg) {
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
+}
+
+// Ekranın tam ortasında uyarı. Köşedeki toast kaçırılabiliyor; oyuncunun
+// mutlaka görmesi gereken şeyler (ör. "tek başına maç başlatılamaz") burada.
+let uyariTimer = null;
+let uyariGizleTimer = null;
+function centerWarn(msg, ms = 2600) {
+  const el = $('centerWarn');
+  const tx = $('centerWarnText');
+  if (!el || !tx) { toast(msg); return; }
+  tx.textContent = msg;
+  clearTimeout(uyariTimer);
+  clearTimeout(uyariGizleTimer);
+  el.classList.remove('hidden', 'fade');
+  void el.offsetWidth;                       // animasyonu baştan başlat
+  uyariTimer = setTimeout(() => el.classList.add('fade'), ms);
+  uyariGizleTimer = setTimeout(() => el.classList.add('hidden'), ms + 380);
 }
 
 function store(key, val) {
@@ -297,8 +314,11 @@ function renderLobby() {
     $('lobbyMaxVal').textContent = l.maxPlayers;
     $('lobbyBotVal').textContent = l.botCount;
     botIn.max = Math.max(0, l.maxPlayers - 1);
-    buildLevelPicker($('lobbyLevelPicker'), l.botLevel || DEFAULT_BOT_LEVEL,
+    const picker = $('lobbyLevelPicker');
+    buildLevelPicker(picker, l.botLevel || DEFAULT_BOT_LEVEL,
       (lv) => net.send(C.SET_SETTINGS, { botLevel: lv }));
+    // Bot yoksa zorluk seçimi bir şeyi etkilemiyor: griye düşsün, tıklanmasın.
+    picker.classList.toggle('disabled', l.botCount === 0);
   }
 
   // Takım seçimi
@@ -402,10 +422,16 @@ function startCountdown(ms) {
   const end = Date.now() + ms;
   const tick = () => {
     const left = Math.max(0, end - Date.now());
-    const n = Math.ceil(left / 1000);
+    // Son COUNTDOWN_GO_MS "BAŞLA!" payı; sayılar ondan önce biter.
+    // Böylece 5 4 3 2 1 sayılır, sonra BAŞLA! tam bir saniye ekranda kalır.
+    const n = Math.ceil(Math.max(0, left - COUNTDOWN_GO_MS) / 1000);
     if (n !== cdLastShown) {
       cdLastShown = n;
       num.textContent = n > 0 ? n : 'BAŞLA!';
+      // "BAŞLA!" bir KELİME: rakam boyutu (22vw) telefonda ekrana sığmıyor,
+      // Ş'nin çengeli satır kutusundan taşıp alttaki yazının üstüne biniyordu.
+      // Kelime kipinde daha küçük punto ve nefes alan satır yüksekliği.
+      num.classList.toggle('word', n <= 0);
       // her sayıda kısa bir vuruş: animasyonu yeniden tetikle
       num.classList.remove('pop');
       void num.offsetWidth;
@@ -421,6 +447,8 @@ function startCountdown(ms) {
 function stopCountdown() {
   if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
   cdLastShown = -1;
+  const num = $('countdownNum');
+  if (num) num.classList.remove('word');
   $('countdownOverlay').classList.add('hidden');
 }
 
@@ -548,12 +576,41 @@ function showWinScreen() {
   konfetiRaf = requestAnimationFrame(adim);
 }
 
+// Kaybedince ekranın ortasında kırmızı "KAYBETTİN".
+// Konfeti yok; onun dışında kazanma ekranıyla AYNI: aynı punto (.win-text),
+// aynı giriş animasyonu, aynı süre (WIN_SOLO_MS) ve aynı anda kapanma.
+// Skor tablosu bundan SONRA açılıyor, üstüne binmiyor.
+let loseYaziTimer = 0;
+let loseKapatTimer = 0;
+function showLoseScreen() {
+  const el = $('loseOverlay');
+  if (!el) return;
+  clearTimeout(loseYaziTimer);
+  clearTimeout(loseKapatTimer);
+  el.classList.remove('hidden');
+  el.classList.remove('replay', 'fade');
+  void el.offsetWidth;            // animasyonu baştan başlat
+  el.classList.add('replay');
+  loseYaziTimer = setTimeout(() => el.classList.add('fade'), WIN_SOLO_MS);
+  // Kazanma ekranı konfeti döngüsünün sonunda gizleniyor; burada da tam
+  // aynı anda gizleniyor ki iki sonuç ekranı aynı ömre sahip olsun.
+  loseKapatTimer = setTimeout(() => el.classList.add('hidden'), WIN_SOLO_MS + 20);
+}
+
+function hideLoseScreen() {
+  clearTimeout(loseYaziTimer);
+  clearTimeout(loseKapatTimer);
+  const el = $('loseOverlay');
+  if (el) el.classList.add('hidden');
+}
+
 function hideWinScreen() {
   cancelAnimationFrame(konfetiRaf);
   clearTimeout(winYaziTimer);
   clearTimeout(winTabloTimer);
   const el = $('winOverlay');
   if (el) el.classList.add('hidden');
+  hideLoseScreen();
 }
 
 function winnerText(sb) {
@@ -767,20 +824,21 @@ net.on(S.MATCH_END, (m) => {
     $('btnBackLobby').onclick = backToLobby;
   };
 
+  // Kazanan da kaybeden de önce SADECE sonuç yazısını görüyor; skor tablosu
+  // WIN_SOLO_MS sonra açılıyor. İkisi aynı anda çıkınca yazı tabloyu örtüyordu
+  // — sonuç yazısı ile lobinin/tablonun üst üste binmemesinin sebebi bu.
   if (kazandim) {
-    // Önce sadece KAZANDIN (+ konfeti). Skor tablosu 2 saniye sonra geliyor —
-    // ikisi aynı anda çıkınca yazı tabloyu örtüyordu.
     showWinScreen();
     sfx.sfxWin();
-    clearTimeout(winTabloTimer);
-    winTabloTimer = setTimeout(tabloyuGoster, WIN_SOLO_MS);
   } else {
-    tabloyuGoster();
+    showLoseScreen();
   }
+  clearTimeout(winTabloTimer);
+  winTabloTimer = setTimeout(tabloyuGoster, WIN_SOLO_MS);
 
-  // Otomatik lobiye dönüş: kazananda tablo 2 sn geç açıldığı için o kadar
-  // ek süre tanıyoruz, tabloya bakacak vakit kalsın.
-  const bekle = Math.max(3000, (m.nextIn || 10000) - 1500) + (kazandim ? WIN_SOLO_MS : 0);
+  // Otomatik lobiye dönüş: tablo WIN_SOLO_MS geç açıldığı için o kadar ek
+  // süre tanıyoruz, tabloya bakacak vakit kalsın.
+  const bekle = Math.max(3000, (m.nextIn || 10000) - 1500) + WIN_SOLO_MS;
   setTimeout(() => { if (state.inMatch) backToLobby(); }, bekle);
 });
 
@@ -830,11 +888,9 @@ function initUi() {
   };
   maxIn.addEventListener('input', syncCreateSliders);
   botIn.addEventListener('input', syncCreateSliders);
-  const seviyeSec = (lv) => {
-    state.createBotLevel = lv;
-    buildLevelPicker($('botLevelPicker'), lv, seviyeSec);
-  };
-  buildLevelPicker($('botLevelPicker'), state.createBotLevel, seviyeSec);
+  // Bot zorluğu artık kurulum formunda DEĞİL, lobinin içinde seçiliyor.
+  // Lobi state.createBotLevel ile kuruluyor (varsayılan "orta"); host lobide
+  // istediği an değiştirebiliyor.
   syncCreateSliders();
 
   $('btnCreate').onclick = () => {
@@ -884,7 +940,15 @@ function initUi() {
   // Lobi odası
   $('btnLeave').onclick = () => { net.send(C.LOBBY_LEAVE, {}); sfx.sfxUi(); };
   $('btnReady').onclick = () => {
-    const me = state.lobby?.members.find((m) => m.id === state.me.id);
+    const l = state.lobby;
+    const me = l?.members.find((m) => m.id === state.me.id);
+    // Hazır OLMAYA çalışıyorsa ve maç başlayamayacaksa sebebi ortada göster.
+    // (Kural sunucuda; bu sadece sessizce hiçbir şey olmamasını engelliyor.)
+    if (l && l.startBlock && !me?.ready) {
+      centerWarn(l.startBlock);
+      sfx.sfxUi();
+      return;
+    }
     net.send(C.SET_READY, { ready: !me?.ready });
     sfx.sfxUi();
   };

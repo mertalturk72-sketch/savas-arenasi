@@ -14,6 +14,7 @@
 //
 // Çalıştır:  node test/browser-grass.mjs
 
+import { botlariCikar } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import zlib from 'node:zlib';
 import fs from 'node:fs';
@@ -88,12 +89,13 @@ await page.dispatchEvent('#nameInput', 'change');
 await page.locator('#modePicker .mode-card').nth(0).click();
 await page.evaluate(() => {
   const b = document.getElementById('botCountInput');
-  b.value = 0; b.dispatchEvent(new Event('input'));
+  b.value = 1; b.dispatchEvent(new Event('input'));   // kural gereği en az bir rakip
 });
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
 await page.click('#btnReady');
 await page.waitForSelector('#screenGame.active', { timeout: 25000 });
+await botlariCikar(page);
 
 // Zeminden örnek al: oyuncunun/HUD'un olmadığı noktalardan.
 async function zeminRengi() {

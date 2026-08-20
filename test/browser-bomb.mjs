@@ -8,6 +8,7 @@
 //
 // Çalıştır:  node test/browser-bomb.mjs
 
+import { botlariCikar } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import { WEAPONS } from '../shared/constants.js';
@@ -16,17 +17,26 @@ const BASE = process.env.BASE || 'http://localhost:3000';
 const errors = [];
 const W = WEAPONS.bomba;
 
-// ===== 0) Değerler: menzil/hasar/alan yarıya, hız 1,5 katına =============
+// ===== 0) Ayarlanan değerler yerinde mi? ================================
+// Bombacı güçlendirildi: menzil +%50, hız +%25, patlama hasarı +%50, patlama
+// alanı +%50. Sayıları burada sabitliyoruz ki ileride biri "denge" diye
+// dokunduğunda fark edilsin.
 console.log('0) Bomba değerleri:', JSON.stringify({
   minRange: W.minRange, maxRange: W.maxRange, speed: W.speed,
   blastR: W.blastR, blastDmg: W.blastDmg, mag: W.mag, reserve: W.reserve,
 }));
 if (W.reserve !== 15) errors.push(`yedek bomba 15 olmalı, ${W.reserve}`);
-if (W.maxRange !== 450) errors.push(`azami menzil 450 olmalı, ${W.maxRange}`);
-if (W.minRange !== 95) errors.push(`asgari menzil 95 olmalı, ${W.minRange}`);
-if (W.speed !== 840) errors.push(`hız 840 olmalı, ${W.speed}`);
-if (W.blastR !== 83) errors.push(`patlama yarıçapı 83 olmalı, ${W.blastR}`);
-if (W.blastDmg !== 37) errors.push(`patlama hasarı 37 olmalı, ${W.blastDmg}`);
+if (W.maxRange !== 675) errors.push(`azami menzil 675 olmalı, ${W.maxRange}`);
+if (W.minRange !== 143) errors.push(`asgari menzil 143 olmalı, ${W.minRange}`);
+if (W.speed !== 1050) errors.push(`hız 1050 olmalı, ${W.speed}`);
+if (W.blastR !== 125) errors.push(`patlama yarıçapı 125 olmalı, ${W.blastR}`);
+if (W.blastDmg !== 56) errors.push(`patlama hasarı 56 olmalı, ${W.blastDmg}`);
+// Kendi bombandan havaya uçmamalısın: en yakın atış bile patlama alanının
+// dışına düşmeli. Bu ilişki bozulursa bombacı oynanamaz hale gelir.
+if (W.minRange <= W.blastR) {
+  errors.push(`asgari menzil (${W.minRange}) patlama yarıçapından (${W.blastR}) büyük olmalı`);
+}
+if (W.range < W.maxRange) errors.push(`mermi ömrü (${W.range}) azami menzilden kısa`);
 
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const browser = await chromium.launch({
@@ -47,7 +57,7 @@ async function macaGir(ctx) {
   await page.locator('#modePicker .mode-card').nth(0).click();
   await page.evaluate(() => {
     const b = document.getElementById('botCountInput');
-    b.value = 0; b.dispatchEvent(new Event('input'));
+    b.value = 1; b.dispatchEvent(new Event('input'));   // kural gereği en az bir rakip
   });
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
@@ -63,6 +73,8 @@ async function macaGir(ctx) {
   await page.waitForTimeout(500);
   await page.click('#btnReady');
   await page.waitForSelector('#screenGame.active', { timeout: 25000 });
+  // Kural sağlandı; ölçüm için sahne bize kalsın.
+  await botlariCikar(page);
   await page.waitForTimeout(1200);
   return page;
 }
@@ -379,6 +391,65 @@ async function acikYereGit(page, koridor = 560) {
     if (!(uzak.gidilen > yakin.gidilen + 100)) {
       errors.push('imleci uzaklaştırmak bombayı uzağa atmıyor');
     }
+  }
+  await ctx.close();
+}
+
+// ===== 4) Bombacının elinde TÜFEK DEĞİL BOMBA var =======================
+// Şikâyet: "bombacının elindeki silahı kaldır, yerine bomba koy."
+//
+// Ölçüm doğrudan çizime bakıyor: silahı boş bir tuvale çizdirip namlunun
+// olacağı şeritte piksel sayıyoruz. Tüfekte orası dolu, bombada boş olmalı.
+// Bombanın elde çizildiğini de ayrıca doğruluyoruz — "hiçbir şey çizme"
+// çözümü de testi geçmesin.
+{
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
+  const page = await macaGir(ctx);
+
+  const olcum = await page.evaluate(() => {
+    const R = window.__game.renderer;
+    const chr = { skin: '#f0c8a0' };
+    const oyuncu = { x: 20, y: 60, aim: 0, muzzle: 0 };
+
+    // drawWeapon yalnızca wep.id ve wep.throwable'a bakıyor.
+    const ciz = (wep) => {
+      const cv = document.createElement('canvas');
+      cv.width = 140; cv.height = 120;
+      const c = cv.getContext('2d', { willReadFrequently: true });
+      R.drawWeapon(c, oyuncu, wep, chr);
+      const d = c.getImageData(0, 0, 140, 120).data;
+      // x aralığındaki saydam olmayan piksel sayısı
+      const say = (x0, x1) => {
+        let n = 0;
+        for (let y = 0; y < 120; y++) {
+          for (let x = x0; x < x1; x++) {
+            if (d[(y * 140 + x) * 4 + 3] > 40) n++;
+          }
+        }
+        return n;
+      };
+      return { namluSeridi: say(36, 60), elBolgesi: say(12, 34), toplam: say(0, 140) };
+    };
+
+    return {
+      tufek: ciz({ id: 'rifle' }),
+      keskin: ciz({ id: 'sniper' }),
+      bomba: ciz({ id: 'bomba', throwable: true }),
+    };
+  });
+
+  console.log('4) elde ne var:', JSON.stringify(olcum));
+  if (!(olcum.tufek.namluSeridi > 60)) {
+    errors.push(`tüfeğin namlusu çizilmiyor (${olcum.tufek.namluSeridi} piksel) — test kurulumu bozuk`);
+  }
+  if (olcum.bomba.namluSeridi > 5) {
+    errors.push(`bombacının elinde hâlâ namlu var: namlu şeridinde ${olcum.bomba.namluSeridi} piksel`);
+  }
+  if (!(olcum.bomba.elBolgesi > 40)) {
+    errors.push(`bombacının elinde bomba çizilmiyor (${olcum.bomba.elBolgesi} piksel)`);
+  }
+  if (!(olcum.bomba.toplam < olcum.tufek.toplam)) {
+    errors.push('bomba çizimi tüfekten küçük olmalıydı');
   }
   await ctx.close();
 }
