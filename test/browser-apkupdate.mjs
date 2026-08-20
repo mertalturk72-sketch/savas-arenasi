@@ -11,6 +11,7 @@
 //
 // Çalıştır:  node test/browser-apkupdate.mjs   (kendi sahte sunucusunu kurar)
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import http from 'node:http';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
@@ -204,13 +205,10 @@ sunucuSurum = 'yenisurum123';
   // Ve oyun gerçekten oynanabilmeli
   await page.fill('#nameInput', 'Kopuk');
   await page.dispatchEvent('#nameInput', 'change');
-  await page.locator('#modePicker .mode-card').nth(0).click();
-  await page.evaluate(() => {
-    const b = document.getElementById('botCountInput');
-    b.value = 3; b.dispatchEvent(new Event('input'));
-  });
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+  await modSec(page, 0);
+  await botAyarla(page, 3);
   await page.click('#btnReady');
   await page.waitForSelector('#screenGame.active', { timeout: 25000 })
     .catch(() => errors.push('internetsiz maç başlamadı'));

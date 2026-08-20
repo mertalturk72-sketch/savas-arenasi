@@ -20,6 +20,7 @@
 //
 // Çalıştır:  node test/browser-apk-real.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -200,13 +201,10 @@ async function guncellemeyiKapat(page) {
 
   // Ve gerçekten oynanabilmeli
   await guncellemeyiKapat(page);
-  await page.locator('#modePicker .mode-card').nth(0).click();
-  await page.evaluate(() => {
-    const b = document.getElementById('botCountInput');
-    b.value = 3; b.dispatchEvent(new Event('input'));
-  });
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+  await modSec(page, 0);
+  await botAyarla(page, 3);
   await page.click('#btnReady');
   await page.waitForSelector('#screenGame.active', { timeout: 25000 })
     .catch(() => errors.push('sunucu yokken maç başlamadı'));

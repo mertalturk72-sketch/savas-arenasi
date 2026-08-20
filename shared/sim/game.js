@@ -76,6 +76,9 @@ export class Game {
       reloadUntil: 0,
       nextFireAt: 0,
       prevKeys: 0,
+      // Şarjör boşalıp kendiliğinden dolduğunda true olur; tetik bırakılınca
+      // temizlenir. Bkz. applyInput().
+      needTriggerRelease: false,
       muzzle: -1e9,            // son atış zamanı (hiç ateş etmedi = çok eski)
       kills: 0, deaths: 0, damage: 0, assists: 0, place: 0,
       // Bana son kim hasar verdi? saldıranId -> zaman.
@@ -153,6 +156,7 @@ export class Game {
     p.ammo = WEAPONS[p.weapon].mag;
     p.reserve = WEAPONS[p.weapon].reserve;
     p.reloadUntil = 0;
+    p.needTriggerRelease = false;      // yeni hayat, temiz tetik
     p.nextFireAt = this.time;
     p.protectUntil = this.time + SPAWN_PROTECT_MS;
     p.inputQueue.length = 0;
@@ -244,13 +248,25 @@ export class Game {
         p.chargeStart = 0;
       }
     } else {
-      firing = wep.auto ? !!(inp.k & IN_FIRE) : ((inp.k & IN_FIRE) && !(p.prevKeys & IN_FIRE));
+      const basili = !!(inp.k & IN_FIRE);
+      // ŞARJÖR BOŞALIP KENDİLİĞİNDEN DOLDUYSA: tetiği bırakmadan ateşe devam
+      // edilmiyor. Eskiden basılı tutup şarjörü bitiren oyuncu, dolum bitince
+      // parmağını kaldırmadan yağdırmaya devam ediyordu — dolum bir ceza
+      // olmaktan çıkıyordu. Artık yeni şarjör için tetiğe yeniden basmak
+      // gerekiyor. (Elle R'ye basılan dolumda böyle bir şart yok.)
+      if (p.needTriggerRelease) {
+        if (!basili) p.needTriggerRelease = false;
+        firing = false;
+      } else {
+        firing = wep.auto ? basili : (basili && !(p.prevKeys & IN_FIRE));
+      }
     }
 
     if (firing && !p.reloadUntil && this.time >= p.nextFireAt) {
       if (p.ammo <= 0) {
         // Şarjör boş: yedek varsa kendiliğinden doldur, yoksa cephane bitti.
-        if (p.reserve > 0) p.reloadUntil = this.time + wep.reloadMs;
+        // Dolum bitince tetiği bırakıp yeniden basmak gerekecek.
+        if (p.reserve > 0) { p.reloadUntil = this.time + wep.reloadMs; p.needTriggerRelease = true; }
         else if (!p.dryNotified) {
           p.dryNotified = true;
           p.privEvents.push({ e: 'dry' });
@@ -409,14 +425,20 @@ export class Game {
   //   • dost ateşi geçmez (takım modunda),
   //   • yeni doğmuş (koruma altındaki) oyuncu zarar görmez,
   //   • DUVAR ARKASI KORUR — patlama duvarı delip geçmez.
-  // Atan kişi kendi bombasından zarar görür: yakına atmak risklidir.
+  //   • ATAN KİŞİ KENDİ BOMBASINDAN ZARAR GÖRMEZ.
+  //
+  // Kendine hasar eskiden vardı ("yakına atmak riskli olsun" diye) ama sonuç
+  // şu oluyordu: bombacı köşe dönerken ya da dar koridorda kendini öldürüyordu.
+  // Kendi kendini öldüren bir sınıf oynanmıyor. Artık kendi patlaman sana
+  // hiç dokunmuyor; düşmana verdiği hasar aynı.
   explode(b, x, y) {
     const attacker = this.players.get(b.owner) || null;
     this.globalEvents.push({ e: 'boom', x: Math.round(x), y: Math.round(y), r: Math.round(b.blastR) });
 
     for (const p of this.players.values()) {
       if (!p.alive) continue;
-      if (this.mode.teams && p.id !== b.owner && p.team === b.team) continue;
+      if (p.id === b.owner) continue;          // kendi bomban sana zarar vermez
+      if (this.mode.teams && p.team === b.team) continue;
       if (p.protectUntil > this.time) continue;
       const d = Math.hypot(p.x - x, p.y - y);
       if (d > b.blastR) continue;
@@ -518,6 +540,14 @@ export class Game {
       if (attacker.alive && KILL_HEAL > 0) {
         const hedef = attacker.hp + KILL_HEAL;
         attacker.hp = hedef > attacker.maxHp ? attacker.maxHp : hedef;
+      }
+      // CEPHANE ÖDÜLÜ: yarım şarjör. Yedek kapasitesini aşmaz — öldüre öldüre
+      // sınırsız cephane biriktirilmesin. Bombacıda bu 3 bomba demek; sürekli
+      // kutu aramadan oynanabilir hale geliyor.
+      const aWep = WEAPONS[attacker.weapon];
+      if (aWep) {
+        const odul = Math.ceil(aWep.mag / 2);
+        attacker.reserve = Math.min(aWep.reserve, attacker.reserve + odul);
       }
     }
 

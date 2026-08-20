@@ -2,7 +2,7 @@
 //
 // Çalıştır:  node test/browser-visuals.mjs      (sunucu gerekmez, çevrimdışı)
 
-import { botlariCikar } from './yardimci.mjs';
+import { botlariCikar, botAyarla, modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,13 +40,10 @@ await page.waitForSelector('#screenMenu.active', { timeout: 10000 });
 // Sprite setine oyun içinden ulaşacağız; önce maçı başlat.
 await page.fill('#nameInput', 'Animasyon');
 await page.dispatchEvent('#nameInput', 'change');
-await page.locator('#modePicker .mode-card').nth(0).click();
-await page.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 1; b.dispatchEvent(new Event('input'));   // kural gereği en az bir rakip (maç başlayınca çıkarılıyor)
-});
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active', { timeout: 6000 });
+await modSec(page, 0);
+await botAyarla(page, 1);
 await page.click('#btnReady');
 await page.waitForSelector('#screenGame.active', { timeout: 25000 });
 await botlariCikar(page);           // toz sayımı yalnız bize ait olsun

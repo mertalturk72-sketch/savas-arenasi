@@ -13,6 +13,7 @@
 //
 // Çalıştır:  node test/browser-settings.mjs      (sunucu gerekmez, çevrimdışı)
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,13 +43,10 @@ const BEKLENEN_SINIFLAR = ['Komando', 'Akıncı', 'Keskin Nişancı', 'Bombacı'
 // Varsayılan bot sayısı 1: maça tek başına girilemiyor (en az iki savaşçı).
 // Bu testin ölçtüğü şey ayarlar paneli; rakip sayısı umurunda değil.
 async function startMatch(page, { mode = 0, bots = 1 } = {}) {
-  await page.locator('#modePicker .mode-card').nth(mode).click();
-  await page.evaluate((n) => {
-    const b = document.getElementById('botCountInput');
-    b.value = n; b.dispatchEvent(new Event('input'));
-  }, bots);
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 6000 });
+  await modSec(page, mode);
+  await botAyarla(page, bots);
 
   const classes = await page.evaluate(() =>
     [...document.querySelectorAll('#classPicker .class-card .cc-name')].map((e) => e.textContent.trim()));

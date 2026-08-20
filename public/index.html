@@ -112,42 +112,24 @@
         </div>
       </div>
 
-      <div class="panel" id="offlinePanel">
-        <div class="panel-head"><h2>Çevrimdışı Mod</h2></div>
-        <p class="offline-note">
-          Oyun sunucusu doğrudan bu cihazın içinde çalışıyor. İnternet, kurulum ya da
-          başka bir bilgisayar gerekmiyor — uçakta bile oynanır.
-        </p>
-        <p class="offline-note">
-          Sağdaki panelden modu ve bot sayısını seç, <b>LOBİYİ KUR</b> de, sonra
-          <b>MAÇI BAŞLAT</b>. Arkadaşlarınla oynamak istersen yukarıdan <b>Online</b>'a geç.
-        </p>
-      </div>
+      <!-- "Çevrimdışı Mod" açıklama paneli KALDIRILDI (istenmedi).
+           Çevrimdışıyken menüde tek panel kalıyor: Lobi Kur, tam genişlikte.
+           Aynı bilgi zaten yukarıdaki sekmenin altında tek satırla yazıyor. -->
 
       <div class="panel">
         <div class="panel-head"><h2>Lobi Kur</h2></div>
         <label for="lobbyNameInput">Lobi adı</label>
         <input id="lobbyNameInput" maxlength="24" placeholder="Lobimin adı" autocomplete="off">
 
-        <label>Oyun modu</label>
-        <div id="modePicker" class="mode-picker"></div>
+        <!-- OYUN MODU da burada YOK: kapasite, bot ve zorlukla aynı yere,
+             lobinin içine taşındı. Lobi varsayılan modla açılır, host içeride
+             değiştirir; mod açıklamaları da orada görünür. -->
 
-        <div class="two">
-          <div>
-            <label for="maxPlayersInput">Kapasite: <b id="maxPlayersVal">20</b></label>
-            <input type="range" id="maxPlayersInput" min="2" max="20" value="20">
-          </div>
-          <div>
-            <!-- Varsayılan 0: lobi açılır açılmaz masaya yedi bot dolmasın.
-                 Bot sayısı da zorluğu da lobinin içinden ayarlanıyor. -->
-            <label for="botCountInput">Bot: <b id="botCountVal">0</b></label>
-            <input type="range" id="botCountInput" min="0" max="19" value="0">
-          </div>
-        </div>
-
-        <!-- "Bot zorluğu" BİLEREK burada değil: lobi kurulmadan önce seçilen
-             bir ayar, lobinin içinde ikinci kez karşına çıkınca hangisinin
-             geçerli olduğu karışıyordu. Tek yer: lobi ekranı. -->
+        <!-- KAPASİTE, BOT SAYISI ve BOT ZORLUĞU burada YOK.
+             Üçü de lobinin içinde ayarlanıyor. Aynı ayarın iki ekranda birden
+             durması "hangisi geçerli" sorusunu doğuruyordu; kurma ekranı
+             sadece "lobiyi aç"maya odaklı. Lobi 20 kapasite ve 0 botla açılır,
+             içeride istediğin gibi değiştirirsin. -->
 
         <label class="check"><input type="checkbox" id="privateInput"> Gizli lobi (listede görünmez, kodla girilir)</label>
         <button id="btnCreate" class="primary big">LOBİYİ KUR</button>
@@ -157,7 +139,6 @@
     <div class="install-row">
       <button id="btnInstall" class="primary hidden">📲 Uygulama olarak kur</button>
       <button id="btnUpdate" class="ghost dl hidden">🔄 Güncelle</button>
-      <button id="btnFullscreen" class="ghost">⛶ Tam ekran</button>
     </div>
     <p id="downloadNote" class="download-note hidden">
       Oyun eski sürümde takılı kaldıysa <b>Güncelle</b>'ye bas: kayıtlı kopya
@@ -166,10 +147,6 @@
 
     <div id="buildInfo" class="build-info hidden"></div>
 
-    <footer class="hint">
-      <b>Bilgisayar:</b> WASD hareket · Fare nişan · Sol tık ateş · R şarjör · Tab skor · Enter sohbet<br>
-      <b>Telefon:</b> sol çubuk hareket · sağ çubuk nişan (keskin tüfek ve pompalıda bırakınca ateşlenir) · ⟳ şarjör
-    </footer>
   </div>
 </section>
 
@@ -202,7 +179,9 @@
       <div id="hostControls" class="host-controls hidden">
         <div class="hc-row">
           <label>Mod</label>
-          <div id="lobbyModePicker" class="mode-picker compact"></div>
+          <!-- "compact" YOK: mod açıklamaları (ör. "son ayakta kalan kazanır")
+               artık burada, seçimin yapıldığı yerde görünüyor. -->
+          <div id="lobbyModePicker" class="mode-picker"></div>
         </div>
         <div class="hc-row two">
           <div>
@@ -240,14 +219,9 @@
       </div>
     </div>
 
-    <div class="panel lobby-chat">
-      <div class="panel-head"><h2>Sohbet</h2></div>
-      <div id="chatLog" class="chat-log"></div>
-      <form id="chatForm" class="chat-form" autocomplete="off">
-        <input id="chatInput" maxlength="140" placeholder="Mesaj yaz…">
-        <button type="submit">Gönder</button>
-      </form>
-    </div>
+    <!-- SOHBET KALDIRILDI (istenmedi). Sunucu hâlâ sistem mesajları
+         üretiyor (ör. "herkes hazır"), ama ekranda gösterilmiyor. Arayüz
+         kodu bu öğelerin YOKLUĞUNA dayanıklı: bulunmazsa sessizce atlanır. -->
   </div>
 
   <div id="lobbyScoreboard" class="post-scoreboard hidden"></div>
@@ -341,7 +315,6 @@
         <input type="range" id="setVolume" min="0" max="100" value="70">
       </label>
 
-      <button id="setFullscreen" class="ghost">⛶ Tam ekran</button>
       <button id="setResume" class="primary big">DEVAM ET</button>
       <button id="setLeave" class="leave-btn">MAÇTAN ÇIK</button>
       <p class="set-note">Çıkınca ana menüye dönersin. Maç arkadaşların için devam eder.</p>
@@ -350,6 +323,10 @@
 
   <!-- Öldürünce ekranın solunda kısa süre beliren beyaz piksel kuru kafa -->
   <div id="killSkull" class="kill-skull" aria-hidden="true"></div>
+
+  <!-- Öldürünce ekranın ORTASININ BİRAZ ÜSTÜNDE beliren yazı: "X'i öldürdün".
+       Kuru kafa solda, bu ortada — ikisi çakışmıyor. Tıklamaları geçirir. -->
+  <div id="killText" class="kill-text" aria-live="polite"></div>
 
   <div id="matchEndOverlay" class="match-end hidden"></div>
 

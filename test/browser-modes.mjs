@@ -2,6 +2,7 @@
 // maç sonu ekranı ve lobiye dönüş akışı.
 // Çalıştır:  node test/browser-modes.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { SC_FIELDS } from '../shared/protocol.js';
@@ -35,14 +36,11 @@ await page.addInitScript((n) => { window.__SC_FIELDS = n; }, SC_FIELDS);
   await page.fill('#lobbyNameInput', `${label} lobisi`);
 
   const idx = { ffa: 0, tdm: 1, br: 2 }[mode];
-  await page.locator('#modePicker .mode-card').nth(idx).click();
-  await page.evaluate((n) => {
-    const b = document.getElementById('botCountInput');
-    b.value = n; b.dispatchEvent(new Event('input'));
-  }, bots);
   await page.check('#privateInput');
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active');
+  await modSec(page, idx);
+  await botAyarla(page, bots);
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/10-${mode}-lobby.png` });
 

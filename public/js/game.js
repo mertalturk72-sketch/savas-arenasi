@@ -6,7 +6,7 @@
 
 import {
   INTERP_DELAY_MS, INPUT_RATE, MAX_INPUT_DT_MS, CLASSES, WEAPONS, MODES, TEAMS,
-  PLAYER_RADIUS, IN_FIRE, CLASS_IDS, WEAPON_IDS, MATCH_MS,
+  PLAYER_RADIUS, IN_FIRE, CLASS_IDS, WEAPON_IDS, MATCH_MS, muzzleWorld,
 } from '/shared/constants.js';
 import {
   C, PS_FIELDS, BS_FIELDS, SC_FIELDS,
@@ -84,6 +84,25 @@ function pixelSkullSvg() {
 }
 
 const SKULL_SVG = pixelSkullSvg();
+
+// Türkçe belirtme hâli eki: "Ali'yi", "Kartal'ı", "Gümüş'ü", "Diken'i".
+// Ünlü uyumuna göre ı/i/u/ü seçiliyor; ad ünlüyle bitiyorsa araya 'y' giriyor.
+// Oyuncu adları serbest metin olduğu için ünlü bulunamazsa 'i' varsayılıyor.
+export function belirtmeEki(ad) {
+  const s = String(ad || '').toLowerCase().replace(/[^a-zçğıöşü]/g, '');
+  const unluler = 'aeıioöuü';
+  let son = '';
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (unluler.includes(s[i])) { son = s[i]; break; }
+  }
+  const ek = 'aı'.includes(son) ? 'ı'
+    : 'ei'.includes(son) ? 'i'
+      : 'ou'.includes(son) ? 'u'
+        : 'öü'.includes(son) ? 'ü' : 'i';
+  const sonHarf = s[s.length - 1] || '';
+  const kaynastirma = unluler.includes(sonHarf) ? 'y' : '';
+  return `'${kaynastirma}${ek}`;
+}
 
 export class ClientGame {
   constructor(net, input) {
@@ -364,9 +383,24 @@ export class ClientGame {
     this._skullTimer = setTimeout(() => el.classList.remove('show'), 1500);
   }
 
+  // "X'i öldürdün" — ekranın ortasının biraz üstünde, kısa süre.
+  showKillText(ad) {
+    const el = $('killText');
+    if (!el) return;
+    el.innerHTML = `<span class="kt-ad">${esc(ad)}</span>${esc(belirtmeEki(ad))} öldürdün`;
+    el.classList.remove('show');
+    void el.offsetWidth;                 // animasyonu baştan başlat
+    el.classList.add('show');
+    clearTimeout(this._killTextTimer);
+    this._killTextTimer = setTimeout(() => el.classList.remove('show'), 1700);
+  }
+
   addKillfeed(ev) {
     // Öldüren ben miyim? (Kendini öldürmek sayılmaz.)
-    if (ev.k && ev.k === this.myId && ev.v !== this.myId) this.showKillSkull();
+    if (ev.k && ev.k === this.myId && ev.v !== this.myId) {
+      this.showKillSkull();
+      this.showKillText(ev.vn || 'Rakip');
+    }
     const wepName = ev.w === 'zone' ? 'alan' : (WEAPONS[ev.w]?.name || '');
     const kc = ev.kt === 1 ? '#ff8080' : ev.kt === 2 ? '#8fc4ff' : '#e8eef5';
     const vc = ev.vt === 1 ? '#ff8080' : ev.vt === 2 ? '#8fc4ff' : '#98a6b5';
@@ -541,8 +575,13 @@ export class ClientGame {
     if (this.you && (this.you.rl > 0 || this.you.am <= 0)) return;   // dolduruyor ya da şarjör boş
     this.localNextFire = now + wep.fireMs;
 
-    const mx = this.me.x + Math.cos(this.aim) * (PLAYER_RADIUS + 8);
-    const my = this.me.y + Math.sin(this.aim) * (PLAYER_RADIUS + 8);
+    // Namlu alevi/dumanı NAMLUDAN çıkmalı. Burada eski hesap kalmıştı
+    // (gövde merkezi + 24 px): duman ayakların önünde, yerde ileri gidiyor
+    // gibi görünüyordu. Mermi zaten muzzleWorld()'den doğuyor; efekt de
+    // aynı noktadan çıksın.
+    const namlu = muzzleWorld(this.me.x, this.me.y, this.aim, wep.id);
+    const mx = namlu.x;
+    const my = namlu.y;
     sfx.sfxShot(wep.id, 0, 0);
     this.fx.spawn(mx, my, {
       count: 6, angle: this.aim, spread: 0.55, speed: 300, life: 0.13, size: 3.2,

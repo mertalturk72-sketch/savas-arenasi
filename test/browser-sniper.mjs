@@ -1,6 +1,7 @@
 // Keskin nişancı nişan çizgisi + cephane göstergesi + çalı saydamlığı testi.
 // Çalıştır:  node test/browser-sniper.mjs
 
+import { botAyarla } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
@@ -22,12 +23,9 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(`[nişancı] $
 await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.click('#tabLocal');
 await page.waitForTimeout(500);
-await page.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 3; b.dispatchEvent(new Event('input'));
-});
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active');
+await botAyarla(page, 3);
 
 // Keskin Nişancı sınıfını seç (üçüncü kart)
 await page.locator('#classPicker .class-card').nth(2).click();

@@ -8,7 +8,7 @@
 //
 // Çalıştır:  node test/browser-bomb.mjs
 
-import { botlariCikar } from './yardimci.mjs';
+import { botlariCikar, botAyarla, modSec } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import { WEAPONS } from '../shared/constants.js';
@@ -29,10 +29,11 @@ if (W.reserve !== 15) errors.push(`yedek bomba 15 olmalı, ${W.reserve}`);
 if (W.maxRange !== 675) errors.push(`azami menzil 675 olmalı, ${W.maxRange}`);
 if (W.minRange !== 143) errors.push(`asgari menzil 143 olmalı, ${W.minRange}`);
 if (W.speed !== 1050) errors.push(`hız 1050 olmalı, ${W.speed}`);
-if (W.blastR !== 125) errors.push(`patlama yarıçapı 125 olmalı, ${W.blastR}`);
+if (W.blastR !== 100) errors.push(`patlama yarıçapı 100 olmalı, ${W.blastR}`);
 if (W.blastDmg !== 56) errors.push(`patlama hasarı 56 olmalı, ${W.blastDmg}`);
-// Kendi bombandan havaya uçmamalısın: en yakın atış bile patlama alanının
-// dışına düşmeli. Bu ilişki bozulursa bombacı oynanamaz hale gelir.
+// Kendi bombandan artık HİÇ zarar görmüyorsun (test/patlama.mjs bunu sınıyor).
+// Yine de bomba hep kendinden uzağa düşsün: en yakın atış patlama alanının
+// dışında kalmalı.
 if (W.minRange <= W.blastR) {
   errors.push(`asgari menzil (${W.minRange}) patlama yarıçapından (${W.blastR}) büyük olmalı`);
 }
@@ -54,13 +55,10 @@ async function macaGir(ctx) {
   await page.waitForTimeout(400);
   await page.fill('#nameInput', 'Bombaci');
   await page.dispatchEvent('#nameInput', 'change');
-  await page.locator('#modePicker .mode-card').nth(0).click();
-  await page.evaluate(() => {
-    const b = document.getElementById('botCountInput');
-    b.value = 1; b.dispatchEvent(new Event('input'));   // kural gereği en az bir rakip
-  });
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+  await modSec(page, 0);
+  await botAyarla(page, 1);
   // Bombacı sınıfını seç
   const secildi = await page.evaluate(() => {
     const kartlar = [...document.querySelectorAll('#classPicker .class-card')];

@@ -25,7 +25,7 @@
 //
 // Çalıştır:  node test/browser-hayaletduvar.mjs
 
-import { botlariCikar } from './yardimci.mjs';
+import { botlariCikar, botAyarla, modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
@@ -48,13 +48,10 @@ await page.click('#tabLocal');
 await page.waitForTimeout(400);
 await page.fill('#nameInput', 'Duvar');
 await page.dispatchEvent('#nameInput', 'change');
-await page.locator('#modePicker .mode-card').nth(0).click();
-await page.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 1; b.dispatchEvent(new Event('input'));
-});
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+await modSec(page, 0);
+await botAyarla(page, 1);
 await page.click('#btnReady');
 await page.waitForSelector('#screenGame.active', { timeout: 25000 });
 await botlariCikar(page);

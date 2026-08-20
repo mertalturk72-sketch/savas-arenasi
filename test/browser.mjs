@@ -2,6 +2,7 @@
 // konsol hatalarını yakalar ve ekran görüntüsü alır.
 // Çalıştır:  node test/browser.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
@@ -40,13 +41,10 @@ await host.goto(BASE, { waitUntil: 'networkidle' });
 await host.fill('#nameInput', 'Komutan');
 await host.dispatchEvent('#nameInput', 'change');
 await host.fill('#lobbyNameInput', 'Test Lobisi');
-await host.locator('#modePicker .mode-card').first().click();      // FFA
-await host.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 5; b.dispatchEvent(new Event('input'));
-});
 await host.click('#btnCreate');
 await host.waitForSelector('#screenLobby.active', { timeout: 5000 });
+await modSec(host, 0);      // FFA
+await botAyarla(host, 5);
 await host.waitForTimeout(400);
 await host.screenshot({ path: `${OUT}/02-lobby.png` });
 
@@ -69,12 +67,18 @@ const rosterCount = await host.locator('#roster .roster-item').count();
 console.log('Lobideki oyuncu sayısı (host görünümü):', rosterCount);
 if (rosterCount !== 2) errors.push(`Lobide 2 oyuncu bekleniyordu, ${rosterCount} var`);
 
-// Sohbet
-await guest.fill('#chatInput', 'selam komutanım');
-await guest.press('#chatInput', 'Enter');
-await host.waitForTimeout(400);
-const chatText = await host.textContent('#chatLog');
-if (!chatText.includes('selam komutanım')) errors.push('Sohbet mesajı diğer oyuncuya ulaşmadı');
+// LOBİ SOHBETİ KALDIRILDI (istenmedi). Protokol duruyor ama arayüzde yeri
+// yok; öğelerin GERÇEKTEN olmadığını doğruluyoruz ve sunucudan sistem mesajı
+// gelirken arayüzün patlamadığına bakıyoruz (sayfa hatası dinleyicisi açık).
+const sohbetKalintisi = await host.evaluate(() => ({
+  girdi: !!document.getElementById('chatInput'),
+  log: !!document.getElementById('chatLog'),
+  panel: !!document.querySelector('.lobby-chat'),
+}));
+console.log('Lobi sohbeti kalıntısı:', JSON.stringify(sohbetKalintisi));
+if (sohbetKalintisi.girdi || sohbetKalintisi.log || sohbetKalintisi.panel) {
+  errors.push('lobi sohbeti kaldırılmalıydı, öğeleri hâlâ duruyor');
+}
 
 // Sınıf değiştir
 await guest.locator('#classPicker .class-card').nth(1).click();
@@ -135,7 +139,8 @@ await host.waitForTimeout(500);
 await host.screenshot({ path: `${OUT}/06-scoreboard.png` });
 await host.keyboard.up('Tab');
 
-// Oyun içi sohbet
+// Oyun içi sohbet kutusu (Enter) hâlâ çalışıyor ama ekranda gösterilmiyor;
+// yazmanın oyunu bozmadığını görüyoruz.
 await host.keyboard.press('Enter');
 await host.waitForTimeout(200);
 await host.keyboard.type('vurun!');

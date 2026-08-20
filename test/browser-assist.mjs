@@ -7,6 +7,7 @@
 //
 // Çalıştır:  node test/browser-assist.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { ASSIST_WINDOW_MS } from '../shared/constants.js';
@@ -29,13 +30,10 @@ await page.click('#tabLocal');
 await page.waitForTimeout(400);
 await page.fill('#nameInput', 'Asist');
 await page.dispatchEvent('#nameInput', 'change');
-await page.locator('#modePicker .mode-card').nth(0).click();
-await page.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 3; b.dispatchEvent(new Event('input'));
-});
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+await modSec(page, 0);
+await botAyarla(page, 3);
 
 // ===== 1) Geri sayımda İPTAL düğmesi =====================================
 await page.click('#btnReady');

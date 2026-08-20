@@ -1,6 +1,7 @@
 // Lobi testi: karakter seçimi + hazır sayacı + 5-4-3-2-1 geri sayımı.
 // Çalıştır:  node test/browser-lobby.mjs
 
+import { botAyarla } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
@@ -30,12 +31,9 @@ await host.waitForTimeout(700);
 await host.fill('#nameInput', 'Komutan');
 await host.dispatchEvent('#nameInput', 'change');
 await host.fill('#lobbyNameInput', 'Hazır testi');
-await host.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 0; b.dispatchEvent(new Event('input'));
-});
 await host.click('#btnCreate');
 await host.waitForSelector('#screenLobby.active', { timeout: 6000 });
+await botAyarla(host, 0);
 
 const code = (await host.textContent('#lobbyCode')).trim();
 

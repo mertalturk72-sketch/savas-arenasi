@@ -9,7 +9,7 @@
 // Yerleşim oransal tanımlıdır: MAPS içindeki genişlik/yükseklik değişince
 // her şey kendiliğinden ölçeklenir.
 
-import { MAPS, PLAYER_RADIUS, MIN_CORRIDOR, SPAWN_EDGE_INSET } from '../constants.js';
+import { MAPS, PLAYER_RADIUS, MIN_CORRIDOR, SPAWN_EDGE_INSET, PICKUP_RADIUS } from '../constants.js';
 import { buildObstacleIndex, circleHitsRect, queryObstacles } from '../physics.js';
 
 function mulberry32(seed) {
@@ -39,14 +39,21 @@ function buildArena(seed) {
   // Motiflerin yerleşeceği bölge (kenarlarda dolaşma koridoru kalsın)
   const X0 = 0.070 * w, X1 = 0.450 * w;
   const Y0 = 0.080 * h, Y1 = 0.920 * h;
-  const COLS = 3, ROWS = 4;
+  // IZGARA HER MAÇTA FARKLI. Eskiden sabit 3x4'tü ve haritalar birbirine çok
+  // benziyordu. Artık sütun/satır sayısı da değişiyor — ama KURAL AYNI:
+  // motif hücreyi taşmıyor, dolayısıyla komşular arasında hep geniş koridor
+  // kalıyor. Bağlantı denetimi (analyzeWalkable) yine son sözü söylüyor.
+  const COLS = 3 + Math.floor(rnd() * 2);          // 3 veya 4
+  const ROWS = 3 + Math.floor(rnd() * 2);          // 3 veya 4
   const cellW = (X1 - X0) / COLS;
   const cellH = (Y1 - Y0) / ROWS;
 
   // Motif, hücrenin ortasına oturur ve hücreyi taşmaz — böylece komşu
-  // motifler arasında daima geniş boşluk kalır.
-  const mw = Math.min(cellW * 0.62, 0.095 * w);
-  const mh = Math.min(cellH * 0.62, 0.150 * h);
+  // motifler arasında daima geniş boşluk kalır. Oran biraz oynuyor: kimi
+  // harita ferah, kimi daha sıkışık.
+  const doluluk = 0.52 + rnd() * 0.16;             // 0.52 – 0.68
+  const mw = Math.min(cellW * doluluk, 0.095 * w);
+  const mh = Math.min(cellH * doluluk, 0.150 * h);
 
   const out = [];
   const motif = (kind, cx, cy, flipX, flipY) => {
@@ -91,7 +98,11 @@ function buildArena(seed) {
     const j = Math.floor(rnd() * (i + 1));
     [cells[i], cells[j]] = [cells[j], cells[i]];
   }
-  const used = cells.slice(0, 7 + Math.floor(rnd() * 3));   // 7–9 motif
+  // Motif sayısı hücre sayısına göre: en az yarısı, en çok hepsi eksi bir.
+  // Böylece 3x3'te de 4x4'te de harita ne bomboş ne de tıka basa dolu oluyor.
+  const enAz = Math.max(4, Math.round(cells.length * 0.55));
+  const enCok = Math.max(enAz, cells.length - 1);
+  const used = cells.slice(0, enAz + Math.floor(rnd() * (enCok - enAz + 1)));
 
   for (const [c, r] of used) {
     const cx = X0 + (c + 0.5) * cellW + (rnd() - 0.5) * cellW * 0.16;
@@ -106,15 +117,25 @@ function buildArena(seed) {
     obstacles.push(rect(w - o.x - o.w, o.y, o.w, o.h));      // yatay ayna
   }
 
-  // Merkez yapı — her haritada var, arenanın çekirdeği
-  const centerKind = rnd();
-  if (centerKind < 0.5) {
+  // Merkez yapı — her haritada var, arenanın çekirdeği. Dört çeşit:
+  // dikey kapılar, yatay kapılar, dört köşe sütun, ya da boş merkez.
+  // Merkez simetrinin tam ortasında olduğu için kendiliğinden adil.
+  const centerKind = Math.floor(rnd() * 4);
+  if (centerKind === 0) {
     obstacles.push(rect(w / 2 - 0.009 * w, h / 2 - 0.135 * h, 0.018 * w, 0.080 * h));
     obstacles.push(rect(w / 2 - 0.009 * w, h / 2 + 0.055 * h, 0.018 * w, 0.080 * h));
-  } else {
+  } else if (centerKind === 1) {
     obstacles.push(rect(w / 2 - 0.075 * w, h / 2 - 0.010 * h, 0.055 * w, 0.020 * h));
     obstacles.push(rect(w / 2 + 0.020 * w, h / 2 - 0.010 * h, 0.055 * w, 0.020 * h));
+  } else if (centerKind === 2) {
+    const s2 = 0.022 * w, off = 0.055 * w;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        obstacles.push(rect(w / 2 + sx * off - s2 / 2, h / 2 + sy * off * 0.8 - s2 / 2, s2, s2));
+      }
+    }
   }
+  // centerKind === 3 → merkez tamamen açık (geniş meydan)
 
   // --- Çalılar (bir tık küçük) --------------------------------------------
   const idxTmp = buildObstacleIndex({ w, h, obstacles });
@@ -390,10 +411,45 @@ export function createMap(mapId, seed = Math.floor(Math.random() * 1e9)) {
   if (spawns[1].length === 0) spawns[1] = spawns.all;
   if (spawns[2].length === 0) spawns[2] = spawns.all;
 
+  // --- Cephane kutuları ---------------------------------------------------
   // Can kutusu yok (can kendiliğinden yenileniyor); haritadaki kutular cephane.
-  const packCount = isRoyale ? 22 : 12;
-  const packPts = spreadPick(free, Math.min(packCount, free.length), rnd);
-  const pickups = packPts.map((p, i) => ({
+  //
+  // ÜÇ KURAL:
+  //   1) Sayı YARIYA indirildi (12→6, 22→11). Öldürünce yarım şarjör ödül
+  //      geldiği için kutuya bağımlılık azaldı; her köşede kutu olması
+  //      cephane baskısını tamamen kaldırıyordu.
+  //   2) Yerleşim RASTGELE. Eskiden "birbirinden en uzak noktalar" seçiliyordu;
+  //      sonuç her maçta neredeyse aynı, tahmin edilebilir bir dağılımdı.
+  //   3) ÇALININ ve DUVARIN üstüne düşmez. Duvar zaten computeFreePoints ile
+  //      eleniyordu ama ÇALI elenmiyordu: kutu çalının içinde kalıyor,
+  //      görünmüyor ve bulunamıyordu.
+  const packCount = Math.max(3, Math.round((isRoyale ? 22 : 12) / 2));
+  const bushes = map.bushes || [];
+  const caliDisinda = (pt) => bushes.every((b) =>
+    Math.hypot(b.x - pt.x, b.y - pt.y) > b.r + PICKUP_RADIUS + 10);
+  const uygun = free.filter(caliDisinda);
+  // Çalılar her yeri kaplarsa (teorik) hiç nokta kalmasın istemiyoruz.
+  const havuz = uygun.length >= packCount ? uygun : free;
+
+  // Rastgele seç ama üst üste binmesinler: aralarında en az bu kadar mesafe.
+  const enAzAra = 260;
+  const secilen = [];
+  const karistir = havuz.slice();
+  for (let i = karistir.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [karistir[i], karistir[j]] = [karistir[j], karistir[i]];
+  }
+  for (const pt of karistir) {
+    if (secilen.length >= packCount) break;
+    if (secilen.every((q) => Math.hypot(q.x - pt.x, q.y - pt.y) >= enAzAra)) secilen.push(pt);
+  }
+  // Mesafe şartı yüzünden az kaldıysa şartı gevşetip tamamla.
+  for (const pt of karistir) {
+    if (secilen.length >= packCount) break;
+    if (!secilen.includes(pt)) secilen.push(pt);
+  }
+
+  const pickups = secilen.map((p, i) => ({
     id: i + 1,
     x: p.x, y: p.y,
     kind: 'ammo',

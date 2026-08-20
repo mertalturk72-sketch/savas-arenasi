@@ -4,6 +4,7 @@
 //
 // Çalıştır:  node test/browser-bundle.mjs      (varsayılan: http://localhost:3100)
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 
@@ -39,23 +40,26 @@ const boot = await page.evaluate(() => ({
   bundled: !!window.__BUNDLED__,
   mode: window.__net?.mode,
   status: document.getElementById('connStatus')?.textContent?.trim(),
-  offlinePanelVisible: !document.getElementById('offlinePanel')?.classList.contains('hidden'),
+  // "Çevrimdışı Mod" açıklama paneli kaldırıldı. Çevrimdışıyken menüde tek
+  // panel kalır (Lobi Kur) ve tüm genişliği alır — bunu sınıyoruz.
+  tekSutun: !!document.querySelector('.menu-cols.tek'),
+  lobiListesiGizli: !!document.getElementById('browsePanel')?.classList.contains('hidden'),
+  kurPaneli: !!document.getElementById('btnCreate'),
 }));
 console.log('Açılış:', boot);
 if (!boot.bundled) errors.push('Paket işareti yok');
 if (boot.mode !== 'local') errors.push(`Paketlenmiş sürüm çevrimdışı başlamadı (mod: ${boot.mode})`);
-if (!boot.offlinePanelVisible) errors.push('Çevrimdışı bilgi paneli görünmüyor');
+if (!boot.tekSutun) errors.push('çevrimdışında menü tek sütuna geçmedi');
+if (!boot.lobiListesiGizli) errors.push('çevrimdışında "Açık Lobiler" gizlenmeliydi');
+if (!boot.kurPaneli) errors.push('Lobi Kur paneli yok');
 
 // Ağı tamamen kes — APK'da zaten sunucu yok
 await ctx.setOffline(true);
 
-await page.locator('#modePicker .mode-card').nth(1).click();     // Takım Savaşı
-await page.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 9; b.dispatchEvent(new Event('input'));
-});
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+await modSec(page, 1);     // Takım Savaşı
+await botAyarla(page, 9);
 await page.click('#btnReady');       // herkes hazır olunca geri sayım başlar
 await page.waitForSelector('#screenGame.active', { timeout: 25000 });
 await page.waitForTimeout(2500);

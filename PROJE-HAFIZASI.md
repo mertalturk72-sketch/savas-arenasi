@@ -214,6 +214,11 @@ düzeltti.
 | **Duvar var ama içinden geçiliyor** ("bozuk duvar") | Sabit dünya katmanı 512 px parçalar hâlinde önbelleğe alınıyor; önbelleğin kimliği sadece `${map.w}x${map.h}` idi. Arena her maçta yeniden üretiliyor ama **boyutu hep aynı** → kimlik değişmiyor, önbellek temizlenmiyordu. Sonraki maçta ekranda ÖNCEKİ haritanın duvarları görünüyor, çarpışma YENİ haritaya göre işliyordu. En fazla 40 parça saklandığı için sadece bazı bölgelerde oluyordu — "bazen" denmesinin sebebi bu | Kimlik `mapSignature(map)` ile engellerin/çalıların geometrisinden üretiliyor; bir duvar bir piksel kaysa imza değişir. `test/browser-hayaletduvar.mjs` düzeltme geri alınınca düşüyor (doğrulandı) |
 | "BAŞLA!" göz kırpması kadar duruyor **ve alttaki yazının üstüne biniyor** | İkisi de tek sebepten: sayı sıfıra inince "BAŞLA!" yazılıyor ama sunucu tam o anda maçı başlatıyordu → yazı ~50 ms görünüyordu. Görünen o tek kare de vuruş (pop) animasyonunun `scale(1.6)` başlangıcıydı; 190 px'lik geniş bir kelime bir anlığına 304 px'e çıkıp altındaki "MAÇ BAŞLIYOR" satırını örtüyordu | Geri sayıma `COUNTDOWN_GO_MS = 1000` eklendi (sunucu 6000 ms sayıyor, ekranda 5→1 sonra 1 sn "BAŞLA!"); kelime kipinde punto `11vw` (rakam `22vw` idi), satır yüksekliği 1,25 ve vuruş `scale(1.10)` |
 | **Mermi silahtan değil adamdan çıkıyor** | İki ayrı hesap vardı: sunucu mermiyi oyuncunun TAM MERKEZİNDEN 22 px ileriden doğuruyordu (`PLAYER_RADIUS + 6`), istemci ise silahı gövdenin 18,4 px yukarısına / 5 px yanına / 32 px ileriye çiziyordu. Aradaki fark gözle görülüyordu | Tek kaynak: `muzzleWorld()` + `WEAPON_VIEW` (shared/constants.js). Çizim de mermi de aynı noktayı kullanıyor. Namlu ileri kaydığı için "duvara dayanıp ateş edince mermi duvarın ötesine doğar mı" riski doğdu; `namluyuDuvarinIcineSokma()` gövdeden namluya doğru ilerleyip duvara girmeden önceki son boş noktayı seçiyor. `test/namlu.mjs` |
+| **Kendimi öldürebiliyorum** (bombacı) | Patlama, atan kişiyi de kapsıyordu ("yakına atmak riskli olsun" diye). Dar koridorda/köşede bombacı kendini öldürüyordu | `explode()` artık `p.id === b.owner` olanı atlıyor: kendi bomban sana hiç dokunmuyor. Düşmana hasar aynı. `test/patlama.mjs` |
+| **Mobilde bombanın nereye gittiği görünmüyor** | Telefonda yakınlaştırmanın alt sınırı 0,62'ydi; bombanın azami menzili (675 px) 900 px'lik bir telefon ekranının tam kenarına denk geliyordu, hedef halkası ekran dışında kalıyordu | Alt sınır **0,50**. Görüş alanı ~%38 genişledi, halka rahatça içeride. Bilgisayarda alt sınır hiç devreye girmiyor, orası değişmedi |
+| **Botlar bombayı atamıyor** | Bomba BASILI TUTUP BIRAKARAK atılıyor; eski kod tutmayı her karede `canShoot`a bağlamıştı. `canShoot` nişan açısını 0,1 rad toleransla ölçüyor, botun nişanı ise her karede sallanıyor (öngörü + yetenek sapması) — koşul bir kare doğru bir kare yanlış oluyor ve tutma TEK KAREDE kesiliyordu. Ölçüldü: tutma serilerinin hepsi 33 ms, yani menzil hep en düşükte; hedef 314 px uzaktayken bomba 164 px'e düşüyordu | Atış planı BİR KEZ kuruluyor (`b.throwHold`) ve sonuna kadar sürüyor; sadece gerçek sebepler (cephane bitti, öldü) iptal ediyor. Ayrıca plan en az 2 kare: hedef asgari menzilden yakınsa plan 0 çıkıyor ve bomba HİÇ atılmıyordu. **İsabet %22 → %51, patlama-düşman ortanca mesafe 208 → 99 px, en uzun tutma 33 → 833 ms.** `test/atis-kurallari.mjs` |
+| **Ateş dumanı yerde ileri gidiyor** | Mermi `muzzleWorld()`'e taşındı ama İSTEMCİDEKİ yerel namlu efekti eski formülde kaldı (`gövde merkezi + PLAYER_RADIUS + 8`) — duman ayakların önünde, zeminde ilerliyor gibi görünüyordu | Efekt de `muzzleWorld()` kullanıyor |
+| **Şarjör bitip dolunca ateş kendiliğinden sürüyor** | Otomatik silahta `firing = basılı`; şarjör boşalınca sunucu kendiliğinden dolduruyor ve tetik hâlâ basılı olduğu için yeni şarjör de anında boşalıyordu — dolum ceza olmaktan çıkıyordu | `p.needTriggerRelease`: boşalıp kendiliğinden dolan şarjörden sonra tetiği bırakmak şart. Elle (R) dolum etkilenmiyor |
 | Touchscreen dizüstünde dokunmatik arayüz | Dokunma yeteneği varlığı ölçüt alınmıştı | Son kullanılan girdi + `(any-pointer: fine)` ölçütü |
 
 ### Testlerin kendi kusurları (ürün değil)
@@ -260,25 +265,31 @@ kırmızı çizgisi buradan başlıyor. Bombacının elinde ateşli silah YOK: n
 uzunluğu 3 px ve çizimde tüfek yerine bomba var (`drawBombInHand`), yani bomba
 elden çıkıyor.
 
-**Bomba:** menzil 143–675 · hız 1050 · patlama yarıçapı 125 · patlama hasarı 56 ·
-doğrudan isabet hasarı **yok**. Patlama duvarı delmez, dost ateşi geçmez,
-kendi bombandan zarar görürsün.
+**Bomba:** menzil 143–675 · hız 1050 · patlama yarıçapı **100** · patlama hasarı 56 ·
+doğrudan isabet hasarı **yok**. Patlama duvarı delmez, dost ateşi geçmez ve
+**kendi bombandan zarar görmezsin**. Şarjör 6, yedek 15.
 
 Bombacı iki kez ayarlandı: önce zayıflatıldı (menzil/hasar/alan yarıya, hız
 1,5×), sonra güçlendirildi (**menzil +%50, hız +%25, patlama hasarı +%50,
-patlama alanı +%50**). Alt menzil de aynı oranda büyütüldü; **asgari menzil
-(143) patlama yarıçapından (125) büyük kalmalı**, yoksa en yakına atan oyuncu
-kendini havaya uçurur. `test/browser-bomb.mjs` bu ilişkiyi de sınıyor.
+patlama alanı +%50**), en son patlama alanı %20 küçültüldü (125 → **100**).
+Asgari menzil (143) yarıçaptan büyük: atılan bomba hep kendinden uzağa düşer.
+`test/browser-bomb.mjs` bu ilişkiyi de sınıyor.
 
-**Bot seviyeleri:** kolay (yetenek 0,12–0,34 · görüş 780 · tepki 520 ms) ·
-orta (0,42–0,68 · 1150 · 220 ms) · zor (0,78–0,98 · 1400 · 90 ms).
+**Bot seviyeleri (ZAYIFLATILDI — kolay bile fazla zorluyordu):**
+kolay (yetenek 0,04–0,16 · görüş 560 · tepki 950 ms) ·
+orta (0,26–0,48 · 900 · 430 ms) · zor (0,58–0,82 · 1250 · 180 ms).
 Tek sayı değil **aralık** veriliyor ki aynı zorluktaki botlar birbirinin
 kopyası olmasın.
 
 **Asist:** son 9 saniyede hasar veren herkes (öldüren ve kurban hariç) asist
 alır — `ASSIST_WINDOW_MS`.
 
-**Öldürme ödülü:** `KILL_HEAL = 50`. Birini öldüren oyuncu 50 can kazanır ama
+**Öldürme ödülü:** can + cephane. `KILL_HEAL = 50` can, ayrıca **yarım şarjör**
+cephane (`Math.ceil(mag/2)`) — yedek kapasitesini aşmadan. Ekranın ortasının
+biraz üstünde "**X'i öldürdün**" yazısı beliriyor; Türkçe belirtme eki ünlü
+uyumuna göre seçiliyor (`belirtmeEki()` — Kartal'ı, Ali'yi, Gümüş'ü, Kurt'u).
+
+Can kısmı: Birini öldüren oyuncu 50 can kazanır ama
 **canı taşmaz**: 90 canlıyken öldüren 140 değil 100 olur. Kendini öldürene ve
 alan hasarıyla ölene ödül yok; aynı anda ölen (artık hayatta olmayan) öldüren
 de ödül almaz. `test/oldurme-cani.mjs` bu tavanı 15 kontrolle koruyor —
@@ -290,9 +301,29 @@ kullanıcının açık uyarısıydı, ileride ödül değişse bile tavan yerind
   iki olmalı. **Tek başına maç başlatılamaz.** Kural sunucuda
   (`Lobby.startBlockReason()`), arayüzde değil; arayüz sadece sebebi ekranın
   ortasında kırmızı bir kutuda gösteriyor (`#centerWarn`).
-- Lobi kurma formunda bot varsayılanı **0** (eskiden 7 idi).
-- **Bot zorluğu kurma formunda YOK**, sadece lobinin içinde. İki yerde olunca
-  hangisinin geçerli olduğu karışıyordu.
+- **Kurma ekranında artık sadece lobi adı, gizlilik ve KUR düğmesi var.**
+  Oyun modu, kapasite, bot sayısı ve bot zorluğu — dördü de **lobinin içine**
+  taşındı. Aynı ayarın iki ekranda birden durması "hangisi geçerli" sorusunu
+  doğuruyordu. Lobi varsayılan modla, 20 kapasiteyle ve **0 botla** açılır.
+- Mod açıklamaları (`.mode-picker` üstündeki `compact` sınıfı kaldırıldı) artık
+  seçimin yapıldığı yerde, lobide görünüyor.
+- **Lobi sohbeti kaldırıldı.** Sunucu sistem mesajı üretmeye devam ediyor;
+  `renderChat`/`appendChat` öğe yoksa sessizce çıkıyor, geri açmak için tek iş
+  HTML'e paneli koymak. Lobi tek sütun oldu (`.lobby-wrap`, 820 px).
+- Menüde paneller **tek gövde**: kimlik paneli (ad + çevrimdışı/online) ile
+  altındaki panel(ler) dikey olarak birleşik, çevrimdışında sağdaki "Açık
+  Lobiler" olmadığı için Lobi Kur tüm genişliği alıyor (`.menu-cols.tek`).
+- "Çevrimdışı Mod" açıklama paneli, alttaki **Tam ekran** düğmesi, ayarlar
+  panelindeki **Tam ekran** ve alttaki tuş açıklaması (`footer.hint`) kaldırıldı.
+
+**Birleşme yerindeki "çizgi" — ölçülerek çözülen görsel hata**
+
+Paneller birleştirilince aralarında ince koyu bir çizgi görünüyordu. Kenarlık
+değildi: alttaki panelin **kendi gölgesi** (`0 10px 30px`) 30 piksellik
+bulanıklıkla YUKARI da taşıyor ve DOM'da sonra geldiği için üstteki panelin alt
+kenarını karartıyordu. Kenarlıkları, degradeleri ve iç ışıkları sıfırlamak
+yetmedi; gölge kaldırılınca bitti. Ölçüm: birleşme yerindeki komşu satır farkı
+**12 → 0** (hem 1200 px hem 420 px ende).
 - Bot sayısı 0 iken zorluk menüsü gri ve tıklanamaz (`.level-picker.disabled`).
 - `COUNTDOWN_MS = 6000`, `COUNTDOWN_GO_MS = 1000`: ekranda 5→1 sayılır, sonra
   "BAŞLA!" tam bir saniye durur, maç ondan sonra başlar.
@@ -306,8 +337,29 @@ sınıfından (`.win-text`) besleniyor — punto, yazı tipi ve animasyon tek ye
 sadece renk farklı. Skor tablosu yazının üstüne binmiyor, ikisi hiç aynı anda
 ekranda olmuyor.
 
+**Renk paleti:** "Bakır & Kömür" — koyu kömür zemin (`--bg #0a0e13`), bakır
+turuncu vurgu (`--accent #ff8a3d`), panel üstünde soldan sağa sönen bakır şerit.
+Bütün renkler `:root` içinde tek yerde; paleti değiştirmek için orayı
+değiştirmek yeterli. (Asker Yeşili ve Gece Mavisi seçenekleri de üretildi,
+kullanıcı bakırı seçti — `scripts/onizleme-renk.mjs` üçünü de yeniden
+fotoğraflayabilir.)
+
+**Kamera:** yakınlaştırma `clamp(min(en,boy)/900, 0.50, 1.15)`. Alt sınır
+telefonu ilgilendiriyor; `scripts/onizleme-kamera.mjs` kademeli önizleme üretir.
+
+**Cephane kutuları:** sayı yarıya indirildi (arena 12→6, royale 22→11),
+yerleşim rastgele (eskiden "birbirinden en uzak noktalar" seçiliyordu, her maç
+neredeyse aynı çıkıyordu) ve **çalının ya da duvarın üstüne düşmüyor** — çalı
+elemesi eksikti, kutu çalının içinde görünmez oluyordu.
+
+**Harita üretimi:** arena ızgarası artık her maçta 3x3–4x4 arası, motif sayısı
+ve doluluk oranı da oynuyor, merkez yapısı dört çeşit (dikey kapı / yatay kapı /
+dört sütun / açık meydan). Kural değişmedi: motif hücreyi taşmıyor (koridorlar
+geniş kalıyor), sağ yarı aynalanıyor (adalet) ve `analyzeWalkable` son sözü
+söylüyor. 240 harita üretilip sınandı, hiçbiri kural dışı çıkmadı.
+
 **Kaldırıldı:** gün döngüsü, gölgeler, Ağır Piyade sınıfı, maç içi sohbet
-görünürlüğü.
+görünürlüğü, lobi sohbeti, kurma ekranındaki mod/kapasite/bot ayarları.
 
 ---
 
@@ -359,7 +411,7 @@ Simgeler `android-icons/`ten kopyalanıyor.
 
 ---
 
-## 12. Testler (31 takım)
+## 12. Testler (34 takım)
 
 Kapsam özeti: menü → lobi → sohbet → maç → skor → maç sonu → lobiye dönüş ·
 21. oyuncunun reddedilmesi · dost ateşi · harita kopukluğu · çalı kuralları ·
@@ -375,7 +427,10 @@ güncelleme** · **gün döngüsünün kaldırıldığı** · **hayalet duvar (b
 önbelleği)** · **lobi kuralları: tek başına başlatma engeli, bot varsayılanı,
 zorluk menüsünün grileşmesi, BAŞLA! süresi/çakışması, KAYBETTİN** ·
 **öldürme ödülünün canı taşırmaması** · **merminin namludan doğması ve
-bombacının elinde tüfek olmaması**
+bombacının elinde tüfek olmaması** · **patlama kuralları (kendi bombandan zarar
+görmeme, dost ateşi, duvar, doğuş koruması)** · **APK derleme ayarları
+(appId ↔ paket adı, akıştaki yol, MainActivity'nin javac ile derlenmesi)** ·
+**atış kuralları (tetik bırakma şartı, cephane ödülü, botun bomba atışı)**
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
@@ -383,7 +438,6 @@ WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
 ## 13. Bilinen sınırlar
 
-- **Kendini güncelleme henüz telefonda denenmedi** (bkz. bölüm 7)
 - Bu geliştirme ortamında Android SDK / Maven / Gradle indirmeleri **engelli**;
   APK yalnızca GitHub Actions'ta derlenebiliyor
 - Render ücretsiz planı: uyuma + aylık 5 GB veri
@@ -394,8 +448,14 @@ WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
 ## 14. Nerede kaldık
 
-- Son sürüm damgası: **f928e2450a00** — 31 test takımının tamamı geçiyor
-  (26 tarayıcı + 5 node)
+- **Kendini güncelleme GERÇEK TELEFONDA ÇALIŞTI** (20 Ağustos 2026). Uzun süre
+  "burada denenemez" diye açık kalan tek madde buydu; kapandı. Sabit imzalı APK
+  de sorunsuz kuruldu, "Uygulama yüklenmedi" hatası tekrarlamadı.
+- **Tek başına maç engeli ve ekran ortası uyarısı telefonda doğrulandı.**
+- Son sürüm damgası: **31c23db97f1a** — 34 test takımının tamamı geçiyor
+  (26 tarayıcı + 8 node)
+- **Tam ekran (Android sistem çubuklarının gizlenmesi) YALNIZCA yeni APK ile
+  gelir** — değişen taraf native, sürüm damgasına girmiyor, GÜNCELLE getirmez.
 - Kullanıcının yapması gereken: zip'i GitHub'a yükle → Actions'ın ürettiği
   APK'yı kur (eskisini kaldırdıktan sonra)
 - Sonraki adım: kendini güncellemenin gerçek telefonda denenmesi

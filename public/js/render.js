@@ -143,8 +143,17 @@ export class Renderer {
       this.mini.width = Math.floor(mw * this.dpr);
       this.mini.height = Math.floor(mh * this.dpr);
     }
-    // Küçük ekranlarda biraz uzaklaş, büyük ekranlarda yakınlaş
-    this.zoom = Math.max(0.62, Math.min(1.15, Math.min(this.w, this.h) / 900));
+    // Küçük ekranlarda biraz uzaklaş, büyük ekranlarda yakınlaş.
+    //
+    // ALT SINIR 0.62 → 0.50: telefonda bombanın nereye düşeceği görünmüyordu.
+    // Bombanın azami menzili 675 dünya pikseli; 0.62'de bu, 900 px genişliğinde
+    // bir telefon ekranının tam kenarına denk geliyordu — hedef halkası ekranın
+    // dışında kalıyor, oyuncu nişan alamıyordu. 0.50'de görüş alanı ~%38
+    // genişliyor ve halka rahatça içeride kalıyor.
+    //
+    // Bilgisayarı ETKİLEMEZ: orada min(en,boy)/900 zaten 0.50'nin üstünde,
+    // alt sınır hiç devreye girmiyor.
+    this.zoom = Math.max(0.50, Math.min(1.15, Math.min(this.w, this.h) / 900));
   }
 
   worldToScreen(x, y) {

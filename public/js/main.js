@@ -94,7 +94,8 @@ async function useLocal(save = true) {
   $('tabOnline').classList.remove('sel');
   $('serverRow').classList.add('hidden');
   $('browsePanel').classList.add('hidden');
-  $('offlinePanel').classList.remove('hidden');
+  // Çevrimdışıyken menüde tek panel kalıyor: Lobi Kur tüm genişliği alsın.
+  document.querySelector('.menu-cols').classList.add('tek');
   $('connBar').classList.add('hidden');
   setConnStatus('Çevrimdışı — oyun bu cihazda çalışıyor.', 'ok');
   state.lobby = null;
@@ -154,7 +155,7 @@ function useOnline(rawUrl, save = true) {
   $('tabLocal').classList.remove('sel');
   $('serverRow').classList.remove('hidden');
   $('browsePanel').classList.remove('hidden');
-  $('offlinePanel').classList.add('hidden');
+  document.querySelector('.menu-cols').classList.remove('tek');
   setConnStatus(`Bağlanılıyor: ${url || location.host}`);
   state.lobby = null;
   wakeServer(url);
@@ -452,8 +453,13 @@ function stopCountdown() {
   $('countdownOverlay').classList.add('hidden');
 }
 
+// SOHBET KALDIRILDI (lobideki panel silindi). Sunucu hâlâ sistem mesajı
+// üretiyor ve protokol duruyor; aşağıdaki iki işlev sadece "gösterilecek yer
+// yoksa hiçbir şey yapma" diyor. Böylece sohbeti geri açmak istersek tek
+// yapılacak iş HTML'e paneli geri koymak.
 function renderChat(lines) {
   const log = $('chatLog');
+  if (!log) return;
   log.innerHTML = '';
   for (const m of lines) appendChat(m, false);
   log.scrollTop = log.scrollHeight;
@@ -461,6 +467,7 @@ function renderChat(lines) {
 
 function appendChat(msg, scroll = true) {
   const log = $('chatLog');
+  if (!log) return;
   const div = document.createElement('div');
   div.className = 'chat-line' + (msg.sys ? ' sys' : '');
   div.innerHTML = msg.sys ? esc(msg.text) : `<span class="cf">${esc(msg.from)}:</span> ${esc(msg.text)}`;
@@ -871,35 +878,21 @@ function initUi() {
     sfx.sfxUi();
   };
 
-  // Lobi kurma paneli
-  const rebuildCreateModes = () => buildModePicker($('modePicker'), state.createMode, (m) => {
-    state.createMode = m;
-    rebuildCreateModes();
-  });
-  rebuildCreateModes();
+  // Lobi kurma paneli — burada artık sadece ad ve gizlilik var.
+  // Mod, kapasite, bot sayısı ve bot zorluğu LOBİNİN İÇİNDE seçiliyor.
 
-  const maxIn = $('maxPlayersInput'), botIn = $('botCountInput');
-  maxIn.max = MAX_PLAYERS;
-  const syncCreateSliders = () => {
-    $('maxPlayersVal').textContent = maxIn.value;
-    botIn.max = Math.max(0, Number(maxIn.value) - 1);
-    if (Number(botIn.value) > Number(botIn.max)) botIn.value = botIn.max;
-    $('botCountVal').textContent = botIn.value;
-  };
-  maxIn.addEventListener('input', syncCreateSliders);
-  botIn.addEventListener('input', syncCreateSliders);
-  // Bot zorluğu artık kurulum formunda DEĞİL, lobinin içinde seçiliyor.
-  // Lobi state.createBotLevel ile kuruluyor (varsayılan "orta"); host lobide
-  // istediği an değiştirebiliyor.
-  syncCreateSliders();
+  // KAPASİTE, BOT SAYISI ve BOT ZORLUĞU kurma ekranından kaldırıldı; üçü de
+  // lobinin içinde. Lobi hep tam kapasite ve BOTSUZ açılıyor, host içeride
+  // ayarlıyor. Aynı ayarın iki ekranda birden durması "hangisi geçerli"
+  // sorusunu doğuruyordu.
 
   $('btnCreate').onclick = () => {
     sfx.unlockAudio(); sfx.sfxUi();
     net.send(C.LOBBY_CREATE, {
       name: $('lobbyNameInput').value.trim(),
-      mode: state.createMode,
-      maxPlayers: Number(maxIn.value),
-      botCount: Number(botIn.value),
+      mode: state.createMode,   // varsayılan; host lobide değiştirir
+      maxPlayers: MAX_PLAYERS,
+      botCount: 0,
       botLevel: state.createBotLevel,
       private: $('privateInput').checked,
     });
@@ -978,14 +971,17 @@ function initUi() {
   $('lobbyBotInput').addEventListener('change', (e) => net.send(C.SET_SETTINGS, { botCount: Number(e.target.value) }));
   $('lobbyBotInput').addEventListener('input', (e) => { $('lobbyBotVal').textContent = e.target.value; });
 
-  // Sohbet
-  $('chatForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const v = $('chatInput').value.trim();
-    if (!v) return;
-    net.send(C.LOBBY_CHAT, { text: v });
-    $('chatInput').value = '';
-  });
+  // Lobi sohbeti kaldırıldı; öğeler yoksa bağlama adımını atla.
+  const chatForm = $('chatForm');
+  if (chatForm) {
+    chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = $('chatInput').value.trim();
+      if (!v) return;
+      net.send(C.LOBBY_CHAT, { text: v });
+      $('chatInput').value = '';
+    });
+  }
 
   const gameChatForm = $('gameChatForm'), gameChatInput = $('gameChatInput');
   gameChatForm.addEventListener('submit', (e) => {
@@ -1111,7 +1107,6 @@ function initSettings() {
     store('sa_volume', String(v));
   };
 
-  $('setFullscreen').onclick = () => { requestFullscreen(); };
 
   $('setLeave').onclick = () => {
     toggleSettings(false);
@@ -1477,22 +1472,15 @@ function initPwa() {
     toast('Uygulama kuruldu.');
   });
 
-  // Tam ekran (özellikle telefonda çok fark ediyor)
-  $('btnFullscreen').onclick = async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-      if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => { /* masaüstünde desteklenmez */ });
-      }
-    } catch { toast('Tam ekran bu tarayıcıda desteklenmiyor.'); }
-  };
+  // TAM EKRAN DÜĞMELERİ KALDIRILDI (istenmedi) — hem menüdeki hem ayarlar
+  // panelindeki. requestFullscreen() işlevi duruyor: uygulama olarak kurulu
+  // açıldığında tarayıcı zaten tam ekran veriyor, ayrıca telefonda maça
+  // girerken kendiliğinden isteniyor.
 
   // Zaten kurulu olarak açıldıysa kurulum butonunu hiç gösterme
   if (window.matchMedia('(display-mode: fullscreen)').matches
     || window.matchMedia('(display-mode: standalone)').matches) {
     $('btnInstall').classList.add('hidden');
-    $('btnFullscreen').classList.add('hidden');
   }
 }
 

@@ -5,6 +5,7 @@
 //   • Ateş düğmesi gerçekten kaldırıldı mı?
 // Çalıştır:  node test/browser-bush.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
@@ -28,13 +29,10 @@ await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.click('#tabLocal');
 await page.waitForTimeout(500);
 
-await page.locator('#modePicker .mode-card').nth(0).click();
-await page.evaluate(() => {
-  const b = document.getElementById('botCountInput');
-  b.value = 4; b.dispatchEvent(new Event('input'));
-});
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active');
+await modSec(page, 0);
+await botAyarla(page, 4);
 await page.click('#btnReady');       // herkes hazır olunca geri sayım başlar
 await page.waitForSelector('#screenGame.active', { timeout: 25000 });
 await page.waitForTimeout(2000);

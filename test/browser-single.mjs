@@ -6,6 +6,7 @@
 //
 // Çalıştır:  node test/browser-single.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,13 +48,10 @@ function attach(page, tag) {
 }
 
 async function playAMatch(page, { mode = 0, bots = 6 } = {}) {
-  await page.locator('#modePicker .mode-card').nth(mode).click();
-  await page.evaluate((n) => {
-    const b = document.getElementById('botCountInput');
-    b.value = n; b.dispatchEvent(new Event('input'));
-  }, bots);
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 6000 });
+  await modSec(page, mode);
+  await botAyarla(page, bots);
 
   // Geri sayım gerçekten 5→1 akıyor mu?
   await page.click('#btnReady');

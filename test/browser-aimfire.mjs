@@ -4,6 +4,7 @@
 //   • Tüfek / makineli: basılı tuttukça ateş etmeli
 // Çalıştır:  node test/browser-aimfire.mjs
 
+import { botAyarla } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 
@@ -43,12 +44,9 @@ async function testWeapon(classIndex, name, expectAuto) {
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.click('#tabLocal');
   await page.waitForTimeout(500);
-  await page.evaluate(() => {
-    const b = document.getElementById('botCountInput');
-    b.value = 2; b.dispatchEvent(new Event('input'));
-  });
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active');
+  await botAyarla(page, 2);
   await page.locator('#classPicker .class-card').nth(classIndex).click();
   await page.waitForTimeout(300);
   await page.click('#btnReady');       // herkes hazır olunca geri sayım başlar

@@ -189,29 +189,32 @@ export const DEFAULT_CLASS = 'komando';
 // Aralık veriyoruz, tek sayı değil: aynı zorlukta bile botlar birbirinin
 // kopyası olmasın, aralarında biraz fark bulunsun.
 export const BOT_LEVELS = {
+  // Üç seviye de ZAYIFLATILDI: kolay bile fazla zorluyordu. Üç kolu birden
+  // gevşetiyoruz — yetenek (isabet + öngörü), görüş menzili ve tepki gecikmesi.
+  // Kolay artık gerçekten kolay: seni geç görür, geç tepki verir, çok ıskalar.
   kolay: {
     id: 'kolay',
     name: 'Kolay',
-    desc: 'Geç fark eder, ıskalar',
-    skill: [0.12, 0.34],
-    view: 780,
-    reactMs: 520,
+    desc: 'Seni geç görür, çok ıskalar',
+    skill: [0.04, 0.16],
+    view: 560,
+    reactMs: 950,
   },
   orta: {
     id: 'orta',
     name: 'Orta',
     desc: 'Dengeli rakip',
-    skill: [0.42, 0.68],
-    view: 1150,
-    reactMs: 220,
+    skill: [0.26, 0.48],
+    view: 900,
+    reactMs: 430,
   },
   zor: {
     id: 'zor',
     name: 'Zor',
     desc: 'Çabuk görür, isabetli',
-    skill: [0.78, 0.98],
-    view: 1400,
-    reactMs: 90,
+    skill: [0.58, 0.82],
+    view: 1250,
+    reactMs: 180,
   },
 };
 export const BOT_LEVEL_IDS = Object.keys(BOT_LEVELS);
@@ -271,17 +274,20 @@ export const WEAPONS = {
   // patlamada.
   bomba: {
     id: 'bomba', name: 'Bomba',
-    // Bombacı güçlendirildi: menzil +%50, hız +%25, patlama hasarı +%50,
-    // patlama alanı (yarıçap) +%50. Alt menzil de aynı oranda büyüdü, yoksa
-    // "en yakın atış" oransal olarak dibe düşerdi. Yarıçap (125) hâlâ alt
-    // menzilden (143) küçük: en yakına atınca kendini havaya uçurmuyorsun.
+    // Bombacı güçlendirildi: menzil +%50, hız +%25, patlama hasarı +%50.
+    // Patlama alanı önce +%50 yapıldı (83 → 125), sonra istek üzerine %20
+    // küçültüldü: 125 → 100.
+    //
+    // Kendi bombandan artık zarar görmüyorsun (bkz. Game.explode), yani
+    // yarıçapın alt menzilden küçük kalması bir zorunluluk değil — ama yine de
+    // öyle (100 < 143), atılan bomba hep kendinden uzağa düşüyor.
     dmg: 0, fireMs: 620, speed: 1050, spread: 0.02, pellets: 1,
     mag: 6, reserve: 15, reloadMs: 2400, range: 675, bulletR: 8, auto: false,
     throwable: true,
     minRange: 143,        // hiç beklemeden bırakınca bu kadar gider
     maxRange: 675,        // tam dolunca bu kadar gider
     chargeMs: 850,        // menzilin dolması bu kadar sürer (bilgisayarda)
-    blastR: 125,          // patlama yarıçapı
+    blastR: 100,          // patlama yarıçapı (125'ten %20 küçültüldü)
     blastDmg: 56,         // merkezdeki hasar (kenarda %25'e iner)
   },
 };

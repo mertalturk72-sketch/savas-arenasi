@@ -13,6 +13,7 @@
 //
 // Çalıştır:  node test/browser-lobikural.mjs
 
+import { modSec } from './yardimci.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { CLASSES, COUNTDOWN_MS, COUNTDOWN_GO_MS, MIN_FIGHTERS } from '../shared/constants.js';
@@ -47,20 +48,80 @@ await page.waitForTimeout(400);
 await page.fill('#nameInput', 'Kural');
 await page.dispatchEvent('#nameInput', 'change');
 
-// ===== 1) Lobi kurma formu ===============================================
+// ===== 1) Lobi kurma formu SADE olmalı ===================================
+// Kapasite, bot sayısı ve bot zorluğu kurma ekranından kaldırıldı; üçünün de
+// tek yeri lobinin içi. Burada "yok" olduklarını doğruluyoruz — gizlenmiş
+// değil, gerçekten yok (gizli bir input da testi geçerdi ama ölü kod olurdu).
 const form = await page.evaluate(() => ({
-  botDegeri: document.getElementById('botCountInput')?.value,
-  botYazi: document.getElementById('botCountVal')?.textContent,
+  botVar: !!document.getElementById('botCountInput'),
+  botYaziVar: !!document.getElementById('botCountVal'),
+  kapasiteVar: !!document.getElementById('maxPlayersInput'),
+  kapasiteYaziVar: !!document.getElementById('maxPlayersVal'),
   zorlukVar: !!document.getElementById('botLevelPicker'),
+  modVar: !!document.getElementById('modePicker'),
+  // Kurma ekranında kalması gerekenler yerinde mi?
+  adVar: !!document.getElementById('lobbyNameInput'),
+  gizliVar: !!document.getElementById('privateInput'),
+  kurButonu: !!document.getElementById('btnCreate'),
+  // Mod seçimi lobiye taşındı ve açıklamalar orada GÖRÜNÜYOR olmalı.
+  lobiModCompact: !!document.querySelector('#lobbyModePicker.compact'),
 }));
 console.log('1) kurma formu:', JSON.stringify(form));
-if (form.botDegeri !== '0') errors.push(`kurma formunda bot varsayılanı 0 olmalı, ${form.botDegeri}`);
-if (form.botYazi !== '0') errors.push(`bot sayacı 0 yazmalı, ${form.botYazi}`);
+if (form.botVar || form.botYaziVar) errors.push('bot sayısı kurma formundan kaldırılmalıydı');
+if (form.kapasiteVar || form.kapasiteYaziVar) errors.push('kapasite kurma formundan kaldırılmalıydı');
 if (form.zorlukVar) errors.push('bot zorluğu kurma formundan kaldırılmalıydı');
+if (form.modVar) errors.push('oyun modu kurma formundan kaldırılmalıydı');
+if (form.lobiModCompact) errors.push('lobideki mod seçici hâlâ "compact" — açıklamalar gizli kalır');
+if (!form.adVar || !form.gizliVar || !form.kurButonu) {
+  errors.push('kurma formunda lobi adı, gizlilik ya da KUR düğmesi kayıp');
+}
 
-await page.locator('#modePicker .mode-card').nth(0).click();
 await page.click('#btnCreate');
 await page.waitForSelector('#screenLobby.active', { timeout: 8000 });
+await modSec(page, 0);
+await page.waitForTimeout(400);
+
+// ===== 1b) Lobide sohbet YOK, ama lobi kurulabiliyor =====================
+// Sohbet paneli istenmediği için kaldırıldı. Sunucu hâlâ sistem mesajı
+// gönderiyor; arayüzün bu mesajları alırken PATLAMAMASI önemli — sayfa
+// hatası dinleyicisi (errors) zaten bunu yakalar.
+const sohbet = await page.evaluate(() => ({
+  panel: !!document.querySelector('.lobby-chat'),
+  log: !!document.getElementById('chatLog'),
+  form: !!document.getElementById('chatForm'),
+  girdi: !!document.getElementById('chatInput'),
+  // Lobi ekranı yine de düzgün açılmış olmalı
+  lobiAcik: document.getElementById('screenLobby').classList.contains('active'),
+}));
+console.log('1b) sohbet:', JSON.stringify(sohbet));
+
+// Mod açıklamaları lobide GÖRÜNÜYOR mu? (kurma ekranından buraya taşındı)
+const modlar = await page.evaluate(() => {
+  const kartlar = [...document.querySelectorAll('#lobbyModePicker .mode-card')];
+  return kartlar.map((k) => {
+    const d = k.querySelector('.mc-desc');
+    return {
+      ad: k.querySelector('.mc-name')?.textContent || '',
+      aciklama: d ? d.textContent.trim() : '',
+      gorunur: d ? getComputedStyle(d).display !== 'none' && d.getBoundingClientRect().height > 0 : false,
+    };
+  });
+});
+console.log('1c) lobideki modlar:', JSON.stringify(modlar));
+if (modlar.length < 3) errors.push(`lobide 3 mod olmalı, ${modlar.length} bulundu`);
+for (const m of modlar) {
+  if (!m.aciklama) errors.push(`"${m.ad}" modunun açıklaması yok`);
+  if (!m.gorunur) errors.push(`"${m.ad}" modunun açıklaması görünmüyor`);
+}
+if (sohbet.panel || sohbet.log || sohbet.form || sohbet.girdi) {
+  errors.push('lobideki sohbet paneli kaldırılmalıydı');
+}
+if (!sohbet.lobiAcik) errors.push('lobi ekranı açılmadı');
+// Sunucudan sistem mesajı geldiğinde çökmediğini de görelim.
+await page.evaluate(() => {
+  const lobi = [...window.__net.impl.hub.lobbies.values()][0];
+  lobi.sysChat('sohbet paneli yokken gelen sistem mesajı');
+});
 await page.waitForTimeout(400);
 
 // ===== 2) Lobi: bot 0, zorluk menüsü gri =================================
@@ -206,9 +267,9 @@ console.log('   maç başladı ✓');
   await kpage.waitForTimeout(400);
   await kpage.fill('#nameInput', 'Dar');
   await kpage.dispatchEvent('#nameInput', 'change');
-  await kpage.locator('#modePicker .mode-card').nth(0).click();
   await kpage.click('#btnCreate');
   await kpage.waitForSelector('#screenLobby.active', { timeout: 8000 });
+  await modSec(kpage, 0);
 
   const olc = (yazi, kelime) => kpage.evaluate(({ y, k }) => {
     const ov = document.getElementById('countdownOverlay');

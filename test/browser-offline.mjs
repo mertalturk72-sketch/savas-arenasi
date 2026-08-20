@@ -4,6 +4,7 @@
 //  3) Service worker sayesinde sayfa internetsiz açılıyor mu?
 // Çalıştır:  node test/browser-offline.mjs
 
+import { botAyarla, modSec } from './yardimci.mjs';
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 import { SC_FIELDS } from '../shared/protocol.js';
@@ -33,13 +34,10 @@ function attach(page, tag) {
 }
 
 async function createAndStart(page, { mode = 0, bots = 6 } = {}) {
-  await page.locator('#modePicker .mode-card').nth(mode).click();
-  await page.evaluate((n) => {
-    const b = document.getElementById('botCountInput');
-    b.value = n; b.dispatchEvent(new Event('input'));
-  }, bots);
   await page.click('#btnCreate');
   await page.waitForSelector('#screenLobby.active', { timeout: 6000 });
+  await modSec(page, mode);
+  await botAyarla(page, bots);
   await page.click('#btnReady');       // herkes hazır olunca geri sayım başlar
   await page.waitForSelector('#screenGame.active', { timeout: 25000 });
 }
