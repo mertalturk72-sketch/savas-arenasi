@@ -98,61 +98,84 @@ async function parlaklik(page) {
 }
 
 // ===== 3) Karakterin yönlü gölgesi olmamalı ==============================
+//
+// Zemin dokusunda rastgele lekeler var; tek bir maçta oyuncunun bir yanı
+// diğerinden koyu çıkabiliyor ve bu "gölge var" gibi görünüyordu. Ayırt edici
+// nokta şu: YÖNLÜ GÖLGE TUTARLIDIR — hep aynı tarafa düşer. Zemin lekesi ise
+// maçtan maça yön değiştirir. O yüzden üç maç ölçüp işaretin tutarlı olup
+// olmadığına bakıyoruz.
 {
-  const ctx = await browser.newContext({ viewport: { width: 1100, height: 700 } });
-  const page = await macOyna(ctx, 'golge');
-  // Oyuncunun iki yanındaki zemin eşit koyulukta olmalı: yönlü bir gölge
-  // olsaydı bir taraf belirgin şekilde koyu çıkardı.
-  // ÖNEMLİ: örnek noktalarının AÇIK ZEMİN olduğunu doğruluyoruz. Harita her
-  // maç rastgele üretildiği için oyuncunun yanında bina ya da çalı olabiliyor;
-  // öylesine örnek almak "bir taraf koyu" diye sahte hata veriyordu.
-  const g = await page.evaluate(() => {
-    const oyun = window.__game;
-    const r = oyun.renderer;
-    const c = document.getElementById('canvas');
-    const x = c.getContext('2d', { willReadFrequently: true });
-    const me = oyun.meRender;
+  const farklar = [];
+  for (let i = 0; i < 5; i++) {
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 700 } });
+    const page = await macOyna(ctx, `golge${i}`);
+    const g = await page.evaluate(() => {
+      const oyun = window.__game;
+      const r = oyun.renderer;
+      const c = document.getElementById('canvas');
+      const x = c.getContext('2d', { willReadFrequently: true });
+      const me = oyun.meRender;
 
-    const kapali = (wx, wy) => {
-      for (const o of oyun.map.obstacles) {
-        if (wx > o.x - 26 && wx < o.x + o.w + 26 && wy > o.y - 26 && wy < o.y + o.h + 26) return true;
-      }
-      for (const b of (oyun.map.bushes || [])) {
-        if (Math.hypot(wx - b.x, wy - b.y) < b.r + 20) return true;
-      }
-      return wx < 40 || wy < 40 || wx > oyun.map.w - 40 || wy > oyun.map.h - 40;
-    };
+      // Kamera harita kenarında SABİTLENİR, yani oyuncu her zaman ekranın
+      // ortasında olmaz. Ekran kenarlarında vinyet (köşe karartması) var;
+      // oyuncu ortada değilse bir taraftaki örnekler kenara daha yakın düşüp
+      // sistematik olarak koyu çıkıyor ve gölge sanılıyordu. Oyuncu ortada
+      // değilse bu maçı ölçmüyoruz.
+      const sm = r.worldToScreen(me.x, me.y);
+      const ortadaMi = Math.abs(sm.x - r.w / 2) < r.w * 0.08 && Math.abs(sm.y - r.h / 2) < r.h * 0.08;
+      if (!ortadaMi) return { sol: [], sag: [], ortada: false };
 
-    const orneksle = (dx) => {
-      const degerler = [];
-      for (const uz of [70, 110, 150]) {
-        const wx = me.x + dx * uz, wy = me.y + 24;
-        if (kapali(wx, wy)) continue;
-        const sc = r.worldToScreen(wx, wy);
-        const px = Math.round(sc.x * r.dpr), py = Math.round(sc.y * r.dpr);
-        if (px < 2 || py < 2 || px > c.width - 2 || py > c.height - 2) continue;
-        const d = x.getImageData(px, py, 1, 1).data;
-        degerler.push((d[0] + d[1] + d[2]) / 3);
-      }
-      return degerler;
-    };
+      const kapali = (wx, wy) => {
+        for (const o of oyun.map.obstacles) {
+          if (wx > o.x - 30 && wx < o.x + o.w + 30 && wy > o.y - 30 && wy < o.y + o.h + 30) return true;
+        }
+        for (const b of (oyun.map.bushes || [])) {
+          if (Math.hypot(wx - b.x, wy - b.y) < b.r + 24) return true;
+        }
+        // Başka oyuncular da zemini kapatır
+        for (const p of oyun.playersRender || []) {
+          if (p.id !== oyun.myId && Math.hypot(wx - p.x, wy - p.y) < 70) return true;
+        }
+        return wx < 40 || wy < 40 || wx > oyun.map.w - 40 || wy > oyun.map.h - 40;
+      };
 
-    return { sol: orneksle(-1), sag: orneksle(1) };
-  });
+      const orneksle = (dx) => {
+        const d2 = [];
+        for (const uz of [60, 90, 120, 150]) {
+          const wx = me.x + dx * uz, wy = me.y + 26;
+          if (kapali(wx, wy)) continue;
+          const sc = r.worldToScreen(wx, wy);
+          const px = Math.round(sc.x * r.dpr), py = Math.round(sc.y * r.dpr);
+          if (px < 2 || py < 2 || px > c.width - 2 || py > c.height - 2) continue;
+          const d = x.getImageData(px, py, 1, 1).data;
+          d2.push((d[0] + d[1] + d[2]) / 3);
+        }
+        return d2;
+      };
 
-  const ort = (a) => a.reduce((t, v) => t + v, 0) / (a.length || 1);
-  console.log('3) sol örnekler:', g.sol.map((v) => v.toFixed(0)).join(','),
-    '· sağ örnekler:', g.sag.map((v) => v.toFixed(0)).join(','));
-  if (g.sol.length < 2 || g.sag.length < 2) {
-    console.log('   (yeterli açık zemin bulunamadı — bu ölçüm atlandı)');
-  } else {
-    const fark = Math.abs(ort(g.sol) - ort(g.sag));
-    console.log(`   sol ort ${ort(g.sol).toFixed(1)} · sağ ort ${ort(g.sag).toFixed(1)} · fark ${fark.toFixed(1)}`);
-    if (fark > 18) errors.push(`oyuncunun bir yanı belirgin koyu (fark ${fark.toFixed(1)}) — yönlü gölge duruyor`);
+      return { sol: orneksle(-1), sag: orneksle(1), ortada: true };
+    });
+    await ctx.close();
+
+    if (!g.ortada) { console.log(`   maç ${i}: oyuncu ekranın ortasında değil, atlandı`); continue; }
+    if (g.sol.length < 2 || g.sag.length < 2) { console.log(`   maç ${i}: yeterli açık zemin yok, atlandı`); continue; }
+    const ort = (a) => a.reduce((t, v) => t + v, 0) / a.length;
+    const f = ort(g.sol) - ort(g.sag);
+    farklar.push(f);
+    console.log(`   maç ${i}: sol ${ort(g.sol).toFixed(1)} · sağ ${ort(g.sag).toFixed(1)} · fark ${f.toFixed(1)}`);
   }
 
-  await page.screenshot({ path: '/tmp/shots/gunduz-duz.png' });
-  await ctx.close();
+  console.log('3) sol-sağ farkları:', farklar.map((f) => f.toFixed(1)).join(' · '));
+  if (farklar.length < 2) {
+    console.log('   (yeterli ölçüm alınamadı — bu kontrol atlandı)');
+  } else {
+    const hepsiAyniYon = farklar.every((f) => f > 0) || farklar.every((f) => f < 0);
+    const ortalama = Math.abs(farklar.reduce((t, v) => t + v, 0) / farklar.length);
+    console.log(`   hepsi aynı yönde mi: ${hepsiAyniYon} · ortalama |fark| ${ortalama.toFixed(1)}`);
+    if (hepsiAyniYon && ortalama > 18) {
+      errors.push(`gölge tutarlı biçimde bir tarafa düşüyor (ortalama ${ortalama.toFixed(1)}) — yönlü gölge duruyor`);
+    }
+  }
 }
 
 await browser.close();

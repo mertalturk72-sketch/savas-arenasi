@@ -10,9 +10,11 @@ services:
     runtime: node
     plan: free
     region: frankfurt          # Türkiye'ye en yakın bölge
-    # Sunucunun hiçbir dış paketi yok (WebSocket dahil her şey depoda).
-    # Bu yüzden kurulacak bir şey de yok.
-    buildCommand: echo "bagimlilik yok"
+    # Sunucunun ÇALIŞMASI için dış paket gerekmiyor (WebSocket dahil her şey
+    # depoda). Kurulumda sadece iki şey üretiliyor:
+    #   www/        → tarayıcıya giden dosyalar
+    #   dist/paket.zip → uygulamanın kendini güncellerken indirdiği paket
+    buildCommand: node scripts/build-www.mjs && node scripts/make-bundle.mjs
     startCommand: node server/index.js
     healthCheckPath: /health
     autoDeploy: true

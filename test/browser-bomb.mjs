@@ -67,6 +67,48 @@ async function macaGir(ctx) {
   return page;
 }
 
+
+// Bombayı ölçerken oyuncuyu AÇIK bir yere taşıyoruz.
+//
+// Harita her maç rastgele üretiliyor; oyuncunun sağında bina varsa bomba
+// duvara çarpıp hemen patlıyor ve "menzil çalışmıyor" gibi görünüyordu.
+// Ölçmek istediğimiz şey menzil, çarpışma değil — o yüzden atış yönünde
+// gerçekten boş bir koridor buluyoruz.
+async function acikYereGit(page, koridor = 560) {
+  return page.evaluate((uz) => {
+    const g = window.__game;
+    const sim = [...window.__net.impl.hub.lobbies.values()][0].game;
+    const me = sim.players.get(window.__net.impl.client.id);
+    const map = sim.map;
+
+    const bos = (x, y) => {
+      for (const o of map.obstacles) {
+        if (x > o.x - 40 && x < o.x + o.w + 40 && y > o.y - 40 && y < o.y + o.h + 40) return false;
+      }
+      return true;
+    };
+    const uygun = (x, y) => {
+      if (x < 120 || y < 120 || y > map.h - 120) return false;
+      if (x + uz > map.w - 120) return false;
+      for (let d = 0; d <= uz; d += 40) {
+        if (!bos(x + d, y - 50) || !bos(x + d, y) || !bos(x + d, y + 50)) return false;
+      }
+      return true;
+    };
+
+    for (let deneme = 0; deneme < 4000; deneme++) {
+      const x = 140 + Math.random() * (map.w - uz - 280);
+      const y = 140 + Math.random() * (map.h - 280);
+      if (!uygun(x, y)) continue;
+      me.x = x; me.y = y;
+      g.me.x = x; g.me.y = y;
+      g.meRender.x = x; g.meRender.y = y;
+      return { x: Math.round(x), y: Math.round(y) };
+    }
+    return null;
+  }, koridor);
+}
+
 // ===== 1) TELEFON: menzil çubuğun itilme miktarına bağlı =================
 {
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 900, height: 420 }, isMobile: true, hasTouch: true });
@@ -78,6 +120,9 @@ async function macaGir(ctx) {
 
   // Nişan çubuğunu belirli bir oranda it, bombayı at, nereye düştüğüne bak.
   async function at(oran) {
+    const yer = await acikYereGit(page);
+    if (!yer) { errors.push('açık koridor bulunamadı (test kurulumu)'); return { guc: 0, mesafe: 0 }; }
+    await page.waitForTimeout(250);
     const st = await page.locator('#stickAim').boundingBox();
     const cx = st.x + st.width / 2, cy = st.y + st.height / 2;
     const yari = Math.min(st.width, st.height) / 2;
@@ -213,6 +258,69 @@ async function macaGir(ctx) {
   const sonra = await page.evaluate(() => document.getElementById('killSkull').classList.contains('show'));
   console.log('   1,9 sn sonra hâlâ duruyor mu:', sonra);
   if (sonra) errors.push('kuru kafa ekranda kalıcı oldu');
+  await ctx.close();
+}
+
+// ===== 3) MASAÜSTÜ: bomba nişangâhın olduğu yere düşmeli ================
+// Kullanıcının şikâyeti: "bomba hâlâ nişangâhı takip etmiyor". Eskiden menzil
+// tutma süresinden geliyordu, imlecin nerede olduğu hiç hesaba katılmıyordu.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await macaGir(ctx);
+
+  // İmleci oyuncudan belli bir uzaklığa koy, at, nereye düştüğüne bak.
+  async function imleçle(ekranUzak) {
+    const acik = await acikYereGit(page);
+    if (!acik) { errors.push('açık koridor bulunamadı (test kurulumu)'); return null; }
+    await page.waitForTimeout(250);
+    const yer = await page.evaluate(() => {
+      const g = window.__game;
+      const s = g.renderer.worldToScreen(g.meRender.x, g.meRender.y);
+      return { sx: s.x, sy: s.y, wx: g.me.x, wy: g.me.y, zoom: g.renderer.zoom };
+    });
+    await page.mouse.move(yer.sx + ekranUzak, yer.sy);
+    await page.waitForTimeout(120);
+    await page.mouse.down();
+    await page.waitForTimeout(160);
+    await page.mouse.up();
+
+    // Patlama noktasını yakala (boom olayı istemciye geliyor)
+    const patlama = await page.evaluate(() => new Promise((res) => {
+      const g = window.__game;
+      const t0 = performance.now();
+      const bak = () => {
+        const b = (g.blasts || [])[g.blasts.length - 1];
+        if (b) return res({ x: b.x, y: b.y });
+        if (performance.now() - t0 > 4000) return res(null);
+        requestAnimationFrame(bak);
+      };
+      g.blasts = [];
+      bak();
+    }));
+    if (!patlama) return null;
+    return { hedefDunya: ekranUzak / yer.zoom, gidilen: Math.hypot(patlama.x - yer.wx, patlama.y - yer.wy) };
+  }
+
+  const yakin = await imleçle(160);
+  await page.waitForTimeout(900);
+  const uzak = await imleçle(420);
+
+  console.log('3) imleç yakında:', JSON.stringify(yakin));
+  console.log('   imleç uzakta:', JSON.stringify(uzak));
+  if (!yakin || !uzak) {
+    errors.push('patlama noktası ölçülemedi');
+  } else {
+    // Bomba imlecin bulunduğu yere düşmeli. Ölçüm tam olamaz (mermi yarıçapı,
+    // engele çarpma, ağ gecikmesi), o yüzden makul bir pay bırakıyoruz.
+    for (const [ad, o] of [['yakın', yakin], ['uzak', uzak]]) {
+      const sapma = Math.abs(o.gidilen - o.hedefDunya);
+      console.log(`   ${ad}: hedef ${o.hedefDunya.toFixed(0)} px · gidilen ${o.gidilen.toFixed(0)} px · sapma ${sapma.toFixed(0)}`);
+      if (sapma > 90) errors.push(`${ad} imleçte bomba hedeften ${sapma.toFixed(0)} px saptı — nişangâhı takip etmiyor`);
+    }
+    if (!(uzak.gidilen > yakin.gidilen + 100)) {
+      errors.push('imleci uzaklaştırmak bombayı uzağa atmıyor');
+    }
+  }
   await ctx.close();
 }
 

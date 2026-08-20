@@ -10,5 +10,13 @@
     "allowNavigation": [
       "savas-arenasi.onrender.com"
     ]
+  },
+  "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "resetWhenUpdate": true,
+      "appReadyTimeout": 10000,
+      "directUpdate": false
+    }
   }
 }

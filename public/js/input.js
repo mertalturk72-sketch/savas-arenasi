@@ -266,6 +266,10 @@ export class Input {
     } else if (!this.touch.active) {
       this.aim = Math.atan2(this.mouseY - sy, this.mouseX - sx);
     }
+    // Farenin oyuncuya EKRAN üzerindeki uzaklığı. Bombanın nişangâhın tam
+    // olduğu yere düşmesi için gerekiyor; dünya birimine çevirmeyi çağıran
+    // yapıyor (yakınlaştırma oranını orası biliyor).
+    this.aimScreenDist = this.touch.active ? 0 : Math.hypot(this.mouseX - sx, this.mouseY - sy);
     // Dokunmatikte nişan çubuğu bırakılınca son bakılan yön korunur.
 
     // --- Bomba menzili -----------------------------------------------------

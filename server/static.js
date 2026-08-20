@@ -57,6 +57,28 @@ export function serveStatic(req, res) {
   // Sürüm bilgisi: paketlenmiş uygulama (APK / tek dosya) bunu okuyup
   // kendi damgasıyla karşılaştırır. Başka kaynaklardan da okunabilmesi
   // gerektiği için CORS açık — içinde sadece bir sürüm dizesi var.
+  // Uygulamanın kendini güncellemesi için web katmanının zip'i.
+  // dist/ dışarıya açık değil; bu tek dosyayı bilerek elle servis ediyoruz.
+  // (Damgaya dahil DEĞİL: üretilen bir dosya damgaya girseydi her derlemede
+  // damga değişir, uygulama sonsuza kadar "yeni sürüm var" derdi.)
+  if (urlPath === '/paket.zip') {
+    const dosya = path.join(ROOT, 'dist', 'paket.zip');
+    if (!fs.existsSync(dosya)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('paket.zip yok — sunucuda: npm run build:bundle');
+      return true;
+    }
+    const st = fs.statSync(dosya);
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Length': st.size,
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+    });
+    fs.createReadStream(dosya).pipe(res);
+    return true;
+  }
+
   if (urlPath === '/surum.json') {
     const body = JSON.stringify({ surum: contentStamp(), oyun: 'savas-arenasi' });
     res.writeHead(200, {

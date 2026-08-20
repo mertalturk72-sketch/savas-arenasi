@@ -1146,14 +1146,66 @@ async function checkForUpdate() {
     `Sunucuda yeni bir sürüm hazır (${uzak.surum.slice(0, 6)}). `
     + 'Güncelleyince oyunun en yeni hâline geçersin — yeniden kurmana gerek yok.';
   bar.classList.remove('hidden');
-  $('btnGetUpdate').onclick = () => {
-    store(UPDATE_PREF_KEY, '1');
-    location.href = base + '/';
-  };
+  $('btnGetUpdate').onclick = () => { guncellemeyiUygula(base, uzak.surum); };
   $('btnSkipUpdate').onclick = () => {
     store(UPDATE_SKIP_KEY, uzak.surum);
     bar.classList.add('hidden');
   };
+}
+
+// Uygulamanın KENDİNİ güncellemesi (APK'yı yeniden kurmadan).
+//
+// Oyunun tamamı web dosyalarından ibaret; APK bu dosyaları içinde taşıyor.
+// Capgo eklentisi sunucudan yeni dosya paketini (paket.zip) indirip
+// uygulamanın web katmanının yerine koyabiliyor. Yani GÜNCELLE deyince
+// uygulama kendini yeniliyor, Android'in "yükle" ekranı çıkmıyor.
+//
+// Eklentiye JS tarafından import etmiyoruz: derleyici/paketleyici
+// kullanmadığımız için native eklentiye köprü üzerinden erişiyoruz. Eklenti
+// yoksa (tarayıcı, tek dosya sürümü, eski APK) eski davranışa düşüyoruz:
+// sunucudaki web sürümüne git.
+function selfUpdater() {
+  try {
+    const p = window.Capacitor && window.Capacitor.Plugins;
+    return (p && p.CapacitorUpdater) || null;
+  } catch { return null; }
+}
+
+async function guncellemeyiUygula(base, surum) {
+  const btn = $('btnGetUpdate');
+  const yaz = (t) => { if ($('updateText')) $('updateText').textContent = t; };
+  const up = selfUpdater();
+
+  if (!up) {
+    // Eklenti yok: eski yol. Sunucudaki güncel sürüme geç ve bunu hatırla.
+    store(UPDATE_PREF_KEY, '1');
+    location.href = `${base}/`;
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ İNDİRİLİYOR…'; }
+  yaz('Yeni sürüm indiriliyor. Bu bir kereliğine birkaç saniye sürer.');
+  try {
+    const paket = await up.download({ url: `${base}/paket.zip?s=${encodeURIComponent(surum)}`, version: surum });
+    yaz('İndirildi, uygulama yenileniyor…');
+    // set() uygulamayı yeni paketle yeniden başlatır. Yeni sürüm açılınca
+    // notifyAppReady() çağrılmazsa eklenti eski sürüme geri döner — bu bizim
+    // güvenlik ağımız (bkz. initSelfUpdate).
+    await up.set(paket);
+  } catch (e) {
+    console.warn('[güncelleme] paket kurulamadı:', e);
+    yaz('Güncelleme indirilemedi. İnternetini kontrol edip tekrar dene.');
+    if (btn) { btn.disabled = false; btn.textContent = 'GÜNCELLE'; }
+  }
+}
+
+// Yeni paket açıldıktan sonra "ben sağ salim açıldım" demek zorundayız;
+// demezsek eklenti bunu bozuk sürüm sayıp eskiye döner. Bozuk bir paketin
+// telefonu kilitlememesi için bu davranış bilerek açık bırakıldı.
+function initSelfUpdate() {
+  const up = selfUpdater();
+  if (!up) return;
+  try { up.notifyAppReady(); } catch { /* önemli değil */ }
 }
 
 // Daha önce "GÜNCELLE" dendiyse ve internet varsa, uygulama açılışta doğrudan
@@ -1333,6 +1385,7 @@ function initPwa() {
       });
     });
   }
+  initSelfUpdate();
   showInsecureWarning();
   showUpdateButton();
   showBuildInfo();

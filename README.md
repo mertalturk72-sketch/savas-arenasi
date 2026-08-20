@@ -153,6 +153,40 @@ bina başına bulanık gölge). Ölçüm yapıp üç şeyi düzelttik:
   çizimi tamamen kalktı. Karakterin altında yönü olmayan hafif bir iz kaldı,
   yoksa zeminden kopuk duruyordu.
 
+## Uygulama kendini nasıl günceller
+
+**Bir kere kur, bir daha kurma.** GÜNCELLE'ye basınca uygulama Android'in
+kurulum ekranını açmaz; sunucudan yeni web paketini indirip kendi içindekinin
+yerine koyar ve yenilenmiş hâliyle açılır.
+
+Nasıl çalışıyor:
+
+1. `scripts/make-bundle.mjs` → `www/` klasörünü `dist/paket.zip` yapar.
+   (ZIP biçimi elle yazıldı: projenin kuralı gereği sunucunun çalışması için
+   dış paket gerekmiyor, sıkıştırma zaten Node'un zlib'inde var.)
+2. Sunucu bu dosyayı `/paket.zip` adresinden verir. Damgaya **dahil değildir** —
+   üretilen bir dosya damgaya girseydi her derlemede damga değişir ve uygulama
+   sonsuza kadar "yeni sürüm var" derdi.
+3. Uygulama açılışta `/surum.json` ile kendi damgasını karşılaştırır.
+4. GÜNCELLE → `@capgo/capacitor-updater` paketi indirir, kurar, uygulama
+   yeni sürümle yeniden başlar.
+
+**Güvenlik ağları:**
+
+* Yeni sürüm açılınca `notifyAppReady()` çağrılır. 10 saniye içinde
+  çağrılmazsa eklenti paketi bozuk sayıp eski sürüme geri döner — bozuk bir
+  güncelleme telefonu kilitleyemez.
+* İndirme başarısız olursa kullanıcıya "tekrar dene" denir ve oyun kendi
+  kopyasıyla oynanmaya devam eder.
+* Eklenti yoksa (tarayıcı, tek dosya sürümü, eski APK) eski davranışa düşülür:
+  sunucudaki web sürümüne geçilir.
+
+**Sınırı:** bu yolla oyunun İÇERİĞİ güncellenir. Android tarafını ilgilendiren
+şeyler (uygulama adı, simge, izinler) yine yeni APK ister.
+
+Eklenti `dependencies` altında — sunucu onu hiç import etmediği için
+`npm start` yine kurulum istemez; sadece APK derlenirken gerekiyor.
+
 ## APK: bir kere kur, güncellemeyi uygulamanın içinden al
 
 APK oyunun tamamını içinde taşır, yani **internetsiz çalışır**. Ama içindeki
@@ -433,6 +467,13 @@ ekranda canlı gösterilir — ayarlanabilir menzil, göstergesiz işkence olurd
   **duvar arkası korur** — patlama duvarı delmez.
 * Kendi bombandan sen de zarar görürsün: yakına atmak risklidir.
 
+**Menzil bilgisayarda nasıl ayarlanır?** Ayarlamana gerek yok: bomba
+**nişangâhın olduğu yere** düşer. Fare zaten hem yönü hem uzaklığı söylüyor;
+eskiden menzil tutma süresinden geliyordu ve imlecin nerede olduğunun hiç
+önemi yoktu — bomba imlecin ötesine ya da berisine düşüyordu. Ölçüm: imleç
+180 px uzaktayken bomba 196 px, 473 px uzaktayken 468 px gitti. Silahın
+asgari/azami menzili dışına taşarsan oraya kırpılır.
+
 **Menzil telefonda nasıl ayarlanır?** Bilgisayarda tuşu ne kadar tuttuğun
 menzili belirler. Telefonda bu ÇALIŞMIYORDU: nişan çubuğunu tutmak aynı
 zamanda ateş tuşunu basılı tutmak demek, dolayısıyla nişan alırken geçen süre
@@ -650,6 +691,7 @@ npm run test:grass       # zemin dokusu geç yüklenirse ekran güncelleniyor mu
 npm run test:bomb        # bomba menzili telefonda ayarlanabiliyor mu + kuru kafa
 npm run test:assist      # asist sayacı + sohbetin gizliliği + geri sayım İPTAL
 npm run test:noday       # gün döngüsü ve gölgelerin gerçekten kaldırıldığı
+npm run test:selfupdate  # uygulama kendini güncelleyebiliyor mu?
 npm run test:load        # 20 gerçek WebSocket istemcisi, bant genişliği ölçümü
 npm run test:browser     # uçtan uca tarayıcı testleri (playwright gerekir)
 npm run test:bundle      # APK'nın içindeki sürüm — sunucusuz çalışıyor mu?

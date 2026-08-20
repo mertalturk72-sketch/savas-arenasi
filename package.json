@@ -9,9 +9,9 @@
     "dev": "node --watch server/index.js",
     "test": "node test/smoke.js && node test/ws-protocol.mjs && node test/binary.mjs",
     "test:load": "node test/load.mjs",
-    "test:browser": "node test/browser.mjs && node test/browser-assist.mjs && node test/browser-bomb.mjs && node test/browser-grass.mjs && node test/binary-net.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-apkupdate.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-nodaynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node test/browser-apk-real.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
+    "test:browser": "node test/browser.mjs && node test/browser-selfupdate.mjs && node test/browser-assist.mjs && node test/browser-bomb.mjs && node test/browser-grass.mjs && node test/binary-net.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-apkupdate.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-nodaynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node test/browser-apk-real.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
     "build:www": "node scripts/build-www.mjs",
-    "android:sync": "node scripts/build-www.mjs && npx cap sync android",
+    "android:sync": "node scripts/build-www.mjs && node scripts/make-bundle.mjs && npx cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "android:open": "npm run android:sync && npx cap open android",
     "test:offline": "node test/browser-offline.mjs",
@@ -28,12 +28,16 @@
     "test:bomb": "node test/browser-bomb.mjs",
     "icons": "node scripts/make-icon.mjs",
     "test:assist": "node test/browser-assist.mjs",
-    "test:noday": "node test/browser-nodaynight.mjs"
+    "test:noday": "node test/browser-nodaynight.mjs",
+    "build:bundle": "node scripts/build-www.mjs && node scripts/make-bundle.mjs",
+    "test:selfupdate": "node scripts/build-www.mjs && node scripts/make-bundle.mjs && node test/browser-selfupdate.mjs"
   },
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@capgo/capacitor-updater": "^8.51.13"
+  },
   "license": "MIT",
   "devDependencies": {
     "@capacitor/android": "^8.5.0",

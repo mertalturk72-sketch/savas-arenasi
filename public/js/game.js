@@ -458,6 +458,22 @@ export class ClientGame {
       const sample = this.input.sample(sc.x, sc.y);
       this.aim = sample.aim;
 
+      // BOMBA NİŞANGÂHI TAKİP ETSİN.
+      //
+      // Eskiden menzil, ateş tuşunu ne kadar tuttuğuna bağlıydı; nişangâhın
+      // nerede olduğunun hiç önemi yoktu ve bomba imlecin çok ötesine ya da
+      // berisine düşüyordu. Oysa fare zaten hem YÖNÜ hem UZAKLIĞI söylüyor.
+      // Artık bomba doğrudan imlecin bulunduğu noktaya gidiyor; silahın
+      // asgari/azami menzili dışına taşarsa oraya kırpılıyor.
+      // (Dokunmatikte menzili çubuğun itilme miktarı belirliyor — bkz. input.js)
+      const wep0 = WEAPONS[this.weapon];
+      if (wep0 && wep0.throwable && !this.input.touch.active) {
+        const uzak = (this.input.aimScreenDist || 0) / (this.renderer.zoom || 1);
+        const aralik = wep0.maxRange - wep0.minRange;
+        const oran = aralik > 0 ? (uzak - wep0.minRange) / aralik : 0;
+        sample.p = Math.round(Math.max(0, Math.min(1, oran)) * 100);
+      }
+
       const dt = Math.max(1, Math.min(MAX_INPUT_DT_MS, Math.round(stepMs)));
       const packet = { seq: ++this.seq, dt, keys: sample.keys, aim: sample.aim, power: sample.p };
 
