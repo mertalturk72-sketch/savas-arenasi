@@ -798,6 +798,14 @@ export class ClientGame {
       this.el.reloadBar.classList.add('hidden');
     }
 
+    // Bayrağı bırak düğmesi — sadece CTF'te bayrağı taşırken görünür.
+    // (touchUI zaten masaüstünde gizli; bilgisayarda 'G' tuşu bırakır.)
+    const dropBtn = this._dropBtn || (this._dropBtn = document.getElementById('btnTouchDrop'));
+    if (dropBtn) {
+      const carrying = !!(this.flag && this.myId && this.flag.carrier === this.myId && this.alive);
+      dropBtn.classList.toggle('hidden', !carrying);
+    }
+
     // Ölüm ekranı
     if (!this.alive) {
       this.el.respawn.classList.remove('hidden');

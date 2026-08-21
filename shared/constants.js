@@ -80,8 +80,8 @@ export const MODES = {
   // alan. Ayakta kalan son TAKIM kazanır (skor değil, hayatta kalma).
   takim_br: {
     id: 'takim_br',
-    name: 'Takım BR (Ekip)',
-    short: 'EKİP',
+    name: 'Takımlı Son Hayatta Kalan',
+    short: 'T.SHK',
     desc: 'İki takım, tek can, daralan alan. Ayakta kalan son takım kazanır.',
     teams: true,
     respawn: false,
@@ -89,6 +89,8 @@ export const MODES = {
     timeLimitMs: MATCH_MS,
     shrinkingZone: true,
     map: 'royale',
+    minStart: 4,   // 2'ye 2 olsun: en az 4 savaşçı (çevrimdışı 1 oyuncu+3 bot,
+                   // online 4 oyuncu). Yoksa takım modu anlamsız.
   },
   // Bayrak Çalma (CTF) — tek merkez bayrak sürümü. Ortadaki bayrağı kap,
   // DÜŞMAN üssüne götür = 1 sayı. Önce 3'e ulaşan takım kazanır. Taşıyıcı
@@ -114,6 +116,9 @@ export const CTF = {
   baseR: 48,            // üsse bu kadar yaklaşınca sayı (capture) olur
   pickR: 28,            // bayrağa bu kadar yaklaşınca alınır/geri döner
   carrierSpeed: 0.30,   // bayrağı taşırken hız çarpanı: %70 yavaşlar (istek)
+  repickMs: 1200,       // bayrağı BIRAKAN oyuncu bu kadar süre onu tekrar alamaz
+                        // (yoksa "bırak" anında geri alınır; takıldığında da
+                        //  elden çıkarabilmek için bu pencere lazım)
 };
 export const MODE_IDS = Object.keys(MODES);
 export const DEFAULT_MODE = 'ffa';
@@ -190,7 +195,7 @@ export const CLASSES = {
     id: 'komando',
     name: 'Komando',
     desc: 'Dengeli. Otomatik tüfek. Her duruma uyar.',
-    speed: 327,
+    speed: 164,
     hp: 100,
     weapon: 'rifle',
     color: '#7ee787',
@@ -199,7 +204,7 @@ export const CLASSES = {
     id: 'akinci',
     name: 'Akıncı',
     desc: 'Çok hızlı. Pompalı ile yakın dövüş.',
-    speed: 423,
+    speed: 212,
     hp: 100,
     weapon: 'shotgun',
     color: '#ffd479',
@@ -208,7 +213,7 @@ export const CLASSES = {
     id: 'nisanci',
     name: 'Keskin Nişancı',
     desc: 'Yavaş ama tek atışta yıkıcı. Uzun menzil.',
-    speed: 264,
+    speed: 132,
     hp: 100,
     weapon: 'sniper',
     color: '#c39bff',
@@ -217,7 +222,7 @@ export const CLASSES = {
     id: 'bombaci',
     name: 'Bombacı',
     desc: 'Bomba atar. Basılı tut, menzili ayarla, bırak.',
-    speed: 303,
+    speed: 152,
     hp: 100,
     weapon: 'bomba',
     color: '#ff9f5a',
@@ -397,6 +402,7 @@ export const IN_LEFT = 1 << 2;
 export const IN_RIGHT = 1 << 3;
 export const IN_FIRE = 1 << 4;
 export const IN_RELOAD = 1 << 5;
+export const IN_DROP = 1 << 6;   // CTF: taşınan bayrağı elden bırak
 
 // --- Ölüm sebepleri -------------------------------------------------------
 export const DEATH_BULLET = 0;

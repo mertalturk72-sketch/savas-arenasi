@@ -263,6 +263,13 @@ export class Lobby {
     if (this.savascilar() < MIN_FIGHTERS) {
       return 'Tek başına maç başlatılamaz. Bot ekle ya da bir arkadaşını çağır.';
     }
+    // Bazı modlar (ör. Takımlı Son Hayatta Kalan) 2'ye 2 için en az minStart
+    // savaşçı ister. Çevrimdışı: 1 oyuncu + 3 bot; online: 4 oyuncu.
+    const mode = MODES[this.modeId];
+    if (mode?.minStart && this.savascilar() < mode.minStart) {
+      const eksik = mode.minStart - this.savascilar();
+      return `${mode.name} için en az ${mode.minStart} savaşçı gerekir — ${eksik} tane daha (bot ekle ya da oyuncu çağır).`;
+    }
     return null;
   }
 

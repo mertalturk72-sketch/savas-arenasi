@@ -743,6 +743,16 @@ body.touch .hide-hint { top: 62px; font-size: 11px; padding: 4px 11px; }
   bottom: calc(172px + env(safe-area-inset-bottom));
   width: 46px; height: 46px; font-size: 19px;
 }
+/* Bayrağı bırak — yuvarlak değil, okunur etiketli; sadece taşırken görünür */
+.touch-btn.drop {
+  right: calc(150px + env(safe-area-inset-right));
+  bottom: calc(132px + env(safe-area-inset-bottom));
+  width: 74px; height: 74px; border-radius: 16px;
+  font-size: 12px; font-weight: 800; line-height: 1.15; letter-spacing: .04em;
+  background: rgba(255,90,90,.30); border-color: rgba(255,120,120,.55);
+  text-align: center;
+}
+.touch-btn.drop.hidden { display: none; }
 
 /* Dokunmatik cihazda HUD'u köşelerden çek: alt köşeler çubuklara ait */
 body.touch .hud-bottom-left {

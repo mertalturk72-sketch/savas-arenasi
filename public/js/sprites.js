@@ -161,8 +161,10 @@ function drawFrame(o, dir, frame) {
   if (side) {
     // öndeki bacak yere basar, arkadaki LIFT kadar kalkar
     rectPx(ctx, CX - 3 + legShift, legY, 3, 6, jacketDark);
+    rectPx(ctx, CX - 3 + legShift, legY, 1, 5, shade(jacket, -22));   // pantolon ışığı
     rectPx(ctx, CX + 0 - legShift, legY - LIFT, 3, 6, shade(jacket, -52));
     rectPx(ctx, CX - 3 + legShift, legY + 6, 4, 3, boot);
+    rectPx(ctx, CX - 3 + legShift, legY + 6, 4, 1, shade(boot, 22));  // bot burnu ışığı
     rectPx(ctx, CX + 0 - legShift, legY + 6 - LIFT, 4, 3, shade(boot, -6));
   } else {
     // Önden/arkadan bakışta adım, bacakların ileri geri kaymasıyla okunur.
@@ -173,8 +175,12 @@ function drawFrame(o, dir, frame) {
     const liftR = legShift < 0 ? 0 : LIFT;      // sağ bacak arkadaysa kalkar
     rectPx(ctx, CX - 4, legY + l - liftL, 3, 6, jacketDark);
     rectPx(ctx, CX + 1, legY + r - liftR, 3, 6, jacketDark);
+    rectPx(ctx, CX - 4, legY + l - liftL, 1, 5, shade(jacket, -22));       // ışık
+    rectPx(ctx, CX + 1, legY + r - liftR, 1, 5, shade(jacket, -22));
     rectPx(ctx, CX - 4, legY + 6 + l - liftL, 3, 3, boot);
     rectPx(ctx, CX + 1, legY + 6 + r - liftR, 3, 3, boot);
+    rectPx(ctx, CX - 4, legY + 6 + l - liftL, 3, 1, shade(boot, 22));      // bot burnu ışığı
+    rectPx(ctx, CX + 1, legY + 6 + r - liftR, 3, 1, shade(boot, 22));
   }
 
   // Buradan sonrası gövde ve baş: adım çöküşünde hepsi birlikte 1 px iniyor.
@@ -182,21 +188,49 @@ function drawFrame(o, dir, frame) {
   ctx.save();
   ctx.translate(0, BOB);
 
-  // --- gövde ---------------------------------------------------------------
-  rectPx(ctx, bodyX - 1, 16, bodyW + 2, 10, jacketDark);
-  rectPx(ctx, bodyX, 16, bodyW, 9, jacket);
-  rectPx(ctx, bodyX, 16, bodyW, 1, jacketLight);
-  if (!side) rectPx(ctx, CX - 1, 18, 2, 7, jacketDark);
+  // --- gövde (silah gibi: gölge tabanı → kumaş → omuz ışığı → bel gölgesi) --
+  rectPx(ctx, bodyX - 1, 16, bodyW + 2, 10, jacketDark);   // dış hat / gölge
+  rectPx(ctx, bodyX, 16, bodyW, 9, jacket);                // ana kumaş
+  rectPx(ctx, bodyX, 16, bodyW, 2, jacketLight);           // omuz ışığı
+  rectPx(ctx, bodyX, 22, bodyW, 3, shade(jacket, -18));    // bel gölgesi
+  rectPx(ctx, bodyX, 17, 1, 6, jacketLight);               // sol kenar ışığı (ışık soldan)
+  rectPx(ctx, bodyX + bodyW - 1, 17, 1, 6, shade(jacket, -30)); // sağ kenar gölgesi
+  // omuz köşelerini yuvarla — sert kutu silueti kırılır (silah siluetleri gibi)
+  ctx.clearRect(bodyX - 1, 16, 1, 1);
+  ctx.clearRect(bodyX + bodyW, 16, 1, 1);
+  rectPx(ctx, bodyX, 16, 1, 1, jacketDark);
+  rectPx(ctx, bodyX + bodyW - 1, 16, 1, 1, jacketDark);
+  // orta fermuar / dikiş
+  if (!side) rectPx(ctx, CX - 1, 18, 2, 6, jacketDark);
 
-  // --- kollar --------------------------------------------------------------
+  // --- kollar (ışıklı kenar + bilek manşeti) -------------------------------
   if (side) {
     rectPx(ctx, CX - 1, 17 + armSwing, 4, 7, jacketDark);
-    rectPx(ctx, CX - 1, 23 + armSwing, 3, 3, skin);
+    rectPx(ctx, CX - 1, 17 + armSwing, 1, 6, jacketLight);   // kol ışığı
+    rectPx(ctx, CX - 1, 22 + armSwing, 4, 1, o.accent);      // manşet
+    rectPx(ctx, CX - 1, 23 + armSwing, 3, 3, skin);          // el
+    rectPx(ctx, CX - 1, 23 + armSwing, 3, 1, shade(skin, 18));
   } else {
     rectPx(ctx, bodyX - 3, 17 + armSwing, 3, 7, jacketDark);
     rectPx(ctx, bodyX + bodyW, 17 - armSwing, 3, 7, jacketDark);
+    rectPx(ctx, bodyX - 3, 17 + armSwing, 1, 6, jacketLight);          // sol kol ışığı
+    rectPx(ctx, bodyX + bodyW + 2, 17 - armSwing, 1, 6, shade(jacket, -52)); // sağ kol gölgesi
+    rectPx(ctx, bodyX - 3, 22 + armSwing, 3, 1, o.accent);            // manşetler
+    rectPx(ctx, bodyX + bodyW, 22 - armSwing, 3, 1, o.accent);
     rectPx(ctx, bodyX - 3, 23 + armSwing, 3, 3, skin);
     rectPx(ctx, bodyX + bodyW, 23 - armSwing, 3, 3, skin);
+    rectPx(ctx, bodyX - 3, 23 + armSwing, 3, 1, shade(skin, 18));
+    rectPx(ctx, bodyX + bodyW, 23 - armSwing, 3, 1, shade(skin, 18));
+  }
+
+  // --- göğüs teçhizatı: çapraz askı + kemer (yelek hissi) ------------------
+  if (dir === 'down') {
+    rectPx(ctx, bodyX + 1, 17, 1, 7, o.accent);             // sol askı
+    rectPx(ctx, bodyX + bodyW - 2, 17, 1, 7, o.accent);     // sağ askı
+    rectPx(ctx, bodyX, 20, bodyW, 1, shade(o.accent, -30)); // kemer
+  } else if (side) {
+    rectPx(ctx, bodyX + 3, 17, 1, 7, o.accent);             // tek askı
+    rectPx(ctx, bodyX, 20, bodyW, 1, shade(o.accent, -30)); // kemer
   }
 
   // --- yaka detayı ---------------------------------------------------------

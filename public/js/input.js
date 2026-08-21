@@ -1,6 +1,6 @@
 // Klavye / fare / dokunmatik girdileri tek bir duruma indirger.
 
-import { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE, IN_RELOAD } from '/shared/constants.js';
+import { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE, IN_RELOAD, IN_DROP } from '/shared/constants.js';
 
 export class Input {
   constructor(canvas) {
@@ -10,6 +10,7 @@ export class Input {
     this.mouseY = window.innerHeight / 2;
     this.firing = false;
     this.reloadPulse = 0;
+    this.dropPulse = 0;   // bayrağı bırak (CTF) — tek seferlik darbe
     this.typing = false;
     this.enabled = false;
     this.aim = 0;
@@ -59,6 +60,7 @@ export class Input {
     const stickAim = document.getElementById('stickAim');
     const btnReload = document.getElementById('btnTouchReload');
     const btnScore = document.getElementById('btnTouchScore');
+    const btnDrop = document.getElementById('btnTouchDrop');
     if (!stickMove || !stickAim) return;
 
     const setup = (el, slot, isAimStick) => {
@@ -135,6 +137,14 @@ export class Input {
       }, { passive: false });
     }
 
+    // Bayrağı bırak (CTF) — sadece bayrak taşırken görünür (oyun kodu gizler/gösterir)
+    if (btnDrop) {
+      btnDrop.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        this.dropPulse = 3;
+      }, { passive: false });
+    }
+
     // Skor tablosu: TEK DOKUNUŞ açar ve AÇIK KALIR; tekrar dokunuş kapatır
     // (masaüstündeki Tab gibi). Eskiden "basılı tut" idi: parmağı çekince hemen
     // kapanıyordu, telefonda tabloyu okumak/kaydırmak imkânsızdı. touchUI DOM'da
@@ -208,6 +218,7 @@ export class Input {
     const k = e.code;
     this.down.add(k);
     if (k === 'KeyR') this.reloadPulse = 3;
+    if (k === 'KeyG') this.dropPulse = 3;
     if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(k)) {
       e.preventDefault();
     }
@@ -229,6 +240,7 @@ export class Input {
     this.firing = false;
     this.firePulse = 0;
     this.reloadPulse = 0;
+    this.dropPulse = 0;
     for (const slot of [this.touch.move, this.touch.aim]) {
       slot.id = null; slot.dx = 0; slot.dy = 0;
       if ('firing' in slot) { slot.firing = false; slot.aiming = false; }
@@ -266,6 +278,7 @@ export class Input {
     }
 
     if (this.reloadPulse > 0) { keys |= IN_RELOAD; this.reloadPulse--; }
+    if (this.dropPulse > 0) { keys |= IN_DROP; this.dropPulse--; }
     // Nişan çubuğu bırakıldığında tetiklenen tek atış
     if (this.firePulse > 0) { keys |= IN_FIRE; this.firePulse--; }
 

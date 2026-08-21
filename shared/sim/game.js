@@ -4,7 +4,7 @@
 import {
   TICK_MS, PLAYER_RADIUS, RESPAWN_MS, SPAWN_PROTECT_MS, MODES, CLASSES, WEAPONS,
   ZONE, HP_REGEN_PER_SEC, AMMO_PACK_RESPAWN_MS, AMMO_PACK_FRACTION, PICKUP_RADIUS,
-  IN_FIRE, IN_RELOAD, MAX_INPUT_DT_MS, DEATH_BULLET, DEATH_ZONE,
+  IN_FIRE, IN_RELOAD, IN_DROP, MAX_INPUT_DT_MS, DEATH_BULLET, DEATH_ZONE,
   CLASS_IDS, WEAPON_IDS, VIS_DIST, VIS_GRACE_MS, BULLET_VIS, EVENT_AUDIO_DIST,
   DEFAULT_CHAR,
   BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS,
@@ -79,7 +79,7 @@ export class Game {
     };
     this.bases = { 1: pushOut(centroid(this.spawns[1])), 2: pushOut(centroid(this.spawns[2])) };
     this.flagHome = { x: this.map.w / 2, y: this.map.h / 2 };
-    this.flag = { x: this.flagHome.x, y: this.flagHome.y, carrier: 0, state: 'home', dropAt: 0 };
+    this.flag = { x: this.flagHome.x, y: this.flagHome.y, carrier: 0, state: 'home', dropAt: 0, lastCarrier: 0, lastDropAt: 0 };
     // Üs konumlarını istemciye bir kez bildir (çizim için).
     this.globalEvents.push({
       e: 'ctfinit',
@@ -122,11 +122,14 @@ export class Game {
       this.resetFlag();
       return;
     }
-    // Yaklaşan ilk canlı oyuncu bayrağı alır.
+    // Yaklaşan ilk canlı oyuncu bayrağı alır. BIRAKAN oyuncu repickMs boyunca
+    // hariç (bıraktığını hemen geri kapmasın; başkaları alabilir).
     for (const p of this.players.values()) {
       if (!p.alive) continue;
+      if (p.id === f.lastCarrier && this.time < (f.lastDropAt || 0) + CTF.repickMs) continue;
       if (Math.hypot(p.x - f.x, p.y - f.y) < CTF.pickR) {
         f.carrier = p.id; f.state = 'carried';
+        f.lastCarrier = 0; f.lastDropAt = 0;
         this.globalEvents.push({ e: 'grab', i: p.id, t: p.team });
         this.emitFlag();
         break;
@@ -138,6 +141,10 @@ export class Game {
     const f = this.flag;
     const c = this.players.get(f.carrier);
     if (c) { f.x = c.x; f.y = c.y; }
+    // BIRAKAN oyuncuyu hatırla: repickMs boyunca aynı kişi bayrağı tekrar
+    // alamaz (yoksa "bırak" anlamsız olur, anında geri alınır).
+    f.lastCarrier = f.carrier;
+    f.lastDropAt = this.time;
     f.state = 'dropped'; f.carrier = 0; f.dropAt = this.time;
     this.emitFlag();
   }
@@ -146,6 +153,7 @@ export class Game {
     const f = this.flag;
     f.x = this.flagHome.x; f.y = this.flagHome.y;
     f.state = 'home'; f.carrier = 0; f.dropAt = 0;
+    f.lastCarrier = 0; f.lastDropAt = 0;
     this.emitFlag();
   }
 
@@ -305,6 +313,13 @@ export class Game {
     // Bayrağı taşıyan biraz yavaşlar (CTF.carrierSpeed).
     const spd = (this.flag && this.flag.carrier === p.id) ? p.speed * CTF.carrierSpeed : p.speed;
     applyMovement(p, inp.k, spd, dtSec, this.idx);
+
+    // CTF: BIRAK tuşuna basınca (kenar) taşıdığın bayrağı elden çıkar. Hem
+    // istek üzerine bir özellik, hem de bayrak takıldığında elden atma yolu.
+    if (this.flag && this.flag.carrier === p.id
+        && (inp.k & IN_DROP) && !(p.prevKeys & IN_DROP)) {
+      this.dropFlag();
+    }
 
     const wep = WEAPONS[p.weapon];
     const wantReload = (inp.k & IN_RELOAD) && !(p.prevKeys & IN_RELOAD);
