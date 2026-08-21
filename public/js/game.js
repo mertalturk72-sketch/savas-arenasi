@@ -7,6 +7,7 @@
 import {
   INTERP_DELAY_MS, INPUT_RATE, MAX_INPUT_DT_MS, CLASSES, WEAPONS, MODES, TEAMS,
   PLAYER_RADIUS, IN_FIRE, CLASS_IDS, WEAPON_IDS, MATCH_MS, muzzleWorld,
+  CHARACTERS, CTF,
 } from '/shared/constants.js';
 import {
   C, PS_FIELDS, BS_FIELDS, SC_FIELDS,
@@ -85,25 +86,6 @@ function pixelSkullSvg() {
 
 const SKULL_SVG = pixelSkullSvg();
 
-// Türkçe belirtme hâli eki: "Ali'yi", "Kartal'ı", "Gümüş'ü", "Diken'i".
-// Ünlü uyumuna göre ı/i/u/ü seçiliyor; ad ünlüyle bitiyorsa araya 'y' giriyor.
-// Oyuncu adları serbest metin olduğu için ünlü bulunamazsa 'i' varsayılıyor.
-export function belirtmeEki(ad) {
-  const s = String(ad || '').toLowerCase().replace(/[^a-zçğıöşü]/g, '');
-  const unluler = 'aeıioöuü';
-  let son = '';
-  for (let i = s.length - 1; i >= 0; i--) {
-    if (unluler.includes(s[i])) { son = s[i]; break; }
-  }
-  const ek = 'aı'.includes(son) ? 'ı'
-    : 'ei'.includes(son) ? 'i'
-      : 'ou'.includes(son) ? 'u'
-        : 'öü'.includes(son) ? 'ü' : 'i';
-  const sonHarf = s[s.length - 1] || '';
-  const kaynastirma = unluler.includes(sonHarf) ? 'y' : '';
-  return `'${kaynastirma}${ek}`;
-}
-
 export class ClientGame {
   constructor(net, input) {
     this.net = net;
@@ -167,11 +149,23 @@ export class ClientGame {
     this.bulletsRender = [];
     this.zone = null;
     this.zoneWarnPhase = -1;
+    this.ctf = null;    // Bayrak Çalma: üs konumları (yalnız CTF modunda dolar)
+    this.flag = null;   // Bayrağın son bilinen durumu
     this.hudTimer = 0;
     this.meRender = { x: 0, y: 0 };
     this.chargeStart = 0;      // bomba: tuşu ne zaman tutmaya başladık
     this.charge = 0;           // 0..1 menzil doluluğu (sadece gösterim)
     this.anim = new Map();          // id -> yürüyüş animasyonu durumu
+    this.matchOver = false;         // maç bitti mi (bitince yerel hareket durur)
+  }
+
+  // Yerel tahmin hızı: bayrağı taşıyorsan sunucuyla aynı yavaşlamayı uygula,
+  // yoksa istemci %100 tahmin edip sunucu %30 verince "geriye zıplama" olur.
+  predSpeed() {
+    if (this.flag && this.myId && this.flag.carrier === this.myId) {
+      return this.speed * CTF.carrierSpeed;
+    }
+    return this.speed;
   }
 
   // ---------------------------------------------------------------- başlat
@@ -271,8 +265,9 @@ export class ClientGame {
     const before = { x: this.me.x, y: this.me.y };
     this.me.x = you.x; this.me.y = you.y;
     this.pending = this.pending.filter((i) => i.seq > snap.ack);
+    const predSpeed = this.predSpeed();
     for (const i of this.pending) {
-      applyMovement(this.me, i.keys, this.speed, i.dt / 1000, this.idx);
+      applyMovement(this.me, i.keys, predSpeed, i.dt / 1000, this.idx);
     }
 
     // Fark varsa anında zıplamak yerine hatayı zamanla erit
@@ -347,6 +342,32 @@ export class ClientGame {
           }
           break;
         }
+        // --- Bayrak Çalma (CTF) ---
+        case 'ctfinit': {
+          this.ctf = {
+            bases: { 1: { x: ev.b1x, y: ev.b1y }, 2: { x: ev.b2x, y: ev.b2y } },
+            home: { x: ev.hx, y: ev.hy },
+          };
+          break;
+        }
+        case 'flag': {
+          // st: 0 evde, 1 taşınıyor, 2 yerde. Taşınırken konumu taşıyıcıdan çizeriz.
+          this.flag = { state: ev.st, x: ev.x, y: ev.y, carrier: ev.c || 0 };
+          break;
+        }
+        case 'grab': {
+          const mine = ev.t === this.myTeam;
+          this.setCenterMsg(mine ? '🚩 Bayrağı takımın kaptı!' : '🚩 Bayrağı düşman kaptı!',
+            1500, mine ? '#ffd24a' : '#ff7a7a');
+          break;
+        }
+        case 'cap': {
+          const mine = ev.t === this.myTeam;
+          this.setCenterMsg(mine ? '🎉 SAYI! Takımın bayrağı götürdü' : '💥 Düşman sayı yaptı',
+            1800, mine ? '#4fd18b' : '#ff7a7a');
+          sfx.sfxUi?.();
+          break;
+        }
         default: break;
       }
     }
@@ -383,24 +404,9 @@ export class ClientGame {
     this._skullTimer = setTimeout(() => el.classList.remove('show'), 1500);
   }
 
-  // "X'i öldürdün" — ekranın ortasının biraz üstünde, kısa süre.
-  showKillText(ad) {
-    const el = $('killText');
-    if (!el) return;
-    el.innerHTML = `<span class="kt-ad">${esc(ad)}</span>${esc(belirtmeEki(ad))} öldürdün`;
-    el.classList.remove('show');
-    void el.offsetWidth;                 // animasyonu baştan başlat
-    el.classList.add('show');
-    clearTimeout(this._killTextTimer);
-    this._killTextTimer = setTimeout(() => el.classList.remove('show'), 1700);
-  }
-
   addKillfeed(ev) {
     // Öldüren ben miyim? (Kendini öldürmek sayılmaz.)
-    if (ev.k && ev.k === this.myId && ev.v !== this.myId) {
-      this.showKillSkull();
-      this.showKillText(ev.vn || 'Rakip');
-    }
+    if (ev.k && ev.k === this.myId && ev.v !== this.myId) this.showKillSkull();
     const wepName = ev.w === 'zone' ? 'alan' : (WEAPONS[ev.w]?.name || '');
     const kc = ev.kt === 1 ? '#ff8080' : ev.kt === 2 ? '#8fc4ff' : '#e8eef5';
     const vc = ev.vt === 1 ? '#ff8080' : ev.vt === 2 ? '#8fc4ff' : '#98a6b5';
@@ -511,8 +517,8 @@ export class ClientGame {
       const dt = Math.max(1, Math.min(MAX_INPUT_DT_MS, Math.round(stepMs)));
       const packet = { seq: ++this.seq, dt, keys: sample.keys, aim: sample.aim, power: sample.p };
 
-      if (this.alive) {
-        applyMovement(this.me, sample.keys, this.speed, dt / 1000, this.idx);
+      if (this.alive && !this.matchOver) {
+        applyMovement(this.me, sample.keys, this.predSpeed(), dt / 1000, this.idx);
         this.pending.push(packet);
         if (this.pending.length > 180) this.pending.shift();
         this.predictFire(sample.keys, sample.p);
@@ -575,13 +581,13 @@ export class ClientGame {
     if (this.you && (this.you.rl > 0 || this.you.am <= 0)) return;   // dolduruyor ya da şarjör boş
     this.localNextFire = now + wep.fireMs;
 
-    // Namlu alevi/dumanı NAMLUDAN çıkmalı. Burada eski hesap kalmıştı
-    // (gövde merkezi + 24 px): duman ayakların önünde, yerde ileri gidiyor
-    // gibi görünüyordu. Mermi zaten muzzleWorld()'den doğuyor; efekt de
-    // aynı noktadan çıksın.
-    const namlu = muzzleWorld(this.me.x, this.me.y, this.aim, wep.id);
-    const mx = namlu.x;
-    const my = namlu.y;
+    // Namlu efekti TAM namlu ucundan çıksın: mermi de silah da aynı noktayı
+    // (muzzleWorld) kullanıyor. Eski formül (gövde merkezi + R+8) HAND_Y
+    // yüksekliğini yok sayıyordu; efekt oyuncunun AYAK/ZEMİN hizasından
+    // çıkıyordu ("kıvılcım yerden çıkıyor"). meRender kullanıyoruz ki çizilen
+    // silahla birebir örtüşsün (hareket ederken de kaymaz).
+    const nm = muzzleWorld(this.meRender.x || this.me.x, this.meRender.y || this.me.y, this.aim, wep.id);
+    const mx = nm.x, my = nm.y;
     sfx.sfxShot(wep.id, 0, 0);
     this.fx.spawn(mx, my, {
       count: 6, angle: this.aim, spread: 0.55, speed: 300, life: 0.13, size: 3.2,
@@ -674,7 +680,9 @@ export class ClientGame {
       const d = Math.hypot(e.x - a.x, e.y - a.y);
       a.x = e.x; a.y = e.y;
       // Kare, kat edilen mesafeyle ilerler: hızlı koşan hızlı adımlar.
-      if (d > 0.35) { a.phase += d / 7; a.moving = true; a.idle = 0; }
+      // cad = karaktere özgü tempo: büyük değer = daha sık adım.
+      const cad = CHARACTERS[e.char]?.walk?.cad ?? 1;
+      if (d > 0.35) { a.phase += (d / 7) * cad; a.moving = true; a.idle = 0; }
       else { a.idle = (a.idle || 0) + 1; if (a.idle > 6) a.moving = false; }
       e.moving = a.moving && e.alive;
       const frame = Math.floor(a.phase) % WALK_FRAMES;
@@ -835,7 +843,7 @@ export class ClientGame {
     });
     rows.sort((a, b) => b.k - a.k || b.as - a.as || a.d - b.d || b.dm - a.dm);
 
-    let html = `<h3>${esc(this.mode.name)}</h3><div class="sb-sub">Kapatmak için tekrar Tab (ya da Esc) · liste uzunsa kaydır</div>`;
+    let html = `<h3>${esc(this.mode.name)}</h3><div class="sb-sub">Kapatmak için tekrar ☰ · Tab · Esc · liste uzunsa kaydır</div>`;
     if (this.teams && this.scores?.team) {
       html += `<div class="sb-teamline">
         <span style="color:${TEAMS[1].color}">${TEAMS[1].name} ${this.scores.team[1] || 0}</span>

@@ -3,7 +3,7 @@
 
 import {
   IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_FIRE, IN_RELOAD,
-  WEAPONS, PLAYER_RADIUS, TICK_MS,
+  WEAPONS, PLAYER_RADIUS,
   BUSH_REVEAL_DIST,
   BOT_LEVELS, DEFAULT_BOT_LEVEL,
 } from '../constants.js';
@@ -99,6 +99,10 @@ export function botThink(p, game, dtMs) {
   if (target && (!target.alive || Math.hypot(target.x - p.x, target.y - p.y) > gorus * 1.15)) target = null;
   const hasLos = target ? !lineBlocked(p.x, p.y, target.x, target.y, game.idx) : false;
 
+  // CTF: bayrak boştaysa (kimse taşımıyor) botlar gidip kapmaya çalışır.
+  const ctfGrab = (game.flag && game.flag.carrier !== p.id && game.flag.state !== 'carried')
+    ? { x: game.flag.x, y: game.flag.y } : null;
+
   // --- Amaç noktası -------------------------------------------------------
   let goalX, goalY;
   const lowHp = p.hp < p.maxHp * 0.32;
@@ -143,6 +147,11 @@ export function botThink(p, game, dtMs) {
       const sy = Math.sin(ang + Math.PI / 2) * b.strafe;
       goalX = p.x + (Math.cos(ang) * approach + sx * 0.85) * 200;
       goalY = p.y + (Math.sin(ang) * approach + sy * 0.85) * 200;
+    } else if (ctfGrab) {
+      // ÖNCE SAVAŞ, SONRA BAYRAK: görünürde düşman yoksa (yukarıdaki dal
+      // tutmadıysa) bayrağı kapmaya git. Böylece bot açık hedefi bırakıp
+      // bayrağa koşmaz; önce uzaktan öldürür, sonra bayrağa yönelir.
+      goalX = ctfGrab.x; goalY = ctfGrab.y;
     } else {
       if (!b.wander || Math.hypot(b.wander.x - p.x, b.wander.y - p.y) < 90 || now > b.wanderUntil) {
         const pool = game.spawns.all;
@@ -156,6 +165,13 @@ export function botThink(p, game, dtMs) {
       }
       goalX = b.wander.x; goalY = b.wander.y;
     }
+  }
+
+  // CTF: bayrağı TAŞIYAN bot her şeyi bırakıp düşman üssüne koşar (en yüksek
+  // öncelik — geri çekilme/cephane bile onu durdurmaz, bayrağı götürmeli).
+  if (game.flag && game.flag.carrier === p.id && game.bases) {
+    const base = game.bases[p.team];   // KENDİ üssüne götür
+    if (base) { goalX = base.x; goalY = base.y; }
   }
 
   // --- Engelden kaçınma (bıyık ışınları) ----------------------------------
@@ -215,52 +231,29 @@ export function botThink(p, game, dtMs) {
     && Math.hypot(target.x - p.x, target.y - p.y) < wep.range * 0.92
     && Math.abs(angDiff(b.aim, Math.atan2(target.y - p.y, target.x - p.x))) < (wep.id === 'shotgun' ? 0.26 : 0.1);
 
-  const cephaneVar = p.ammo > 0 && !p.reloadUntil;
-
-  if (wep.throwable) {
-    // BOMBA — "botlar bombayı atamıyor" hatasının kökü buradaydı.
-    //
-    // Bomba, tuşu BASILI TUTUP BIRAKARAK atılır; ne kadar tuttuğun menzili
-    // belirler. Eski kod tutmayı her karede `canShoot`a bağlıyordu. Ama
-    // `canShoot` nişan açısını 0,1 radyanlık dar bir toleransla ölçüyor ve
-    // botun nişanı her karede biraz sallanıyor (öngörü + yetenek sapması).
-    // Sonuç: koşul bir kare doğru, bir kare yanlış oluyor; tutma bir KAREDE
-    // kesiliyordu. Ölçüldü: tutma serilerinin neredeyse hepsi 33 ms, yani
-    // menzil hep en düşük değerde kalıyor ve bomba düşmanın çok gerisine
-    // düşüyordu (hedef 314 px uzakta, bomba 164 px'e gidiyor).
-    //
-    // Çözüm: atış kararı BİR KEZ veriliyor ve plan sonuna kadar sürüyor.
-    // Nişan sallantısı tutmayı bölmüyor; bot zaten tutarken de nişan almaya
-    // devam ediyor. Ancak gerçek sebepler (cephane bitti, şarjör doluyor,
-    // öldük) planı iptal ediyor.
-    if (b.throwStart) {
-      if (!cephaneVar || !p.alive) {
-        b.throwStart = 0; b.throwHold = 0;
-      } else if (now - b.throwStart < b.throwHold) {
-        keys |= IN_FIRE;                       // tut
-      } else {
-        b.throwStart = 0; b.throwHold = 0;     // bırak → bomba atılır
-        b.throwReadyAt = now + wep.fireMs;     // sunucudaki atış arası bekleme
-      }
-    } else if (canShoot && cephaneVar && now >= (b.throwReadyAt || 0)) {
+  if (canShoot && p.ammo > 0 && !p.reloadUntil) {
+    if (wep.throwable) {
+      // Bomba: tuşu BASILI TUTARAK menzili doldurup BIRAKARAK atıyoruz —
+      // oyuncuyla tamamen aynı mekanik, botun ayrıcalığı yok.
+      // Ne kadar tutacağımızı hedefin uzaklığından hesaplıyoruz; yetenek
+      // düştükçe biraz şaşırıyor, yani kolay botlar bombayı ıskalıyor.
       const d = Math.hypot(target.x - p.x, target.y - p.y);
       const oran = clamp((d - wep.minRange) / (wep.maxRange - wep.minRange), 0, 1);
-      // Yetenek düştükçe menzili şaşırıyor: kolay botlar ıskalasın.
       const sapma = (1 - b.skill) * 0.35 * (Math.random() - 0.5) * 2;
-      // En az iki kare tut: hedef asgari menzilden yakınsa plan sıfır çıkıyor
-      // ve tuşa hiç basılmıyordu — o durumda bomba HİÇ atılmıyordu.
-      b.throwHold = Math.max(TICK_MS * 2, clamp(oran + sapma, 0, 1) * wep.chargeMs);
-      b.throwStart = now;
-      keys |= IN_FIRE;
-    }
-  } else if (canShoot && cephaneVar) {
-    if (wep.auto) {
+      const hedefTut = clamp(oran + sapma, 0, 1) * wep.chargeMs;
+      if (!b.throwStart) b.throwStart = now;
+      if (now - b.throwStart < hedefTut) keys |= IN_FIRE;    // tut
+      else b.throwStart = 0;                                  // bırak → atılır
+    } else if (wep.auto) {
       keys |= IN_FIRE;
     } else {
       // Tek atışlılarda tetiği bırakıp basma (kenar tetikleme gerekiyor)
       b.fireHold = (b.fireHold + 1) % 2;
       if (b.fireHold === 0) keys |= IN_FIRE;
     }
+  } else if (b.throwStart) {
+    // Hedef kayboldu: elinde bombayla kalma, bırak gitsin.
+    b.throwStart = 0;
   }
   if (!p.reloadUntil && p.reserve > 0
     && (p.ammo === 0 || (!target && p.ammo < wep.mag * 0.4))) keys |= IN_RELOAD;

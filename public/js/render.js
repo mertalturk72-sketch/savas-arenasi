@@ -203,6 +203,7 @@ export class Renderer {
 
     // Zemin + binalar tek seferde, önbellekten
     this.drawWorld(ctx, g.map, view);
+    if (g.ctf) this.drawCtfBases(ctx, g, now);   // üsler zeminde, oyuncuların altında
     this.drawPickups(ctx, g, view);
     this.drawAimLaser(ctx, g);
     this.drawBullets(ctx, g, view);
@@ -213,12 +214,14 @@ export class Renderer {
     // Kendini ve takım arkadaşlarını çalının üstünde soluk göster: nerede
     // olduğunu görebilmelisin, düşman yine de seni göremez.
     this.drawFriendliesOverBushes(ctx, g, now);
+    if (g.ctf && g.flag) this.drawCtfFlag(ctx, g, now);   // bayrak en üstte
     if (g.zone) this.drawZone(ctx, g.zone, g.map);
 
     ctx.restore();
 
     this.drawVignette(ctx);
     this.drawCrosshair(ctx, g);
+    if (g.ctf && g.flag) this.drawCtfFlagPointer(ctx, g, now);
     if (this.mctx) this.drawMinimap(g, now);
   }
 
@@ -858,6 +861,110 @@ export class Renderer {
     ctx.restore();
   }
 
+  // --- Bayrak Çalma (CTF) çizimi ------------------------------------------
+  // Üsler: takım renginde, nabız atan halkalar. Bayrağı buraya götürünce sayı.
+  drawCtfBases(ctx, g, now) {
+    const R = 48;   // CTF.baseR ile aynı görünüm
+    for (const t of [1, 2]) {
+      const b = g.ctf.bases[t];
+      if (!b) continue;
+      const col = TEAMS[t]?.color || (t === 1 ? '#ff6b6b' : '#6b9bff');
+      const pulse = 1 + Math.sin(now / 350) * 0.06;
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(b.x, b.y, R * pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = col; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(b.x, b.y, R * pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Bayrak: taşınıyorsa taşıyıcının üstünde, değilse yerdeki konumunda.
+  drawCtfFlag(ctx, g, now) {
+    const f = g.flag;
+    let x = f.x, y = f.y;
+    if (f.state === 1 && f.carrier) {                // taşınıyor
+      const c = g.playersRender?.find((p) => p.id === f.carrier);
+      if (c) { x = c.x; y = c.y - PLAYER_RADIUS - 30; }
+    } else {
+      y = f.y - 4;
+    }
+    const wave = Math.sin(now / 140) * 2.2;
+    ctx.save();
+    // yerdeyse hafif zemin gölgesi + parıltı
+    if (f.state !== 1) {
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 8, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // direk
+    ctx.strokeStyle = '#d8d2c4'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 22); ctx.stroke();
+    // bez (dalgalanan üçgen) — beyaz bayrak (istek)
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#b9bcc2'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 22);
+    ctx.lineTo(x + 15 + wave, y - 17);
+    ctx.lineTo(x, y - 12);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Bayrak yön oku: bayrak ekran dışındaysa kenarda ona doğru bir ok çizer.
+  // Renk durumu anlatır: takımın taşıyor=yeşil, düşman taşıyor=kırmızı, boşta=sarı.
+  drawCtfFlagPointer(ctx, g, now) {
+    const f = g.flag;
+    let fx = f.x, fy = f.y;
+    if (f.state === 1 && f.carrier) {
+      const c = g.playersRender?.find((p) => p.id === f.carrier);
+      if (c) { fx = c.x; fy = c.y; }
+    }
+    // dünya → ekran
+    const sx = (fx - this.camX) * this.zoom + this.w / 2;
+    const sy = (fy - this.camY) * this.zoom + this.h / 2;
+    const m = 52;
+    if (sx >= m && sx <= this.w - m && sy >= m && sy <= this.h - m) return;  // görünüyor
+
+    // Renk = durum: boşta/evde beyaz (bayrak beyaz); taşınıyorsa takıma göre yeşil/kırmızı.
+    let col = '#ffffff';
+    if (f.state === 1 && f.carrier) {
+      const c = g.playersRender?.find((p) => p.id === f.carrier);
+      col = (c && g.myTeam && c.team === g.myTeam) ? '#4fd18b' : '#ff5a52';
+    }
+
+    const cx = this.w / 2, cy = this.h / 2;
+    const ang = Math.atan2(sy - cy, sx - cx);
+    const px = Math.max(m, Math.min(this.w - m, sx));
+    const py = Math.max(m, Math.min(this.h - m, sy));
+    const pulse = 1 + Math.sin(now / 200) * 0.12;
+
+    ctx.save();
+    ctx.translate(px, py);
+    // ok (üçgen), bayrağa doğru döner
+    ctx.save();
+    ctx.rotate(ang);
+    ctx.fillStyle = col;
+    ctx.shadowColor = col; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(20 * pulse, 0);
+    ctx.lineTo(2, -11);
+    ctx.lineTo(2, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // küçük bayrak simgesi
+    ctx.shadowBlur = 0;
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🚩', 0, -18);
+    ctx.restore();
+  }
+
   // Patlama halkası: hızla büyüyüp sönen turuncu bir dalga. Oyuncuya patlamanın
   // NEREDE ve NE KADAR GENİŞ olduğunu gösteriyor — hasar alanıyla aynı yarıçap.
   drawBlasts(ctx, g) {
@@ -1003,8 +1110,9 @@ export class Renderer {
     const jacket = g.teams ? (TEAMS[p.team]?.color || chr.jacket) : chr.jacket;
     const set = getCharacterSprites({
       jacket, hair: chr.hair, skin: chr.skin, accent: chr.accent,
-      eye: chr.eye, style: chr.style,
+      eye: chr.eye, style: chr.style, walk: chr.walk,
     });
+    const wk = chr.walk || { bob: 1, sway: 1 };
 
     const dir = dirFromAngle(p.aim);
     const frames = set[dir];
@@ -1025,8 +1133,8 @@ export class Renderer {
     this.gait.set(p.id, gait);
     p._gait = gait;                     // testlerin ve hata ayıklamanın görmesi için
     // İki adımda bir tam iniş-çıkış (8 karelik döngüde 2 kez)
-    const bob = Math.sin(ph * Math.PI / 2) * 2.2 * gait;
-    const sway = Math.sin(ph * Math.PI / 4) * 0.9 * gait;
+    const bob = Math.sin(ph * Math.PI / 2) * 2.2 * gait * (wk.bob ?? 1);
+    const sway = Math.sin(ph * Math.PI / 4) * 0.9 * gait * (wk.sway ?? 1);
 
     const scale = 1.75;
     const w = SPRITE_W * scale, h = SPRITE_H * scale;
@@ -1120,50 +1228,149 @@ export class Renderer {
       return;
     }
 
-    // dipçik
-    ctx.fillStyle = '#3a2b1e';
-    ctx.fillRect(gx - 8, oy - 2.4, 8, 4.8);
-    // namlu
-    ctx.fillStyle = '#20272f';
-    ctx.fillRect(gx, oy - 2.8, len, 5.6);
-    ctx.fillStyle = '#3d4854';
-    ctx.fillRect(gx, oy - 2.8, len, 1.8);
-    // şarjör
-    ctx.fillStyle = '#2a323b';
-    ctx.fillRect(gx + 5, oy + 2.4, 5, 5);
-    if (wep.id === 'sniper') {
-      ctx.fillStyle = '#151a20';
-      ctx.fillRect(gx + 9, oy - 6.4, 10, 3.6);       // dürbün
-    }
+    // Her silahın KENDİNE ÖZGÜ görünümü. Namlu ucu HER ZAMAN (gx+len, oy)'de
+    // biter — muzzleWorld ile birebir aynı nokta; yoksa mermi/alev silahtan
+    // kayar. Alt çizim yordamları bu kurala uyar.
+    // (Namlu alevi üçgeni istek üzerine kaldırıldı; ateş efekti artık yalnızca
+    //  dünyadaki parçacık patlaması — game.js 'shot' olayı.)
+    if (wep.id === 'shotgun') this.drawShotgun(ctx, gx, oy, len, chr);
+    else if (wep.id === 'sniper') this.drawSniper(ctx, gx, oy, len, chr);
+    else this.drawRifle(ctx, gx, oy, len, chr);
 
-    // eller silahın üstünde
+    ctx.restore();
+  }
+
+  // --- Silah siluetleri (yerel çerçeve: 0=eller, +x=nişan yönü) -----------
+  // Ortak kural: NAMLU UCU (gx+len, oy)'de biter.
+
+  drawRifle(ctx, gx, oy, len, chr) {
+    const tip = gx + len;
+    // dipçik (polimer) — taban + üst ışık + alt gölge
+    ctx.fillStyle = '#2b2f36'; ctx.fillRect(gx - 10, oy - 2.6, 10, 5.4);
+    ctx.fillStyle = '#3b424b'; ctx.fillRect(gx - 10, oy - 2.6, 10, 1.3);
+    ctx.fillStyle = '#171b20'; ctx.fillRect(gx - 10, oy + 1.9, 10, 0.9);
+    // tetik korkuluğu
+    ctx.strokeStyle = '#12161b'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(gx + 4, oy + 4.4, 2.2, 0.15, Math.PI - 0.15); ctx.stroke();
+    // gövde (receiver)
+    ctx.fillStyle = '#232a32'; ctx.fillRect(gx - 1, oy - 3.3, 13, 6.6);
+    ctx.fillStyle = '#333c46'; ctx.fillRect(gx - 1, oy - 3.3, 13, 1.2);
+    ctx.fillStyle = '#151a1f'; ctx.fillRect(gx - 1, oy + 2.3, 13, 1);
+    // üst ray + arka/ön nişangah
+    ctx.fillStyle = '#11151a'; ctx.fillRect(gx + 1, oy - 4.6, 9, 1.3);
+    ctx.fillRect(gx + 1.6, oy - 5.9, 1.6, 1.5);
+    ctx.fillRect(gx + 8.2, oy - 5.9, 1.4, 1.5);
+    // handguard (delikli) + namlu
+    ctx.fillStyle = '#242c34'; ctx.fillRect(gx + 12, oy - 1.9, len - 12, 3.8);
+    ctx.fillStyle = '#3a444f'; ctx.fillRect(gx + 12, oy - 1.9, len - 12, 1);
+    ctx.fillStyle = '#10141a';
+    ctx.fillRect(gx + 14, oy - 0.4, 1.4, 1.6);
+    ctx.fillRect(gx + 17, oy - 0.4, 1.4, 1.6);
+    // namlu freni (yarıklı) + ağız deliği
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(tip - 3.4, oy - 2, 3.4, 4);
+    ctx.fillStyle = '#2c343d'; ctx.fillRect(tip - 2.4, oy - 1.2, 0.8, 2.4);
+    ctx.fillStyle = '#000'; ctx.fillRect(tip - 1.2, oy - 0.7, 1.2, 1.4);
+    // kavisli şarjör (gölgeli + ışık çizgisi)
+    ctx.fillStyle = '#262e37';
+    ctx.beginPath();
+    ctx.moveTo(gx + 3, oy + 3); ctx.lineTo(gx + 9.5, oy + 3);
+    ctx.lineTo(gx + 11, oy + 9.6); ctx.lineTo(gx + 4.4, oy + 10);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(gx + 4.2, oy + 3.8, 1, 5.4);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(gx + 9, oy + 3.6, 1.3, 5.6);
+    // eller
     ctx.fillStyle = chr.skin;
     ctx.fillRect(gx + 1, oy - 3.6, 4, 7.2);
-    ctx.fillRect(gx + len - 10, oy - 3.4, 4, 6.8);
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.fillRect(gx + 1, oy + 2.2, 4, 1.4);
+    ctx.fillRect(tip - 12, oy - 3.2, 4, 6.4);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(gx + 1, oy - 3.6, 4, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(gx + 1, oy + 2.4, 4, 1.2);
+  }
 
-    // namlu alevi
-    if (p.muzzle) {
-      ctx.fillStyle = 'rgba(255,220,140,0.95)';
-      ctx.shadowColor = '#ffb347'; ctx.shadowBlur = 18;
-      ctx.beginPath();
-      ctx.moveTo(gx + len, oy - 6);
-      ctx.lineTo(gx + len + 15, oy);
-      ctx.lineTo(gx + len, oy + 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-    ctx.restore();
+  drawShotgun(ctx, gx, oy, len, chr) {
+    const tip = gx + len;
+    // ahşap dipçik — taban + damar ışığı + gölge
+    ctx.fillStyle = '#3a2b1e'; ctx.fillRect(gx - 11, oy - 3, 11, 6);
+    ctx.fillStyle = '#5a4128'; ctx.fillRect(gx - 11, oy - 3, 11, 1.5);
+    ctx.fillStyle = '#4a3624'; ctx.fillRect(gx - 11, oy - 0.4, 11, 0.8);   // ahşap damarı
+    ctx.fillStyle = '#241a12'; ctx.fillRect(gx - 11, oy + 2.2, 11, 0.8);
+    // gövde + boşaltma yuvası
+    ctx.fillStyle = '#282420'; ctx.fillRect(gx - 1, oy - 3.4, 10, 6.8);
+    ctx.fillStyle = '#3a352d'; ctx.fillRect(gx - 1, oy - 3.4, 10, 1.1);
+    ctx.fillStyle = '#0c0a08'; ctx.fillRect(gx + 2, oy - 2, 4, 1.8);       // ejection port
+    // üst namlu (kalın) + ışık
+    ctx.fillStyle = '#2c343d'; ctx.fillRect(gx + 8, oy - 3, len - 8, 3.4);
+    ctx.fillStyle = '#41505d'; ctx.fillRect(gx + 8, oy - 3, len - 8, 1.1);
+    // alt tüp şarjör + ışık
+    ctx.fillStyle = '#20262d'; ctx.fillRect(gx + 8, oy + 0.7, len - 9, 2.6);
+    ctx.fillStyle = '#333d47'; ctx.fillRect(gx + 8, oy + 0.7, len - 9, 0.8);
+    // ahşap pompa (ön kabza) — oluklu
+    ctx.fillStyle = '#5a4026'; ctx.fillRect(gx + 12, oy + 0.2, 7, 3.6);
+    ctx.fillStyle = '#6e4f30'; ctx.fillRect(gx + 12, oy + 0.2, 7, 0.9);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(gx + 14, oy + 1, 0.8, 2.6); ctx.fillRect(gx + 16, oy + 1, 0.8, 2.6);
+    // ön arpacık (bead) + geniş namlu ağzı
+    ctx.fillStyle = '#11151a'; ctx.fillRect(tip - 5, oy - 3.6, 1.4, 1.2);
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(tip - 2.6, oy - 3.2, 2.6, 5);
+    ctx.fillStyle = '#000'; ctx.fillRect(tip - 1.8, oy - 2, 1.4, 1.6);
+    // eller
+    ctx.fillStyle = chr.skin;
+    ctx.fillRect(gx + 1, oy - 3.8, 4, 7.6);
+    ctx.fillRect(gx + 13, oy, 4, 4.4);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(gx + 1, oy - 3.8, 4, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(gx + 1, oy + 2.6, 4, 1.2);
+  }
+
+  drawSniper(ctx, gx, oy, len, chr) {
+    const tip = gx + len;
+    // uzun dipçik + yanak dayama (ışık/gölge)
+    ctx.fillStyle = '#242830'; ctx.fillRect(gx - 13, oy - 2.6, 13, 5.4);
+    ctx.fillStyle = '#343b46'; ctx.fillRect(gx - 13, oy - 2.6, 13, 1.3);
+    ctx.fillStyle = '#151920'; ctx.fillRect(gx - 13, oy + 1.9, 13, 0.9);
+    ctx.fillStyle = '#2b303a'; ctx.fillRect(gx - 12, oy - 4.1, 7, 1.6);   // yanak dayama
+    // gövde
+    ctx.fillStyle = '#1c222a'; ctx.fillRect(gx - 1, oy - 2.9, 13, 5.8);
+    ctx.fillStyle = '#2c3540'; ctx.fillRect(gx - 1, oy - 2.9, 13, 1.1);
+    // sürgü kolu (topuzlu)
+    ctx.fillStyle = '#39424d'; ctx.fillRect(gx + 9, oy + 1, 1.6, 3.4);
+    ctx.beginPath(); ctx.arc(gx + 9.8, oy + 4.6, 1.4, 0, 7); ctx.fill();
+    // ince uzun namlu + ışık
+    ctx.fillStyle = '#2a323b'; ctx.fillRect(gx + 12, oy - 1.3, len - 12, 2.6);
+    ctx.fillStyle = '#3d4854'; ctx.fillRect(gx + 12, oy - 1.3, len - 12, 0.8);
+    // namlu freni (yarıklı) + ağız
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(tip - 5, oy - 1.9, 5, 3.8);
+    ctx.fillStyle = '#2c343d';
+    ctx.fillRect(tip - 3.8, oy - 1.1, 0.8, 2.2); ctx.fillRect(tip - 2.4, oy - 1.1, 0.8, 2.2);
+    ctx.fillStyle = '#000'; ctx.fillRect(tip - 1.1, oy - 0.6, 1.1, 1.2);
+    // BÜYÜK dürbün: tüp + ışık + iki mercek + ayar kulesi
+    ctx.fillStyle = '#0e1217'; ctx.fillRect(gx + 1, oy - 7, 16, 3.4);
+    ctx.fillStyle = '#20293480'; ctx.fillRect(gx + 1, oy - 7, 16, 1.1);
+    ctx.fillStyle = '#39424d'; ctx.fillRect(gx + 7, oy - 8.2, 3, 1.4);     // ayar kulesi
+    ctx.fillStyle = '#12161b'; ctx.fillRect(gx + 0.4, oy - 7, 1.4, 3.4);   // arka mercek çerçeve
+    ctx.fillStyle = '#0a0d10'; ctx.fillRect(gx + 1.2, oy - 6.4, 1, 2.2);
+    ctx.fillStyle = '#8fc4ec'; ctx.fillRect(gx + 15.4, oy - 6.6, 1.8, 2.6); // ön mercek parıltısı
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(gx + 15.6, oy - 6.4, 0.7, 1);
+    // dürbün ayakları
+    ctx.fillStyle = '#12161b';
+    ctx.fillRect(gx + 3.5, oy - 3.8, 1.6, 2);
+    ctx.fillRect(gx + 13, oy - 3.8, 1.6, 2);
+    // eller
+    ctx.fillStyle = chr.skin;
+    ctx.fillRect(gx + 1, oy - 3.2, 4, 6.8);
+    ctx.fillRect(tip - 14, oy - 2.6, 4, 5.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(tip - 14, oy - 2.6, 4, 0.9);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(gx + 1, oy + 2, 4, 1.2);
   }
 
   // Bombacının elindeki bomba. Yerel koordinatta çizilir: (0,0) eller,
   // +x nişan yönü. Namlu ucu hesabı (WEAPON_VIEW.bomba) buranın ucuna denk
   // gelir — bomba elden çıkar.
+  // Bombacının elindeki EL BOMBASI (frag): zeytin yeşili ovoid gövde, pineapple
+  // olukları, üstte fünye kapağı, emniyet kaşığı (kaşık) ve pim halkası.
+  // Yerel çerçeve: +x nişan yönü, (gx,oy) el hizası. Fırlatma noktası
+  // (WEAPON_VIEW.bomba) gövdenin merkezine denk gelir.
   drawBombInHand(ctx, p, gx, oy, chr) {
-    const R = 5.2;
-    const cx = gx + R * 0.6, cy = oy;
+    const cx = gx + 2.6, cy = oy;
+    const rx = 4.4, ry = 5.2;
 
     // el
     ctx.fillStyle = chr.skin;
@@ -1171,32 +1378,39 @@ export class Renderer {
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.fillRect(gx - 4, oy + 2, 5, 1.2);
 
-    // gövde
-    ctx.fillStyle = '#23282e';
+    // gövde (zeytin yeşili ovoid) + ışık/gölge
+    ctx.fillStyle = '#3f4a2a';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    ctx.beginPath(); ctx.ellipse(cx - 1.2, cy - 1.7, rx * 0.5, ry * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(cx + 0.9, cy + 2.1, rx * 0.66, ry * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+
+    // pineapple olukları (yatay + dikey çentikler)
+    ctx.strokeStyle = 'rgba(0,0,0,0.34)'; ctx.lineWidth = 0.7;
     ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fill();
-    // üstten ışık
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.beginPath();
-    ctx.arc(cx - R * 0.3, cy - R * 0.35, R * 0.45, 0, Math.PI * 2);
-    ctx.fill();
-    // boyun
-    ctx.fillStyle = '#4a5561';
-    ctx.fillRect(cx - 1.6, cy - R - 2.2, 3.2, 2.6);
-    // fitil
-    ctx.strokeStyle = '#b98b4a';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - R - 2);
-    ctx.quadraticCurveTo(cx + 2.5, cy - R - 5.5, cx + 5, cy - R - 4);
+    ctx.moveTo(cx - rx + 1, cy - 2);   ctx.lineTo(cx + rx - 1, cy - 2);
+    ctx.moveTo(cx - rx + 0.6, cy + 1); ctx.lineTo(cx + rx - 0.6, cy + 1);
+    ctx.moveTo(cx - 1.4, cy - ry + 1.6); ctx.lineTo(cx - 1.4, cy + ry - 1.6);
+    ctx.moveTo(cx + 1.4, cy - ry + 1.6); ctx.lineTo(cx + 1.4, cy + ry - 1.6);
     ctx.stroke();
-    // kıvılcım — ateş etmeye hazırlanırken (tetik basılıyken) parlar
+
+    // fünye kapağı (metal, üstte)
+    ctx.fillStyle = '#5a6472'; ctx.fillRect(cx - 1.9, cy - ry - 1.8, 3.8, 2.2);
+    ctx.fillStyle = '#727d8c'; ctx.fillRect(cx - 1.9, cy - ry - 1.8, 3.8, 0.8);
+    // emniyet kaşığı (spoon) — gövdenin yanında yukarı
+    ctx.fillStyle = '#8a929c'; ctx.fillRect(cx + 1.5, cy - ry - 1.4, 1.4, ry + 1.4);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(cx + 1.5, cy - ry - 1.4, 1.4, 0.7);
+    // pim halkası (yan)
+    ctx.strokeStyle = '#c9cdd3'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx + 4, cy - ry - 0.4, 1.6, 0, Math.PI * 2); ctx.stroke();
+
+    // kıvılcım — tetik basılıyken (fırlatmaya hazırlanırken) parlar
     if (p.muzzle) {
       ctx.fillStyle = 'rgba(255,196,90,0.95)';
       ctx.shadowColor = '#ffb347'; ctx.shadowBlur = 10;
       ctx.beginPath();
-      ctx.arc(cx + 5.4, cy - R - 4, 1.9, 0, Math.PI * 2);
+      ctx.arc(cx, cy - ry - 2.8, 1.7, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
     }

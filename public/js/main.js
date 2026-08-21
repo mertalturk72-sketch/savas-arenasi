@@ -236,8 +236,10 @@ function buildCharPicker(container, selected, teamColor, weaponId, onPick) {
       jacket: teamColor || ch.jacket, hair: ch.hair, skin: ch.skin,
       accent: ch.accent, eye: ch.eye, style: ch.style,
     });
-    cx.drawImage(set.down[1], 0, 0, 64, 72);
-    // karakteri silahıyla göster
+    // YAN profil (sağa bakan): bacaklar neredeyse düz (frame 0 → en az açık
+    // adım, iki ayak da yerde) — "iki bacak eşit" isteği. Silahı omuz hizasında
+    // iki eliyle tutup nişan alıyor gibi görünür.
+    cx.drawImage(set.right[0], 0, 0, 64, 72);
     drawWeaponOnPreview(cx, 0, 0, 2, weaponId, ch.skin);
 
     const label = document.createElement('span');
@@ -508,6 +510,8 @@ function didIWin(sb) {
   if (!sb || !sb.rows || !sb.rows.length) return false;
   const ben = sb.rows.find((r) => r.id === state.me.id);
   if (!ben) return false;
+  // Takım BR: kazanan açıkça takım olarak gelir (skor değil, son ayakta kalan).
+  if (sb.winner && sb.winner.team) return ben.team === sb.winner.team;
   if (sb.teamScore) {
     const t1 = sb.teamScore[1] || 0, t2 = sb.teamScore[2] || 0;
     if (t1 === t2) return false;
@@ -815,6 +819,9 @@ const WIN_SOLO_MS = 2000;
 
 net.on(S.MATCH_END, (m) => {
   if (!state.inMatch) return;
+  // Maç bitti: yerel hareket tahminini durdur (yoksa "KAYBETTİN"de dünya
+  // dururken oyuncu yürümeye devam ediyordu).
+  if (game) game.matchOver = true;
   closeSettings();
   // Bu tabloyu gördük; lobide ikinci kez gösterilmesin.
   state.seenScoreboard = m.scoreboard && m.scoreboard.matchId;
@@ -892,7 +899,7 @@ function initUi() {
       name: $('lobbyNameInput').value.trim(),
       mode: state.createMode,   // varsayılan; host lobide değiştirir
       maxPlayers: MAX_PLAYERS,
-      botCount: 0,
+      botCount: 1,              // lobi 1 botla açılır (istek üzerine 0 → 1)
       botLevel: state.createBotLevel,
       private: $('privateInput').checked,
     });
@@ -1039,6 +1046,8 @@ function initUi() {
 
   // Dokunmatik skor düğmesi
   input.onScoreboard = (on) => { if (state.inMatch) game.toggleScoreboard(on); };
+  // Telefondaki ☰ düğmesi: tek dokunuşta aç/kapat (masaüstü Tab gibi).
+  input.onScoreboardToggle = () => { if (state.inMatch) game.toggleScoreboard(!game.showScoreboard); };
 
   // Telefonda kaydırma/zoom jestleri oyunu bozmasın
   document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -1160,6 +1169,18 @@ function showInsecureWarning() {
 const UPDATE_PREF_KEY = 'sa_online_surum';
 const UPDATE_SKIP_KEY = 'sa_surum_atla';
 
+// Sunucudan kendini-güncelleme AÇIK mı?
+//
+// KAPALI. Sebep: uygulama artık doğrudan APK olarak (WhatsApp vb.) dağıtılıyor
+// ve Render sunucusu güncel tutulmuyor. Sunucu geride kalınca "Güncelle" düğmesi
+// kullanıcıyı sunucudaki ESKİ/bozuk sürüme düşürüyordu ("güncelleyince bozuluyor,
+// güncellemezsem çalışıyor"). Bu yüzden paket (APK) sürümde kendini-güncelleme
+// kapatıldı: APK DAİMA kendi içindeki sürümü çalıştırır. Yeni sürüm = yeni APK.
+//
+// Tekrar açmak istersen true yap — AMA o zaman Render sunucusunu her yeni
+// sürümde güncel tutman ŞART, yoksa aynı sorun geri gelir.
+const SELF_UPDATE_ENABLED = false;
+
 function isPackaged() {
   return typeof window.__BUILD__ === 'string' && window.__BUILD__.length > 0;
 }
@@ -1184,6 +1205,7 @@ function showBuildInfo() {
 }
 
 async function checkForUpdate() {
+  if (!SELF_UPDATE_ENABLED) return;          // KAPALI: bkz. SELF_UPDATE_ENABLED
   if (!isPackaged()) return;                 // sunucudan açıldıysa zaten günceldir
   if (navigator.onLine === false) return;    // internet yok, sessizce geç
 
@@ -1279,6 +1301,9 @@ function initSelfUpdate() {
 // doğruluyoruz. Cevap yoksa hiçbir şey yapmıyoruz: uygulama kendi içindeki
 // kopyayla normal şekilde açılır, oyun oynanır.
 async function preferOnlineIfChosen() {
+  // KAPALI: kendini-güncelleme kapalıyken eski "sunucuya yönlen" tercihini de
+  // uygulamıyoruz; kalmış bir tercih varsa temizle ki bir daha tetiklenmesin.
+  if (!SELF_UPDATE_ENABLED) { store(UPDATE_PREF_KEY, ''); return false; }
   if (!isPackaged()) return false;
   if (store(UPDATE_PREF_KEY) !== '1') return false;
   if (navigator.onLine === false) return false;

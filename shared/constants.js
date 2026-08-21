@@ -76,6 +76,44 @@ export const MODES = {
     shrinkingZone: true,
     map: 'royale',
   },
+  // Takım BR: Son Hayatta Kalan'ın TAKIMLI hâli. İki takım, tek can, daralan
+  // alan. Ayakta kalan son TAKIM kazanır (skor değil, hayatta kalma).
+  takim_br: {
+    id: 'takim_br',
+    name: 'Takım BR (Ekip)',
+    short: 'EKİP',
+    desc: 'İki takım, tek can, daralan alan. Ayakta kalan son takım kazanır.',
+    teams: true,
+    respawn: false,
+    scoreLimit: 0,
+    timeLimitMs: MATCH_MS,
+    shrinkingZone: true,
+    map: 'royale',
+  },
+  // Bayrak Çalma (CTF) — tek merkez bayrak sürümü. Ortadaki bayrağı kap,
+  // DÜŞMAN üssüne götür = 1 sayı. Önce 3'e ulaşan takım kazanır. Taşıyıcı
+  // ölünce bayrak düşer, 10 sn sonra merkeze döner (bkz. CTF).
+  ctf: {
+    id: 'ctf',
+    name: 'Bayrak Çalma',
+    short: 'CTF',
+    desc: 'Ortadaki bayrağı kap, kendi üssüne götür. Önce 3 kapan takım kazanır.',
+    teams: true,
+    respawn: true,
+    scoreLimit: 3,
+    timeLimitMs: 3 * 60 * 1000,   // CTF maçı 3 dakika (istek)
+    shrinkingZone: false,
+    map: 'ctf',
+    ctf: true,
+  },
+};
+
+// Bayrak Çalma ayarları — tek yerde.
+export const CTF = {
+  flagReturnMs: 5000,   // yere düşen bayrak bu kadar sonra merkeze döner (istek: 5 sn)
+  baseR: 48,            // üsse bu kadar yaklaşınca sayı (capture) olur
+  pickR: 28,            // bayrağa bu kadar yaklaşınca alınır/geri döner
+  carrierSpeed: 0.30,   // bayrağı taşırken hız çarpanı: %70 yavaşlar (istek)
 };
 export const MODE_IDS = Object.keys(MODES);
 export const DEFAULT_MODE = 'ffa';
@@ -83,8 +121,8 @@ export const DEFAULT_MODE = 'ffa';
 // --- Takımlar -------------------------------------------------------------
 export const TEAMS = {
   0: { id: 0, name: 'Yok', color: '#9aa4b2' },
-  1: { id: 1, name: 'Kızıl Tugay', color: '#ef4a4a', colorDim: '#7d2020' },
-  2: { id: 2, name: 'Mavi Filo', color: '#3f9bff', colorDim: '#1d4a7d' },
+  1: { id: 1, name: 'Kırmızı', color: '#ef4a4a', colorDim: '#7d2020' },
+  2: { id: 2, name: 'Mavi', color: '#3f9bff', colorDim: '#1d4a7d' },
 };
 
 // --- Haritalar ------------------------------------------------------------
@@ -93,6 +131,9 @@ export const TEAMS = {
 export const MAPS = {
   arena: { w: 3400, h: 2400 },
   royale: { w: 4600, h: 3400 },
+  // Bayrak Çalma: UZUN, İNCE, YATAY arena. Üsler iki uçta; bayrağı kapan uzun
+  // bir koridoru göğüsleyip düşman ucuna taşımak zorunda (kovalamaca).
+  ctf: { w: 6000, h: 1400 },
 };
 
 // Geçitlerin en az bu kadar boşluğu olmalı (oyuncu çapı 32 px).
@@ -110,6 +151,10 @@ export const SPAWN_PROTECT_MS = 1500;
 // ASLA azamiyi aşmaz — 90 canlıyken öldüren 140 değil, 100 olur.
 // (Tavan kontrolü shared/sim/game.js içindeki kill() fonksiyonunda.)
 export const KILL_HEAL = 50;
+
+// Öldürme ödülü (mermi): öldüren oyuncu yedek kapasitesinin bu kadarını geri
+// kazanır. Can ödülü gibi bu da ASLA yedeğin azamisini aşmaz.
+export const KILL_AMMO_FRACTION = 0.35;
 
 // --- Doğuş noktaları ------------------------------------------------------
 // Oyuncular haritanın dış çerçevesinde doğmasın: her kenardan haritanın bu
@@ -145,7 +190,7 @@ export const CLASSES = {
     id: 'komando',
     name: 'Komando',
     desc: 'Dengeli. Otomatik tüfek. Her duruma uyar.',
-    speed: 218,
+    speed: 327,
     hp: 100,
     weapon: 'rifle',
     color: '#7ee787',
@@ -154,7 +199,7 @@ export const CLASSES = {
     id: 'akinci',
     name: 'Akıncı',
     desc: 'Çok hızlı. Pompalı ile yakın dövüş.',
-    speed: 282,
+    speed: 423,
     hp: 100,
     weapon: 'shotgun',
     color: '#ffd479',
@@ -163,7 +208,7 @@ export const CLASSES = {
     id: 'nisanci',
     name: 'Keskin Nişancı',
     desc: 'Yavaş ama tek atışta yıkıcı. Uzun menzil.',
-    speed: 176,
+    speed: 264,
     hp: 100,
     weapon: 'sniper',
     color: '#c39bff',
@@ -172,7 +217,7 @@ export const CLASSES = {
     id: 'bombaci',
     name: 'Bombacı',
     desc: 'Bomba atar. Basılı tut, menzili ayarla, bırak.',
-    speed: 202,
+    speed: 303,
     hp: 100,
     weapon: 'bomba',
     color: '#ff9f5a',
@@ -189,32 +234,32 @@ export const DEFAULT_CLASS = 'komando';
 // Aralık veriyoruz, tek sayı değil: aynı zorlukta bile botlar birbirinin
 // kopyası olmasın, aralarında biraz fark bulunsun.
 export const BOT_LEVELS = {
-  // Üç seviye de ZAYIFLATILDI: kolay bile fazla zorluyordu. Üç kolu birden
-  // gevşetiyoruz — yetenek (isabet + öngörü), görüş menzili ve tepki gecikmesi.
-  // Kolay artık gerçekten kolay: seni geç görür, geç tepki verir, çok ıskalar.
+  // Fark KASTEN çok açık: kolay gerçekten zayıf (geç görür, çok ıskalar, geç
+  // ateşler), zor neredeyse kusursuz (uzağı görür, isabetli, anında ateşler).
+  // Tepki farkı ~800 ms'den ~40 ms'ye: en güçsüzle en güçlü arasında uçurum var.
   kolay: {
     id: 'kolay',
     name: 'Kolay',
-    desc: 'Seni geç görür, çok ıskalar',
-    skill: [0.04, 0.16],
-    view: 560,
-    reactMs: 950,
+    desc: 'Çok geç fark eder, bol ıskalar',
+    skill: [0.03, 0.15],
+    view: 620,
+    reactMs: 820,
   },
   orta: {
     id: 'orta',
     name: 'Orta',
     desc: 'Dengeli rakip',
-    skill: [0.26, 0.48],
-    view: 900,
-    reactMs: 430,
+    skill: [0.40, 0.62],
+    view: 1080,
+    reactMs: 260,
   },
   zor: {
     id: 'zor',
     name: 'Zor',
-    desc: 'Çabuk görür, isabetli',
-    skill: [0.58, 0.82],
-    view: 1250,
-    reactMs: 180,
+    desc: 'Anında görür, kusursuz nişan',
+    skill: [0.90, 1.0],
+    view: 1520,
+    reactMs: 40,
   },
 };
 export const BOT_LEVEL_IDS = Object.keys(BOT_LEVELS);
@@ -223,16 +268,21 @@ export const DEFAULT_BOT_LEVEL = 'orta';
 // --- Karakterler ----------------------------------------------------------
 // Görünüş seçimi; oynanışı etkilemez. Renkler kodla piksel piksel çizilir
 // (public/js/sprites.js), hazır görsel dosyası yok.
+// walk: her karaktere ÖZGÜ yürüyüş kişiliği. leg=adım genişliği, arm=kol
+// sallama, lift=arka ayağın kalkışı (bunlar sprite karesine gömülür); bob=dikey
+// sekme, sway=yana salınım (çizimde sürekli), cad=adım temposu (mesafeye göre
+// kare ilerleme hızı). 1 = temel. Değerler kasten belirgin ki fark görünsün.
 export const CHARACTERS = {
-  kivircik:  { id: 'kivircik',  name: 'Kıvırcık',   style: 'kabarik', hair: '#8a6a3f', skin: '#f0c8a0', jacket: '#2f3a4a', accent: '#e8c15a', eye: '#7fb0d8' },
-  diken:     { id: 'diken',     name: 'Diken',      style: 'dikenli', hair: '#4e8f6d', skin: '#f2d0aa', jacket: '#23262e', accent: '#9fd8b4', eye: '#8fe0b0' },
-  uzunsac:   { id: 'uzunsac',   name: 'Yele',       style: 'uzun',    hair: '#7a5a3a', skin: '#f4d3ae', jacket: '#2b3550', accent: '#cfd8e8', eye: '#6fa8d8' },
-  kasketli:  { id: 'kasketli',  name: 'Kasketli',   style: 'kasket',  hair: '#3b3f5c', skin: '#e9c39c', jacket: '#20242c', accent: '#c8b26a', eye: '#9aa8e0' },
-  karasac:   { id: 'karasac',   name: 'Karasaç',    style: 'uzun',    hair: '#2a2730', skin: '#a9714b', jacket: '#26282f', accent: '#d8b552', eye: '#c8a0d8' },
-  gumus:     { id: 'gumus',     name: 'Gümüş',      style: 'kisa',    hair: '#c9c6bd', skin: '#eec9a6', jacket: '#33383f', accent: '#d9d3c0', eye: '#a8c8e0' },
-  mavipercem:{ id: 'mavipercem',name: 'Mavi Perçem',style: 'kisa',    hair: '#5f7fc4', skin: '#f2d2b2', jacket: '#242a38', accent: '#b8cbe8', eye: '#7fc8e8' },
-  esmer:     { id: 'esmer',     name: 'Esmer',      style: 'kabarik', hair: '#402e20', skin: '#8a5a3a', jacket: '#2c3630', accent: '#e0bb55', eye: '#d8b98f' },
+  kivircik:  { id: 'kivircik',  name: 'Kıvırcık',   style: 'kabarik', hair: '#8a6a3f', skin: '#f0c8a0', jacket: '#2f3a4a', accent: '#e8c15a', eye: '#7fb0d8', walk: { leg: 1.0,  arm: 1.0, lift: 1.0, bob: 1.0, sway: 1.0, cad: 1.0  } },
+  diken:     { id: 'diken',     name: 'Diken',      style: 'dikenli', hair: '#4e8f6d', skin: '#f2d0aa', jacket: '#23262e', accent: '#9fd8b4', eye: '#8fe0b0', walk: { leg: 1.15, arm: 1.4, lift: 1.3, bob: 1.5, sway: 1.1, cad: 1.2  } },
+  uzunsac:   { id: 'uzunsac',   name: 'Yele',       style: 'uzun',    hair: '#7a5a3a', skin: '#f4d3ae', jacket: '#2b3550', accent: '#cfd8e8', eye: '#6fa8d8', walk: { leg: 0.85, arm: 0.8, lift: 0.7, bob: 0.7, sway: 1.5, cad: 0.95 } },
+  kasketli:  { id: 'kasketli',  name: 'Kasketli',   style: 'kasket',  hair: '#3b3f5c', skin: '#e9c39c', jacket: '#20242c', accent: '#c8b26a', eye: '#9aa8e0', walk: { leg: 1.4,  arm: 0.5, lift: 0.9, bob: 0.6, sway: 0.5, cad: 1.05 } },
+  karasac:   { id: 'karasac',   name: 'Karasaç',    style: 'uzun',    hair: '#2a2730', skin: '#a9714b', jacket: '#26282f', accent: '#d8b552', eye: '#c8a0d8', walk: { leg: 0.7,  arm: 0.7, lift: 0.5, bob: 0.5, sway: 0.8, cad: 0.85 } },
+  gumus:     { id: 'gumus',     name: 'Gümüş',      style: 'kisa',    hair: '#c9c6bd', skin: '#eec9a6', jacket: '#33383f', accent: '#d9d3c0', eye: '#a8c8e0', walk: { leg: 0.95, arm: 1.1, lift: 0.9, bob: 0.9, sway: 1.6, cad: 0.9  } },
+  mavipercem:{ id: 'mavipercem',name: 'Mavi Perçem',style: 'kisa',    hair: '#5f7fc4', skin: '#f2d2b2', jacket: '#242a38', accent: '#b8cbe8', eye: '#7fc8e8', walk: { leg: 1.0,  arm: 1.2, lift: 1.5, bob: 1.3, sway: 1.1, cad: 1.25 } },
+  esmer:     { id: 'esmer',     name: 'Esmer',      style: 'kabarik', hair: '#402e20', skin: '#8a5a3a', jacket: '#2c3630', accent: '#e0bb55', eye: '#d8b98f', walk: { leg: 1.3,  arm: 1.1, lift: 1.2, bob: 1.4, sway: 0.7, cad: 0.8  } },
 };
+export const DEFAULT_WALK = { leg: 1, arm: 1, lift: 1, bob: 1, sway: 1, cad: 1 };
 export const CHAR_IDS = Object.keys(CHARACTERS);
 export const DEFAULT_CHAR = 'kivircik';
 
@@ -282,10 +332,10 @@ export const WEAPONS = {
     // yarıçapın alt menzilden küçük kalması bir zorunluluk değil — ama yine de
     // öyle (100 < 143), atılan bomba hep kendinden uzağa düşüyor.
     dmg: 0, fireMs: 620, speed: 1050, spread: 0.02, pellets: 1,
-    mag: 6, reserve: 15, reloadMs: 2400, range: 675, bulletR: 8, auto: false,
+    mag: 6, reserve: 15, reloadMs: 2400, range: 560, bulletR: 8, auto: false,
     throwable: true,
     minRange: 143,        // hiç beklemeden bırakınca bu kadar gider
-    maxRange: 675,        // tam dolunca bu kadar gider
+    maxRange: 560,        // tam dolunca bu kadar gider (istek üzerine 675'ten kısıldı)
     chargeMs: 850,        // menzilin dolması bu kadar sürer (bilgisayarda)
     blastR: 100,          // patlama yarıçapı (125'ten %20 küçültüldü)
     blastDmg: 56,         // merkezdeki hasar (kenarda %25'e iner)

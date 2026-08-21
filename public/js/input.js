@@ -135,13 +135,15 @@ export class Input {
       }, { passive: false });
     }
 
-    // Skor tablosu: basılı tutunca açılır
+    // Skor tablosu: TEK DOKUNUŞ açar ve AÇIK KALIR; tekrar dokunuş kapatır
+    // (masaüstündeki Tab gibi). Eskiden "basılı tut" idi: parmağı çekince hemen
+    // kapanıyordu, telefonda tabloyu okumak/kaydırmak imkânsızdı. touchUI DOM'da
+    // skor tablosundan sonra geldiği için düğme, tablo açıkken de üstte kalır.
     if (btnScore) {
-      const show = (e) => { e.preventDefault(); this.onScoreboard?.(true); };
-      const hide = (e) => { e.preventDefault(); this.onScoreboard?.(false); };
-      btnScore.addEventListener('touchstart', show, { passive: false });
-      btnScore.addEventListener('touchend', hide, { passive: false });
-      btnScore.addEventListener('touchcancel', hide, { passive: false });
+      btnScore.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        this.onScoreboardToggle?.();
+      }, { passive: false });
     }
 
     // --- Dokunmatik mi, fare/klavye mi? --------------------------------------

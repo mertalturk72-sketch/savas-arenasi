@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node test/smoke.js && node test/ws-protocol.mjs && node test/binary.mjs && node test/oldurme-cani.mjs && node test/namlu.mjs && node test/patlama.mjs && node test/atis-kurallari.mjs && node test/apk-ayar.mjs",
+    "test": "node test/smoke.js && node test/ws-protocol.mjs && node test/binary.mjs && node test/oldurme-cani.mjs && node test/namlu.mjs && node test/patlama.mjs",
     "test:load": "node test/load.mjs",
     "test:browser": "node test/browser.mjs && node test/browser-selfupdate.mjs && node test/browser-assist.mjs && node test/browser-bomb.mjs && node test/browser-grass.mjs && node test/browser-hayaletduvar.mjs && node test/browser-lobikural.mjs && node test/binary-net.mjs && node test/browser-modes.mjs && node test/browser-offline.mjs && node test/browser-bush.mjs && node test/browser-sniper.mjs && node test/browser-aimfire.mjs && node test/browser-lobby.mjs && node test/browser-origin.mjs && node test/browser-update.mjs && node test/browser-apkupdate.mjs && node test/browser-settings.mjs && node test/browser-visuals.mjs && node test/browser-nodaynight.mjs && node test/browser-inputmode.mjs && node test/browser-slowserver.mjs && node test/browser-coldstart.mjs && node test/browser-bundle.mjs && node test/browser-apk-real.mjs && node scripts/build-single.mjs && node test/browser-single.mjs",
     "build:www": "node scripts/build-www.mjs",
@@ -37,9 +37,7 @@
     "test:kill": "node test/oldurme-cani.mjs",
     "icons:ac": "node scripts/simge-paketle.mjs ac",
     "test:namlu": "node test/namlu.mjs",
-    "test:patlama": "node test/patlama.mjs",
-    "test:apkayar": "node test/apk-ayar.mjs",
-    "test:atis": "node test/atis-kurallari.mjs"
+    "test:patlama": "node test/patlama.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -75,7 +75,7 @@ export class Lobby {
       ready: false,
       cls: DEFAULT_CLASS,
       char: pickFreeChar(this),
-      team: this.modeId === 'tdm' ? this.pickBalancedTeam() : 0,
+      team: MODES[this.modeId]?.teams ? this.pickBalancedTeam() : 0,
       spectating: false,
     };
     this.members.set(client.id, member);

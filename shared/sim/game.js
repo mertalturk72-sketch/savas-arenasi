@@ -9,7 +9,7 @@ import {
   DEFAULT_CHAR,
   BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS,
   DEFAULT_BOT_LEVEL,
-  ASSIST_WINDOW_MS, KILL_HEAL, muzzleWorld,
+  ASSIST_WINDOW_MS, KILL_HEAL, KILL_AMMO_FRACTION, muzzleWorld, CTF,
 } from '../constants.js';
 import { F_ALIVE, F_PROTECTED, F_RELOADING, F_MUZZLE, F_HIDDEN } from '../protocol.js';
 import { applyMovement, queryObstacles, clamp, lineBlocked } from '../physics.js';
@@ -45,9 +45,108 @@ export class Game {
     for (const p of opts.players) this.addPlayer(p);
 
     this.aliveAtStart = this.players.size;
+    // Takım BR bitişi için: başlangıçta kaç FARKLI takım vardı.
+    this.teamsAtStart = new Set([...this.players.values()].map((p) => p.team)).size;
 
     if (this.mode.shrinkingZone) this.initZone();
     else this.zone = null;
+
+    this.flag = null;
+    if (this.mode.ctf) this.initCtf();
+  }
+
+  // --- Bayrak Çalma (CTF) -------------------------------------------------
+  // Tek merkez bayrak: ortada durur, kapan taşır, DÜŞMAN üssüne götürünce sayı.
+  // Üsler: takım 1 solda, takım 2 sağda (haritanın doğuş bantlarından türetilir).
+  initCtf() {
+    const centroid = (pts) => {
+      if (!pts || !pts.length) return { x: this.map.w / 2, y: this.map.h / 2 };
+      let sx = 0, sy = 0;
+      for (const p of pts) { sx += p.x; sy += p.y; }
+      return { x: sx / pts.length, y: sy / pts.length };
+    };
+    // Üsleri merkezden %25 daha uzağa it (istek). Böylece bayrağı götürme
+    // yolu uzar. Harita kenarını taşmasın diye pay bırakıp kırpıyoruz.
+    const cx0 = this.map.w / 2, cy0 = this.map.h / 2;
+    const pushOut = (b) => {
+      const m = CTF.baseR + 40;
+      const nx = cx0 + (b.x - cx0) * 1.25;
+      const ny = cy0 + (b.y - cy0) * 1.25;
+      return {
+        x: Math.max(m, Math.min(this.map.w - m, nx)),
+        y: Math.max(m, Math.min(this.map.h - m, ny)),
+      };
+    };
+    this.bases = { 1: pushOut(centroid(this.spawns[1])), 2: pushOut(centroid(this.spawns[2])) };
+    this.flagHome = { x: this.map.w / 2, y: this.map.h / 2 };
+    this.flag = { x: this.flagHome.x, y: this.flagHome.y, carrier: 0, state: 'home', dropAt: 0 };
+    // Üs konumlarını istemciye bir kez bildir (çizim için).
+    this.globalEvents.push({
+      e: 'ctfinit',
+      b1x: Math.round(this.bases[1].x), b1y: Math.round(this.bases[1].y),
+      b2x: Math.round(this.bases[2].x), b2y: Math.round(this.bases[2].y),
+      hx: Math.round(this.flagHome.x), hy: Math.round(this.flagHome.y),
+    });
+    this.emitFlag();
+  }
+
+  // Bayrağın durumu değişince istemciye yolla (her kare DEĞİL). st: 0 evde,
+  // 1 taşınıyor, 2 yerde. Taşınırken konumu istemci taşıyıcıdan çizer.
+  emitFlag() {
+    const f = this.flag;
+    this.globalEvents.push({
+      e: 'flag',
+      st: f.state === 'home' ? 0 : f.state === 'carried' ? 1 : 2,
+      x: Math.round(f.x), y: Math.round(f.y), c: f.carrier || 0,
+    });
+  }
+
+  stepCtf() {
+    const f = this.flag;
+    if (f.state === 'carried') {
+      const carrier = this.players.get(f.carrier);
+      if (!carrier || !carrier.alive) { this.dropFlag(); return; }
+      f.x = carrier.x; f.y = carrier.y;
+      // Bayrağı KENDİ üssüne götürünce sayı (istek: kendi yerimize taşıyalım).
+      const target = this.bases[carrier.team];
+      if (Math.hypot(carrier.x - target.x, carrier.y - target.y) < CTF.baseR) {
+        this.teamScore[carrier.team] = (this.teamScore[carrier.team] || 0) + 1;
+        this.globalEvents.push({ e: 'cap', t: carrier.team, i: carrier.id });
+        this.resetFlag();
+        this.checkEnd();
+      }
+      return;
+    }
+    // Evde ya da yerde: yerdeki bayrak süre dolunca merkeze döner.
+    if (f.state === 'dropped' && this.time >= f.dropAt + CTF.flagReturnMs) {
+      this.resetFlag();
+      return;
+    }
+    // Yaklaşan ilk canlı oyuncu bayrağı alır.
+    for (const p of this.players.values()) {
+      if (!p.alive) continue;
+      if (Math.hypot(p.x - f.x, p.y - f.y) < CTF.pickR) {
+        f.carrier = p.id; f.state = 'carried';
+        this.globalEvents.push({ e: 'grab', i: p.id, t: p.team });
+        this.emitFlag();
+        break;
+      }
+    }
+  }
+
+  dropFlag() {
+    const f = this.flag;
+    const c = this.players.get(f.carrier);
+    if (c) { f.x = c.x; f.y = c.y; }
+    f.state = 'dropped'; f.carrier = 0; f.dropAt = this.time;
+    this.emitFlag();
+  }
+
+  resetFlag() {
+    const f = this.flag;
+    f.x = this.flagHome.x; f.y = this.flagHome.y;
+    f.state = 'home'; f.carrier = 0; f.dropAt = 0;
+    this.emitFlag();
   }
 
   // --- Oyuncular ----------------------------------------------------------
@@ -76,9 +175,6 @@ export class Game {
       reloadUntil: 0,
       nextFireAt: 0,
       prevKeys: 0,
-      // Şarjör boşalıp kendiliğinden dolduğunda true olur; tetik bırakılınca
-      // temizlenir. Bkz. applyInput().
-      needTriggerRelease: false,
       muzzle: -1e9,            // son atış zamanı (hiç ateş etmedi = çok eski)
       kills: 0, deaths: 0, damage: 0, assists: 0, place: 0,
       // Bana son kim hasar verdi? saldıranId -> zaman.
@@ -156,7 +252,6 @@ export class Game {
     p.ammo = WEAPONS[p.weapon].mag;
     p.reserve = WEAPONS[p.weapon].reserve;
     p.reloadUntil = 0;
-    p.needTriggerRelease = false;      // yeni hayat, temiz tetik
     p.nextFireAt = this.time;
     p.protectUntil = this.time + SPAWN_PROTECT_MS;
     p.inputQueue.length = 0;
@@ -207,7 +302,9 @@ export class Game {
     if (!p.alive) { p.prevKeys = inp.k; return; }
 
     const dtSec = inp.d / 1000;
-    applyMovement(p, inp.k, p.speed, dtSec, this.idx);
+    // Bayrağı taşıyan biraz yavaşlar (CTF.carrierSpeed).
+    const spd = (this.flag && this.flag.carrier === p.id) ? p.speed * CTF.carrierSpeed : p.speed;
+    applyMovement(p, inp.k, spd, dtSec, this.idx);
 
     const wep = WEAPONS[p.weapon];
     const wantReload = (inp.k & IN_RELOAD) && !(p.prevKeys & IN_RELOAD);
@@ -248,25 +345,13 @@ export class Game {
         p.chargeStart = 0;
       }
     } else {
-      const basili = !!(inp.k & IN_FIRE);
-      // ŞARJÖR BOŞALIP KENDİLİĞİNDEN DOLDUYSA: tetiği bırakmadan ateşe devam
-      // edilmiyor. Eskiden basılı tutup şarjörü bitiren oyuncu, dolum bitince
-      // parmağını kaldırmadan yağdırmaya devam ediyordu — dolum bir ceza
-      // olmaktan çıkıyordu. Artık yeni şarjör için tetiğe yeniden basmak
-      // gerekiyor. (Elle R'ye basılan dolumda böyle bir şart yok.)
-      if (p.needTriggerRelease) {
-        if (!basili) p.needTriggerRelease = false;
-        firing = false;
-      } else {
-        firing = wep.auto ? basili : (basili && !(p.prevKeys & IN_FIRE));
-      }
+      firing = wep.auto ? !!(inp.k & IN_FIRE) : ((inp.k & IN_FIRE) && !(p.prevKeys & IN_FIRE));
     }
 
     if (firing && !p.reloadUntil && this.time >= p.nextFireAt) {
       if (p.ammo <= 0) {
         // Şarjör boş: yedek varsa kendiliğinden doldur, yoksa cephane bitti.
-        // Dolum bitince tetiği bırakıp yeniden basmak gerekecek.
-        if (p.reserve > 0) { p.reloadUntil = this.time + wep.reloadMs; p.needTriggerRelease = true; }
+        if (p.reserve > 0) p.reloadUntil = this.time + wep.reloadMs;
         else if (!p.dryNotified) {
           p.dryNotified = true;
           p.privEvents.push({ e: 'dry' });
@@ -275,6 +360,14 @@ export class Game {
         this.fire(p, wep, atisMenzili);
       }
     }
+
+    // Şarjör boşaldığı AN (ateşi bıraksan bile) kendiliğinden dolum başlar.
+    // İstek: "mermi 0 olur olmaz reload yapsın." Yedek yoksa dokunmaz. Elle (R)
+    // dolumla ve mevcut akışla çakışmaz — reloadUntil guard'ı çift tetiği önler.
+    if (p.ammo <= 0 && p.reserve > 0 && !p.reloadUntil) {
+      p.reloadUntil = this.time + wep.reloadMs;
+    }
+
     p.prevKeys = inp.k;
   }
 
@@ -346,6 +439,35 @@ export class Game {
         blastDmg: wep.blastDmg || 0,
       });
     }
+    // YAKIN MESAFE ("dibe girme") düzeltmesi: mermi namlu ucundan (gövdeden
+    // ileriden) doğuyor, sana YAPIŞAN düşman o noktanın gerisinde kaldığı için
+    // ıskalanıyordu. Burada gövde ile namlu ucu arasındaki bölümü de tarayıp
+    // araya giren ilk düşmana anında hasar veriyoruz. Bomba hariç.
+    if (!wep.throwable && wep.dmg > 0) {
+      // Namlu, gövde merkezinin NİŞAN YÖNÜNDE bir miktar ilerisinde. Bu iki
+      // nokta arasındaki segmenti kapsül gibi tarıyoruz: nişan ekseni üzerinde
+      // 0..segLen arasında ve eksene dik uzaklığı yarıçaptan küçük olan düşman
+      // "namlunun gerisinde" demektir ve vurulur. YÖN önemli: proj>0 şartı
+      // arkadaki/yandaki düşmanı DIŞARIDA tutar (aksi halde dibe girmiş biri
+      // ters yönde de vuruluyordu).
+      const ax = Math.cos(p.aim), ay = Math.sin(p.aim);
+      const segLen = Math.hypot(ox - p.x, oy - p.y);
+      const rad = PLAYER_RADIUS + wep.bulletR;
+      for (const e of this.players.values()) {
+        if (!e.alive || e.id === p.id) continue;
+        if (this.mode.teams && e.team === p.team) continue;
+        if (e.protectUntil > this.time) continue;
+        const rx = e.x - p.x, ry = e.y - p.y;
+        const proj = rx * ax + ry * ay;               // nişan yönündeki izdüşüm
+        if (proj <= 0 || proj > segLen) continue;      // arkada / namlu ucundan öte
+        const perp = Math.abs(rx * -ay + ry * ax);     // nişan eksenine dik uzaklık
+        if (perp > rad) continue;                       // ışın gövdeyi kaçırıyor
+        this.damage(e, wep.dmg * Math.max(1, wep.pellets), p, DEATH_BULLET, wep.id);
+        this.globalEvents.push({ e: 'imp', x: Math.round(e.x), y: Math.round(e.y), t: 1 });
+        break;
+      }
+    }
+
     this.globalEvents.push({ e: 'shot', i: p.id, x: Math.round(ox), y: Math.round(oy), a: +p.aim.toFixed(2), w: wep.id });
   }
 
@@ -363,6 +485,20 @@ export class Game {
       this.drainInputs(p, dtMs);
 
       if (!p.alive && this.mode.respawn && this.time >= p.deadUntil) this.respawn(p);
+
+      // OTOMATİK DOLUM — her tick, GİRDİDEN BAĞIMSIZ. Eskiden yalnızca
+      // applyInput içinde tetikleniyordu; oyuncu şarjörü boşaltıp hiç input
+      // göndermezse (durursa) ya da mermi ödülüyle yedeği sonradan gelirse
+      // dolum başlamıyordu ("mermi 0 olunca kendi reload yapmıyor"). Artık
+      // boş şarjör + yedek varsa burada başlar. reloadUntil guard'ı çift
+      // tetiği önler; elle (R) dolumla çakışmaz.
+      if (p.alive) {
+        const wp = WEAPONS[p.weapon];
+        if (!wp.throwable && p.ammo <= 0 && p.reserve > 0 && !p.reloadUntil) {
+          p.reloadUntil = this.time + wp.reloadMs;
+        }
+      }
+
       if (p.alive && p.reloadUntil && this.time >= p.reloadUntil) {
         this.finishReload(p, WEAPONS[p.weapon]);
       }
@@ -373,6 +509,7 @@ export class Game {
     this.stepBullets(dtSec);
     this.stepPickups();
     if (this.zone) this.stepZone(dtMs, dtSec);
+    if (this.flag) this.stepCtf();
     this.checkEnd();
   }
 
@@ -506,6 +643,8 @@ export class Game {
     victim.hp = 0;
     victim.alive = false;
     victim.deaths++;
+    // CTF: bayrağı taşırken öldüyse bayrak olduğu yere düşer.
+    if (this.flag && this.flag.carrier === victim.id) this.dropFlag();
 
     // ASİST: son ASSIST_WINDOW_MS içinde bu oyuncuya hasar vermiş herkes —
     // öldüren ve kurbanın kendisi hariç — bir asist alır. Süre sınırı önemli:
@@ -526,7 +665,8 @@ export class Game {
 
     if (attacker && attacker !== victim) {
       attacker.kills++;
-      if (this.mode.teams) this.teamScore[attacker.team] = (this.teamScore[attacker.team] || 0) + 1;
+      // CTF'de skor öldürmeyle DEĞİL, bayrak kapmayla artar; burada dokunma.
+      if (this.mode.teams && !this.mode.ctf) this.teamScore[attacker.team] = (this.teamScore[attacker.team] || 0) + 1;
 
       // ÖLDÜRME ÖDÜLÜ: öldüren oyuncu KILL_HEAL kadar can kazanır.
       // TAVAN ÖNEMLİ: canı taşırmıyoruz — 90 canlıyken öldüren 140 değil,
@@ -541,13 +681,14 @@ export class Game {
         const hedef = attacker.hp + KILL_HEAL;
         attacker.hp = hedef > attacker.maxHp ? attacker.maxHp : hedef;
       }
-      // CEPHANE ÖDÜLÜ: yarım şarjör. Yedek kapasitesini aşmaz — öldüre öldüre
-      // sınırsız cephane biriktirilmesin. Bombacıda bu 3 bomba demek; sürekli
-      // kutu aramadan oynanabilir hale geliyor.
-      const aWep = WEAPONS[attacker.weapon];
-      if (aWep) {
-        const odul = Math.ceil(aWep.mag / 2);
-        attacker.reserve = Math.min(aWep.reserve, attacker.reserve + odul);
+
+      // MERMİ ÖDÜLÜ: öldüren oyuncunun yedek cephanesi bir miktar dolar.
+      // Can ödülü gibi bu da azamiyi taşırmaz (fazlası boşa gitmez), o yüzden
+      // Math.min ile tavana sabitliyoruz. Ölmüş oyuncuya vermenin anlamı yok.
+      if (attacker.alive && KILL_AMMO_FRACTION > 0) {
+        const awep = WEAPONS[attacker.weapon];
+        const bonus = Math.ceil(awep.reserve * KILL_AMMO_FRACTION);
+        attacker.reserve = Math.min(awep.reserve, attacker.reserve + bonus);
       }
     }
 
@@ -668,7 +809,7 @@ export class Game {
       for (const p of this.players.values()) {
         if (p.kills >= m.scoreLimit) return this.end('score', { id: p.id, name: p.name });
       }
-    } else if (m.id === 'tdm') {
+    } else if (m.id === 'tdm' || m.id === 'ctf') {
       for (const t of [1, 2]) {
         if ((this.teamScore[t] || 0) >= m.scoreLimit) return this.end('score', { team: t });
       }
@@ -677,6 +818,18 @@ export class Game {
       if (this.aliveAtStart > 1 && alive.length <= 1) {
         if (alive[0]) alive[0].place = 1;
         return this.end('lastman', alive[0] ? { id: alive[0].id, name: alive[0].name } : null);
+      }
+      if (this.players.size === 0) return this.end('empty');
+    } else if (m.id === 'takim_br') {
+      // Son AYAKTA KALAN TAKIM kazanır. Hayatta üyesi olan takımları say;
+      // tek takım kaldıysa (ve başta birden fazla vardıysa) o takım kazanır.
+      const aliveTeams = new Set();
+      for (const p of this.players.values()) if (p.alive) aliveTeams.add(p.team);
+      if (this.teamsAtStart > 1 && aliveTeams.size <= 1) {
+        const winTeam = [...aliveTeams][0] || null;
+        // Kazanan takımın hayatta kalanlarına 1. sıra ver (skor tablosu için).
+        if (winTeam) for (const p of this.players.values()) if (p.alive) p.place = 1;
+        return this.end('lastteam', winTeam ? { team: winTeam } : null);
       }
       if (this.players.size === 0) return this.end('empty');
     }
@@ -694,7 +847,7 @@ export class Game {
       kills: p.kills, deaths: p.deaths, assists: p.assists || 0, damage: Math.round(p.damage),
       place: p.place || (p.alive ? 1 : 0),
     }));
-    if (this.mode.id === 'br') {
+    if (this.mode.id === 'br' || this.mode.id === 'takim_br') {
       rows.sort((a, b) => (a.place || 999) - (b.place || 999) || b.kills - a.kills);
     } else {
       rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || b.damage - a.damage);

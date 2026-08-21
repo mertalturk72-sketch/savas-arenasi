@@ -216,9 +216,6 @@ düzeltti.
 | **Mermi silahtan değil adamdan çıkıyor** | İki ayrı hesap vardı: sunucu mermiyi oyuncunun TAM MERKEZİNDEN 22 px ileriden doğuruyordu (`PLAYER_RADIUS + 6`), istemci ise silahı gövdenin 18,4 px yukarısına / 5 px yanına / 32 px ileriye çiziyordu. Aradaki fark gözle görülüyordu | Tek kaynak: `muzzleWorld()` + `WEAPON_VIEW` (shared/constants.js). Çizim de mermi de aynı noktayı kullanıyor. Namlu ileri kaydığı için "duvara dayanıp ateş edince mermi duvarın ötesine doğar mı" riski doğdu; `namluyuDuvarinIcineSokma()` gövdeden namluya doğru ilerleyip duvara girmeden önceki son boş noktayı seçiyor. `test/namlu.mjs` |
 | **Kendimi öldürebiliyorum** (bombacı) | Patlama, atan kişiyi de kapsıyordu ("yakına atmak riskli olsun" diye). Dar koridorda/köşede bombacı kendini öldürüyordu | `explode()` artık `p.id === b.owner` olanı atlıyor: kendi bomban sana hiç dokunmuyor. Düşmana hasar aynı. `test/patlama.mjs` |
 | **Mobilde bombanın nereye gittiği görünmüyor** | Telefonda yakınlaştırmanın alt sınırı 0,62'ydi; bombanın azami menzili (675 px) 900 px'lik bir telefon ekranının tam kenarına denk geliyordu, hedef halkası ekran dışında kalıyordu | Alt sınır **0,50**. Görüş alanı ~%38 genişledi, halka rahatça içeride. Bilgisayarda alt sınır hiç devreye girmiyor, orası değişmedi |
-| **Botlar bombayı atamıyor** | Bomba BASILI TUTUP BIRAKARAK atılıyor; eski kod tutmayı her karede `canShoot`a bağlamıştı. `canShoot` nişan açısını 0,1 rad toleransla ölçüyor, botun nişanı ise her karede sallanıyor (öngörü + yetenek sapması) — koşul bir kare doğru bir kare yanlış oluyor ve tutma TEK KAREDE kesiliyordu. Ölçüldü: tutma serilerinin hepsi 33 ms, yani menzil hep en düşükte; hedef 314 px uzaktayken bomba 164 px'e düşüyordu | Atış planı BİR KEZ kuruluyor (`b.throwHold`) ve sonuna kadar sürüyor; sadece gerçek sebepler (cephane bitti, öldü) iptal ediyor. Ayrıca plan en az 2 kare: hedef asgari menzilden yakınsa plan 0 çıkıyor ve bomba HİÇ atılmıyordu. **İsabet %22 → %51, patlama-düşman ortanca mesafe 208 → 99 px, en uzun tutma 33 → 833 ms.** `test/atis-kurallari.mjs` |
-| **Ateş dumanı yerde ileri gidiyor** | Mermi `muzzleWorld()`'e taşındı ama İSTEMCİDEKİ yerel namlu efekti eski formülde kaldı (`gövde merkezi + PLAYER_RADIUS + 8`) — duman ayakların önünde, zeminde ilerliyor gibi görünüyordu | Efekt de `muzzleWorld()` kullanıyor |
-| **Şarjör bitip dolunca ateş kendiliğinden sürüyor** | Otomatik silahta `firing = basılı`; şarjör boşalınca sunucu kendiliğinden dolduruyor ve tetik hâlâ basılı olduğu için yeni şarjör de anında boşalıyordu — dolum ceza olmaktan çıkıyordu | `p.needTriggerRelease`: boşalıp kendiliğinden dolan şarjörden sonra tetiği bırakmak şart. Elle (R) dolum etkilenmiyor |
 | Touchscreen dizüstünde dokunmatik arayüz | Dokunma yeteneği varlığı ölçüt alınmıştı | Son kullanılan girdi + `(any-pointer: fine)` ölçütü |
 
 ### Testlerin kendi kusurları (ürün değil)
@@ -275,21 +272,15 @@ patlama alanı +%50**), en son patlama alanı %20 küçültüldü (125 → **100
 Asgari menzil (143) yarıçaptan büyük: atılan bomba hep kendinden uzağa düşer.
 `test/browser-bomb.mjs` bu ilişkiyi de sınıyor.
 
-**Bot seviyeleri (ZAYIFLATILDI — kolay bile fazla zorluyordu):**
-kolay (yetenek 0,04–0,16 · görüş 560 · tepki 950 ms) ·
-orta (0,26–0,48 · 900 · 430 ms) · zor (0,58–0,82 · 1250 · 180 ms).
+**Bot seviyeleri:** kolay (yetenek 0,12–0,34 · görüş 780 · tepki 520 ms) ·
+orta (0,42–0,68 · 1150 · 220 ms) · zor (0,78–0,98 · 1400 · 90 ms).
 Tek sayı değil **aralık** veriliyor ki aynı zorluktaki botlar birbirinin
 kopyası olmasın.
 
 **Asist:** son 9 saniyede hasar veren herkes (öldüren ve kurban hariç) asist
 alır — `ASSIST_WINDOW_MS`.
 
-**Öldürme ödülü:** can + cephane. `KILL_HEAL = 50` can, ayrıca **yarım şarjör**
-cephane (`Math.ceil(mag/2)`) — yedek kapasitesini aşmadan. Ekranın ortasının
-biraz üstünde "**X'i öldürdün**" yazısı beliriyor; Türkçe belirtme eki ünlü
-uyumuna göre seçiliyor (`belirtmeEki()` — Kartal'ı, Ali'yi, Gümüş'ü, Kurt'u).
-
-Can kısmı: Birini öldüren oyuncu 50 can kazanır ama
+**Öldürme ödülü:** `KILL_HEAL = 50`. Birini öldüren oyuncu 50 can kazanır ama
 **canı taşmaz**: 90 canlıyken öldüren 140 değil 100 olur. Kendini öldürene ve
 alan hasarıyla ölene ödül yok; aynı anda ölen (artık hayatta olmayan) öldüren
 de ödül almaz. `test/oldurme-cani.mjs` bu tavanı 15 kontrolle koruyor —
@@ -347,17 +338,6 @@ fotoğraflayabilir.)
 **Kamera:** yakınlaştırma `clamp(min(en,boy)/900, 0.50, 1.15)`. Alt sınır
 telefonu ilgilendiriyor; `scripts/onizleme-kamera.mjs` kademeli önizleme üretir.
 
-**Cephane kutuları:** sayı yarıya indirildi (arena 12→6, royale 22→11),
-yerleşim rastgele (eskiden "birbirinden en uzak noktalar" seçiliyordu, her maç
-neredeyse aynı çıkıyordu) ve **çalının ya da duvarın üstüne düşmüyor** — çalı
-elemesi eksikti, kutu çalının içinde görünmez oluyordu.
-
-**Harita üretimi:** arena ızgarası artık her maçta 3x3–4x4 arası, motif sayısı
-ve doluluk oranı da oynuyor, merkez yapısı dört çeşit (dikey kapı / yatay kapı /
-dört sütun / açık meydan). Kural değişmedi: motif hücreyi taşmıyor (koridorlar
-geniş kalıyor), sağ yarı aynalanıyor (adalet) ve `analyzeWalkable` son sözü
-söylüyor. 240 harita üretilip sınandı, hiçbiri kural dışı çıkmadı.
-
 **Kaldırıldı:** gün döngüsü, gölgeler, Ağır Piyade sınıfı, maç içi sohbet
 görünürlüğü, lobi sohbeti, kurma ekranındaki mod/kapasite/bot ayarları.
 
@@ -411,7 +391,7 @@ Simgeler `android-icons/`ten kopyalanıyor.
 
 ---
 
-## 12. Testler (34 takım)
+## 12. Testler (32 takım)
 
 Kapsam özeti: menü → lobi → sohbet → maç → skor → maç sonu → lobiye dönüş ·
 21. oyuncunun reddedilmesi · dost ateşi · harita kopukluğu · çalı kuralları ·
@@ -428,9 +408,7 @@ güncelleme** · **gün döngüsünün kaldırıldığı** · **hayalet duvar (b
 zorluk menüsünün grileşmesi, BAŞLA! süresi/çakışması, KAYBETTİN** ·
 **öldürme ödülünün canı taşırmaması** · **merminin namludan doğması ve
 bombacının elinde tüfek olmaması** · **patlama kuralları (kendi bombandan zarar
-görmeme, dost ateşi, duvar, doğuş koruması)** · **APK derleme ayarları
-(appId ↔ paket adı, akıştaki yol, MainActivity'nin javac ile derlenmesi)** ·
-**atış kuralları (tetik bırakma şartı, cephane ödülü, botun bomba atışı)**
+görmeme, dost ateşi, duvar, doğuş koruması)**
 
 WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
 
@@ -452,10 +430,8 @@ WebSocket katmanı ayrıca ham TCP soketiyle 24 senaryoda sınanıyor.
   "burada denenemez" diye açık kalan tek madde buydu; kapandı. Sabit imzalı APK
   de sorunsuz kuruldu, "Uygulama yüklenmedi" hatası tekrarlamadı.
 - **Tek başına maç engeli ve ekran ortası uyarısı telefonda doğrulandı.**
-- Son sürüm damgası: **31c23db97f1a** — 34 test takımının tamamı geçiyor
-  (26 tarayıcı + 8 node)
-- **Tam ekran (Android sistem çubuklarının gizlenmesi) YALNIZCA yeni APK ile
-  gelir** — değişen taraf native, sürüm damgasına girmiyor, GÜNCELLE getirmez.
+- Son sürüm damgası: **995bb3e0532d** — 32 test takımının tamamı geçiyor
+  (26 tarayıcı + 6 node)
 - Kullanıcının yapması gereken: zip'i GitHub'a yükle → Actions'ın ürettiği
   APK'yı kur (eskisini kaldırdıktan sonra)
 - Sonraki adım: kendini güncellemenin gerçek telefonda denenmesi

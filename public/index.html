@@ -183,14 +183,16 @@
                artık burada, seçimin yapıldığı yerde görünüyor. -->
           <div id="lobbyModePicker" class="mode-picker"></div>
         </div>
-        <div class="hc-row two">
+        <!-- Kapasite ve Bot artık YAN YANA değil ALT ALTA (istek üzerine).
+             "two" grid'i kaldırıldı; "stacked" ikisini dikey dizer. -->
+        <div class="hc-row stacked">
           <div>
             <label>Kapasite: <b id="lobbyMaxVal">20</b></label>
             <input type="range" id="lobbyMaxInput" min="2" max="20" value="20">
           </div>
           <div>
-            <label>Bot: <b id="lobbyBotVal">0</b></label>
-            <input type="range" id="lobbyBotInput" min="0" max="19" value="0">
+            <label>Bot: <b id="lobbyBotVal">1</b></label>
+            <input type="range" id="lobbyBotInput" min="0" max="19" value="1">
           </div>
         </div>
         <div class="hc-row">
@@ -200,8 +202,8 @@
       </div>
 
       <div id="teamPicker" class="team-picker hidden">
-        <button data-team="1" class="team-btn t1">Kızıl Tugay'a geç</button>
-        <button data-team="2" class="team-btn t2">Mavi Filo'ya geç</button>
+        <button data-team="1" class="team-btn t1">Kırmızı takıma geç</button>
+        <button data-team="2" class="team-btn t2">Mavi takıma geç</button>
       </div>
 
       <h3 class="section-title">Oyuncular <span id="rosterCount"></span></h3>
@@ -323,10 +325,6 @@
 
   <!-- Öldürünce ekranın solunda kısa süre beliren beyaz piksel kuru kafa -->
   <div id="killSkull" class="kill-skull" aria-hidden="true"></div>
-
-  <!-- Öldürünce ekranın ORTASININ BİRAZ ÜSTÜNDE beliren yazı: "X'i öldürdün".
-       Kuru kafa solda, bu ortada — ikisi çakışmıyor. Tıklamaları geçirir. -->
-  <div id="killText" class="kill-text" aria-live="polite"></div>
 
   <div id="matchEndOverlay" class="match-end hidden"></div>
 

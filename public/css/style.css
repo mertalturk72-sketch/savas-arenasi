@@ -370,6 +370,9 @@ button.ghost.tiny { padding: 3px 8px; font-size: 11px; }
 .host-controls { border: 1px dashed var(--line); border-radius: 9px; padding: 12px; margin-bottom: 14px; }
 .hc-row { margin-bottom: 10px; }
 .hc-row label { margin-top: 0; }
+/* Kapasite ve Bot sayaçları alt alta: aralarında dikey boşluk. */
+.hc-row.stacked > div { margin-bottom: 10px; }
+.hc-row.stacked > div:last-child { margin-bottom: 0; }
 
 .team-picker { display: flex; gap: 8px; margin-bottom: 14px; }
 .team-btn { flex: 1; border-radius: 8px; padding: 10px; font-weight: 700; border: 1px solid var(--line); }
@@ -438,6 +441,13 @@ button.ghost.tiny { padding: 3px 8px; font-size: 11px; }
   font-size: clamp(80px, 22vw, 190px); font-weight: 700; line-height: 1;
   color: var(--accent); text-shadow: 0 0 60px rgba(255,138,61,.45);
   font-variant-numeric: tabular-nums;
+  /* SABİT YÜKSEKLİK: rakam (190px) ile "BAŞLA!" kelimesi (96px) farklı puntoda.
+     Kutu yüksekliği değişince flex sütun yeniden ortalanıp alttaki İPTAL
+     butonunu KAYDIRIYORDU ("sayınca iptal butonu kayıyor"). İçeriği sabit
+     yükseklikli bir kutuda ortalayınca kutu hiç değişmez, buton yerinde kalır.
+     Vuruş (pop) transform ile olduğu için düzeni etkilemez. */
+  height: clamp(96px, 24vw, 200px);
+  display: flex; align-items: center; justify-content: center;
 }
 /* "BAŞLA!" bir rakam değil KELİME. Rakam puntosu (22vw) telefonda kelimeyi
    ekrandan taşırıyor, satır yüksekliği 1 olduğu için de Ş'nin çengeli kutunun
@@ -928,6 +938,16 @@ body:not(.touch) .touch-ui { display: none !important; }
 .win-overlay.replay .win-text {
   animation: winPop .7s cubic-bezier(.2,1.7,.4,1) both, winFloat 2.6s ease-in-out .7s infinite;
 }
+/* KAYBETTİN düz gelsin (istek): pop/float animasyonu YOK. Sürekli dönen
+   winFloat, dev puntolu + geniş gölgeli yazıyı her karede yeniden bindirip
+   "sonuç gelince kasıyor" hissi veriyordu. Kaybeden için yazı sabit duruyor;
+   kazanan animasyonu (konfetiyle birlikte) aynı kalıyor. Skor tablosu açılırken
+   sönme (.fade) yine çalışsın diye :not(.fade) ile sınırlıyoruz. */
+.win-overlay.replay:not(.fade) .win-text.lose-text {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
 @keyframes winPop {
   0%   { opacity: 0; transform: scale(.3) rotate(-8deg); }
   60%  { opacity: 1; transform: scale(1.12) rotate(2deg); }
@@ -1093,35 +1113,6 @@ button.ghost:active { transform: translateY(1px); }
   .win-overlay.replay .win-text {
     animation: none !important;
   }
-}
-
-/* Öldürünce ekranın ortasının biraz ÜSTÜNDE beliren yazı.
-   Tam ortada değil: orası nişangâhın ve çatışmanın olduğu yer, yazı görüşü
-   kapatmamalı. %34 yüksekliğe koyuyoruz — göz seviyesinde ama yolun dışında. */
-.kill-text {
-  position: fixed;
-  left: 0; right: 0;
-  top: 34%;
-  z-index: 190;
-  pointer-events: none;
-  text-align: center;
-  font-size: clamp(18px, 3.4vw, 34px);
-  font-weight: 800;
-  letter-spacing: .04em;
-  color: #ffe9c9;
-  text-shadow: 0 0 14px rgba(255,138,61,.75), 0 3px 0 #6b3a10, 0 6px 18px rgba(0,0,0,.8);
-  opacity: 0;
-}
-.kill-text .kt-ad { color: var(--accent2); }
-.kill-text.show { animation: ktGir 1.6s cubic-bezier(.2,1.5,.4,1) both; }
-@keyframes ktGir {
-  0%   { opacity: 0; transform: translateY(14px) scale(.9); }
-  14%  { opacity: 1; transform: translateY(0) scale(1); }
-  70%  { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-16px) scale(.98); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .kill-text.show { animation: none; opacity: 1; }
 }
 
 /* Öldürünce ekranın solunda beliren beyaz piksel kuru kafa.

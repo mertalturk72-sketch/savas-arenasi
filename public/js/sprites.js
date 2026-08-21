@@ -140,9 +140,13 @@ function drawFrame(o, dir, frame) {
   // LEG : hangi bacak önde (işaret) ve ne kadar açık (büyüklük)
   // LIFT: arkadaki ayağın yerden kalkması — böylece "kalkıyor" ve "iniyor"
   //       kareleri birbirinin aynısı olmuyor, döngü 8 ayrı poz üretiyor
-  const LEG = [1, 2, 3, 2, -1, -2, -3, -2][frame] || 0;
-  const ARM = [-1, -2, -3, -2, 1, 2, 3, 2][frame] || 0;
-  const LIFT = [0, 2, 1, 0, 0, 2, 1, 0][frame] || 0;
+  // Karaktere özgü yürüyüş: temel eğri karakterin walk profiliyle ölçekleniyor.
+  // Böylece her karakter farklı adım genişliği / kol sallama / ayak kaldırma
+  // gösteriyor. Yuvarlanıyor ki piksel keskin kalsın.
+  const wk = o.walk || { leg: 1, arm: 1, lift: 1 };
+  const LEG = Math.round(([1, 2, 3, 2, -1, -2, -3, -2][frame] || 0) * (wk.leg ?? 1));
+  const ARM = Math.round(([-1, -2, -3, -2, 1, 2, 3, 2][frame] || 0) * (wk.arm ?? 1));
+  const LIFT = Math.round(([0, 2, 1, 0, 0, 2, 1, 0][frame] || 0) * (wk.lift ?? 1));
   const BOB = 0;   // gövde inişi çizimde sürekli olarak uygulanıyor
 
   const legShift = LEG;
@@ -251,7 +255,8 @@ function drawFrame(o, dir, frame) {
  * @param {object} o { jacket, hair, skin, accent, eye, style }
  */
 export function getCharacterSprites(o) {
-  const key = `${o.jacket}|${o.hair}|${o.skin}|${o.accent}|${o.eye}|${o.style}`;
+  const wk = o.walk || { leg: 1, arm: 1, lift: 1 };
+  const key = `${o.jacket}|${o.hair}|${o.skin}|${o.accent}|${o.eye}|${o.style}|${wk.leg},${wk.arm},${wk.lift}`;
   let set = cache.get(key);
   if (set) return set;
 
@@ -278,56 +283,90 @@ export function getCharacterSprites(o) {
  */
 export function drawWeaponOnPreview(ctx, x, y, scale, wepId, skin) {
   const S = scale;
-  // eller gövdenin önünde, bel hizasında
-  const hx = x + 19 * S;
-  const hy = y + 21 * S;
-  const len = wepId === 'sniper' ? 15 : wepId === 'shotgun' ? 11 : 12;
-
   ctx.save();
   ctx.imageSmoothingEnabled = false;
+  // NİŞAN ALMA duruşu (karakter sağa bakar): silah GÖZ/OMUZ hizasında sağa
+  // doğru, iki el üstünde; ÖN KOL uzanmış (silahı gerçekten tutuyor). Yan
+  // yürüyüş karesi bacakları zaten açık verir (biri önde). Böylece "bir eli/
+  // ayağı daha uzun ve nişan alıyor gibi" görünür.
+  const gy = y + 20 * S;             // silah hattı — BEL/KALÇA hizasında rahat
+                                     // ileri tutuş (istek: biraz aşağı).
+  const shX = x + 14 * S, shY = y + 17 * S;   // omuz (kolların çıktığı yer)
+  const skinDark = shade(skin, -30);
 
-  // BOMBACI: elinde tüfek değil bomba. Oyun içindeki görünümle aynı olsun ki
-  // lobide seçtiğin şeyle sahada gördüğün şey birbirini tutsun.
+  // --- BOMBACI: el bombasını omzuna çekmiş, fırlatmaya hazır ----------------
   if (wepId === 'bomba') {
-    const R = 4.2 * S;
-    const cx = hx + 2 * S, cy = hy;
-    ctx.fillStyle = skin;
-    ctx.fillRect(hx - 3 * S, hy - 2 * S, 3 * S, 4 * S);
-    ctx.fillStyle = '#23282e';
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.beginPath(); ctx.arc(cx - R * 0.3, cy - R * 0.35, R * 0.45, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#4a5561';
-    ctx.fillRect(cx - 1.2 * S, cy - R - 1.8 * S, 2.4 * S, 2 * S);
-    ctx.strokeStyle = '#b98b4a';
-    ctx.lineWidth = Math.max(1, 1.1 * S);
+    const cx = x + 11 * S, cy = y + 9 * S;     // omuz üstü, geride
+    const rx = 3.6 * S, ry = 4.3 * S;
+    // fırlatma kolu (omuzdan yukarı-geri uzanır)
+    ctx.strokeStyle = skin; ctx.lineWidth = 2.4 * S; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(cx + 0.5 * S, cy + 1 * S); ctx.stroke();
+    // bomba gövdesi
+    ctx.fillStyle = '#3f4a2a';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    ctx.beginPath(); ctx.ellipse(cx - 0.9 * S, cy - 1.3 * S, rx * 0.5, ry * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.34)'; ctx.lineWidth = Math.max(1, 0.7 * S);
     ctx.beginPath();
-    ctx.moveTo(cx, cy - R - 1.6 * S);
-    ctx.quadraticCurveTo(cx + 2 * S, cy - R - 4.4 * S, cx + 4 * S, cy - R - 3.2 * S);
+    ctx.moveTo(cx - rx + 1 * S, cy - 1.4 * S); ctx.lineTo(cx + rx - 1 * S, cy - 1.4 * S);
+    ctx.moveTo(cx - 1.1 * S, cy - ry + 1.2 * S); ctx.lineTo(cx - 1.1 * S, cy + ry - 1.2 * S);
+    ctx.moveTo(cx + 1.1 * S, cy - ry + 1.2 * S); ctx.lineTo(cx + 1.1 * S, cy + ry - 1.2 * S);
     ctx.stroke();
+    ctx.fillStyle = '#5a6472'; ctx.fillRect(cx - 1.5 * S, cy - ry - 1.4 * S, 3 * S, 1.8 * S);
+    ctx.fillStyle = '#8a929c'; ctx.fillRect(cx + 1.2 * S, cy - ry - 1 * S, 1.2 * S, ry + 1 * S);
+    // el (bombayı kavrar)
+    ctx.fillStyle = skin; ctx.fillRect(cx - 1.5 * S, cy - 1 * S, 2.8 * S, 3 * S);
     ctx.restore();
     return;
   }
 
-  // dipçik
-  ctx.fillStyle = '#3a2b1e';
-  ctx.fillRect(hx - 5 * S, hy - 1 * S, 5 * S, 3 * S);
-  // namlu
-  ctx.fillStyle = '#20272f';
-  ctx.fillRect(hx, hy - 1.5 * S, len * S, 3 * S);
-  ctx.fillStyle = '#3d4854';
-  ctx.fillRect(hx, hy - 1.5 * S, len * S, 1 * S);
-  // şarjör
-  ctx.fillStyle = '#2a323b';
-  ctx.fillRect(hx + 2 * S, hy + 1.5 * S, 3 * S, 3 * S);
-  if (wepId === 'sniper') {
-    ctx.fillStyle = '#151a20';
-    ctx.fillRect(hx + 4 * S, hy - 3.5 * S, 5 * S, 2 * S);
+  const grip = x + 16 * S;                     // arka el / tetik — GÖVDEDEN İLERİDE
+                                               // (istek: biraz ileride tutsun)
+  // Tüfek %10 daha büyük (istek); diğer silahlar aynı.
+  const len = (wepId === 'sniper' ? 15 : wepId === 'shotgun' ? 12 : 14.3) * S;
+  const tip = grip + len;
+  const foreX = tip - 4.5 * S;                  // ön el (uzatılmış)
+
+  // İKİ KOL da ten renginde, ikisi de silaha uzanır ("iki eliyle de tutsun").
+  // Arka el tetikte, ön el namlu altında — ikisi de belirgin.
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = skinDark; ctx.lineWidth = 2.3 * S;   // arka kol (biraz koyu, arkada)
+  ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(grip + 1 * S, gy + 1 * S); ctx.stroke();
+  ctx.strokeStyle = skin; ctx.lineWidth = 2.5 * S;       // ön kol (uzanır)
+  ctx.beginPath(); ctx.moveTo(shX + 1 * S, shY); ctx.lineTo(foreX, gy + 0.5 * S); ctx.stroke();
+
+  // --- silah (yatay, sağa; dipçik yanak/omuzda) ----------------------------
+  if (wepId === 'shotgun') {
+    ctx.fillStyle = '#3a2b1e'; ctx.fillRect(grip - 5 * S, gy - 1.4 * S, 5 * S, 3 * S);
+    ctx.fillStyle = '#5a4128'; ctx.fillRect(grip - 5 * S, gy - 1.4 * S, 5 * S, 0.9 * S);
+    ctx.fillStyle = '#2c343d'; ctx.fillRect(grip, gy - 1.6 * S, len, 2 * S);
+    ctx.fillStyle = '#41505d'; ctx.fillRect(grip, gy - 1.6 * S, len, 0.6 * S);
+    ctx.fillStyle = '#20262d'; ctx.fillRect(grip, gy + 0.5 * S, len - 1 * S, 1.4 * S);
+    ctx.fillStyle = '#5a4026'; ctx.fillRect(grip + 5 * S, gy + 0.3 * S, 4 * S, 2 * S);
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(tip - 1.4 * S, gy - 1.6 * S, 1.4 * S, 2.8 * S);
+  } else if (wepId === 'sniper') {
+    ctx.fillStyle = '#242830'; ctx.fillRect(grip - 5 * S, gy - 1.3 * S, 5 * S, 2.8 * S);
+    ctx.fillStyle = '#343b46'; ctx.fillRect(grip - 5 * S, gy - 1.3 * S, 5 * S, 0.9 * S);
+    ctx.fillStyle = '#2a323b'; ctx.fillRect(grip, gy - 0.8 * S, len, 1.7 * S);
+    ctx.fillStyle = '#3d4854'; ctx.fillRect(grip, gy - 0.8 * S, len, 0.5 * S);
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(tip - 1.6 * S, gy - 1.1 * S, 1.6 * S, 2.3 * S);
+    ctx.fillStyle = '#0e1217'; ctx.fillRect(grip + 0.5 * S, gy - 3.4 * S, 7 * S, 1.9 * S);
+    ctx.fillStyle = '#8fc4ec'; ctx.fillRect(grip + 7 * S, gy - 3.2 * S, 1.1 * S, 1.5 * S);
+  } else {
+    // %10 büyütülmüş ölçüler
+    ctx.fillStyle = '#2b2f36'; ctx.fillRect(grip - 5.5 * S, gy - 1.45 * S, 5.5 * S, 3.3 * S);
+    ctx.fillStyle = '#3b424b'; ctx.fillRect(grip - 5.5 * S, gy - 1.45 * S, 5.5 * S, 1 * S);
+    ctx.fillStyle = '#232a32'; ctx.fillRect(grip - 0.5 * S, gy - 1.85 * S, 6.6 * S, 3.75 * S);
+    ctx.fillStyle = '#242c34'; ctx.fillRect(grip + 5.5 * S, gy - 1 * S, len - 5.5 * S, 2.1 * S);
+    ctx.fillStyle = '#3a444f'; ctx.fillRect(grip + 5.5 * S, gy - 1 * S, len - 5.5 * S, 0.66 * S);
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(tip - 1.65 * S, gy - 1.45 * S, 1.65 * S, 2.9 * S);
+    ctx.fillStyle = '#262e37'; ctx.fillRect(grip + 0.5 * S, gy + 1.75 * S, 2.9 * S, 3.3 * S);
   }
-  // eller
+
+  // eller (silahın üstünde) — arka (tetik) + ön (uzanmış)
   ctx.fillStyle = skin;
-  ctx.fillRect(hx, hy - 2 * S, 2 * S, 4 * S);
-  ctx.fillRect(hx + (len - 4) * S, hy - 2 * S, 2 * S, 4 * S);
+  ctx.fillRect(grip - 0.6 * S, gy - 1.6 * S, 2.2 * S, 3.4 * S);
+  ctx.fillRect(foreX - 1 * S, gy - 1.4 * S, 2.4 * S, 3 * S);
   ctx.restore();
 }
 
