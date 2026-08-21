@@ -107,6 +107,12 @@ export class Game {
       const carrier = this.players.get(f.carrier);
       if (!carrier || !carrier.alive) { this.dropFlag(); return; }
       f.x = carrier.x; f.y = carrier.y;
+      // Bayrağın konumunu DÜZENLİ yayınla (yalnız durum değişince değil).
+      // 'flag' olayı globalEvents ile HERKESE gider, görüş kısıtından (çalı/
+      // uzaklık) etkilenmez. Yoksa düşman taşıyıcı görünmediğinde bayrak ve
+      // kenar oku, kapıldığı eski noktada donuyordu ("anca düşmanı görünce
+      // bayrağı görüyoruz"). ~15 Hz (2 tick) kenar oku için yeterince akıcı.
+      if ((this.tickCount % 2) === 0) this.emitFlag();
       // Bayrağı KENDİ üssüne götürünce sayı (istek: kendi yerimize taşıyalım).
       const target = this.bases[carrier.team];
       if (Math.hypot(carrier.x - target.x, carrier.y - target.y) < CTF.baseR) {

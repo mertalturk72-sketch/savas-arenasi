@@ -115,7 +115,10 @@ export const CTF = {
   flagReturnMs: 5000,   // yere düşen bayrak bu kadar sonra merkeze döner (istek: 5 sn)
   baseR: 48,            // üsse bu kadar yaklaşınca sayı (capture) olur
   pickR: 28,            // bayrağa bu kadar yaklaşınca alınır/geri döner
-  carrierSpeed: 0.30,   // bayrağı taşırken hız çarpanı: %70 yavaşlar (istek)
+  carrierSpeed: 0.62,   // bayrağı taşırken hız çarpanı (~%38 yavaşlar).
+                        // Tüm sınıf hızları yarıya indikten sonra 0.30 çok
+                        // yavaştı (sürünme); 0.62 taşımayı yeniden akıcı yapar
+                        // ama yine de kovalayan (tam hız) yetişebilir.
   repickMs: 1200,       // bayrağı BIRAKAN oyuncu bu kadar süre onu tekrar alamaz
                         // (yoksa "bırak" anında geri alınır; takıldığında da
                         //  elden çıkarabilmek için bu pencere lazım)
