@@ -10,11 +10,12 @@ import {
   BUSH_REVEAL_DIST, BUSH_FIRE_REVEAL_MS, SPAWN_CENTER_BIAS,
   DEFAULT_BOT_LEVEL,
   ASSIST_WINDOW_MS, KILL_HEAL, KILL_AMMO_FRACTION, muzzleWorld, CTF,
+  ZOMBI, ZOMBI_TIPLERI, zombiHizi,
 } from '../constants.js';
 import { F_ALIVE, F_PROTECTED, F_RELOADING, F_MUZZLE, F_HIDDEN } from '../protocol.js';
 import { applyMovement, queryObstacles, clamp, lineBlocked } from '../physics.js';
 import { createMap } from './map.js';
-import { botThink, resetBot, updateVelocityEstimates } from './bot.js';
+import { botThink, zombiThink, resetBot, updateVelocityEstimates } from './bot.js';
 
 let nextBulletId = 1;
 
@@ -53,6 +54,207 @@ export class Game {
 
     this.flag = null;
     if (this.mode.ctf) this.initCtf();
+
+    this.zombi = null;
+    if (this.mode.zombi) this.initZombi();
+  }
+
+  // --- Zombi Kuşatması ----------------------------------------------------
+  // Dalga düzeni: HAZIRLIK (sayaç işler, canlar dolar) -> SAVAŞ (zombiler tek
+  // tek doğar) -> dalga temizlenince yeniden HAZIRLIK. Son dalga da
+  // temizlenirse ZAFER; tarafımızdan ayakta kimse kalmazsa YENİLGİ.
+  //
+  // Zombiler maç başında havuz olarak yaratılır (ölü hâlde bekler) ve dalga
+  // geldikçe diriltilir. Böylece maç ortasında kadroya oyuncu ekleme/çıkarma
+  // akışına hiç dokunmuyoruz: kadro maç boyunca sabit kalıyor.
+  initZombi() {
+    this.zombi = {
+      dalga: 0,
+      durum: 'hazirlik',      // hazirlik | savas
+      sayac: ZOMBI.ilkHazirlikMs,
+      kuyruk: [],             // bu dalgada daha doğacak zombilerin tipleri
+      sonrakiDogus: 0,
+      sonBildirilen: -1,
+    };
+    this.emitDalga();
+  }
+
+  // Dalga durumunu istemciye bildir. HER KARE DEĞİL: yalnız durum ya da
+  // "kalan zombi" sayısı değişince (bkz. stepZombi).
+  emitDalga() {
+    const z = this.zombi;
+    this.globalEvents.push({
+      e: 'zwave',
+      w: z.dalga,
+      tw: ZOMBI.dalgaSayisi,
+      st: z.durum === 'hazirlik' ? 0 : 1,
+      ms: z.durum === 'hazirlik' ? Math.max(0, Math.round(z.sayac)) : 0,
+      k: z.kuyruk.length + this.zombiCanliSayisi(),
+    });
+  }
+
+  zombiCanliSayisi() {
+    let n = 0;
+    for (const p of this.players.values()) if (p.zombi && p.alive) n++;
+    return n;
+  }
+
+  // Zombi olmayan (BİZİM taraf) oyuncular: gerçek oyuncular + yardımcı botlar.
+  // Yenilgi kontrolü ve dalga büyüklüğü bu listeden hesaplanır.
+  savasanlar() {
+    const out = [];
+    for (const p of this.players.values()) if (!p.zombi) out.push(p);
+    return out;
+  }
+
+  stepZombi(dtMs) {
+    const z = this.zombi;
+    const biz = this.savasanlar();
+
+    // YENİLGİ: tarafımızdan ayakta kimse kalmadı.
+    if (biz.length && !biz.some((p) => p.alive)) {
+      return this.end('yenilgi', { coop: true, kazandi: false, dalga: z.dalga });
+    }
+
+    if (z.durum === 'hazirlik') {
+      z.sayac -= dtMs;
+      if (z.sayac <= 0) this.dalgaBaslat();
+      return;
+    }
+
+    // --- Dalga sürüyor: zombileri tek tek sal ---
+    if (z.kuyruk.length && this.time >= z.sonrakiDogus
+        && this.zombiCanliSayisi() < ZOMBI.ayniAndaEnFazla) {
+      if (this.zombiCikar(z.kuyruk[0])) {
+        z.kuyruk.shift();
+        z.sonrakiDogus = this.time + ZOMBI.dogusAraligiMs;
+      } else {
+        // O tipten boş yuva yok (hepsi sahada): biraz sonra tekrar dene.
+        z.sonrakiDogus = this.time + 400;
+      }
+    }
+
+    // Dalga temizlendi mi?
+    if (!z.kuyruk.length && this.zombiCanliSayisi() === 0) {
+      this.globalEvents.push({ e: 'zclear', w: z.dalga });
+      if (z.dalga >= ZOMBI.dalgaSayisi) {
+        return this.end('zafer', { coop: true, kazandi: true, dalga: z.dalga });
+      }
+      z.durum = 'hazirlik';
+      z.sayac = ZOMBI.hazirlikMs;
+      z.sonBildirilen = -1;
+    }
+
+    // Kalan zombi sayısı değiştiyse (doğdu ya da öldü) tek olayla bildir.
+    const kalan = z.kuyruk.length + this.zombiCanliSayisi();
+    if (kalan !== z.sonBildirilen) {
+      z.sonBildirilen = kalan;
+      this.emitDalga();
+    }
+  }
+
+  dalgaBaslat() {
+    const z = this.zombi;
+    z.dalga++;
+    z.durum = 'savas';
+    z.sonBildirilen = -1;
+    // Dalga başı ödülü: ÖLENLER geri gelir, ayakta olanların canı ve mermisi
+    // dolar. Bu yüzden ölmek maçı bitirmez, sadece o dalgayı kaçırırsın.
+    for (const p of this.players.values()) {
+      if (p.zombi) continue;
+      if (!p.alive) { this.respawn(p); continue; }
+      p.hp = p.maxHp;
+      const w = WEAPONS[p.weapon];
+      p.ammo = w.mag;
+      p.reserve = w.reserve;
+      p.reloadUntil = 0;
+      p.dryNotified = false;
+    }
+    z.kuyruk = this.dalgaKadrosu(z.dalga);
+    z.sonrakiDogus = this.time;
+    this.emitDalga();
+  }
+
+  // Bir dalganın kadrosu: kaç zombi, hangi tiplerden.
+  dalgaKadrosu(dalga) {
+    const savasan = Math.max(1, this.savasanlar().length);
+    const taban = ZOMBI.taban + (dalga - 1) * ZOMBI.dalgaBasi;
+    const adet = Math.max(1, Math.round(taban * (1 + (savasan - 1) * ZOMBI.oyuncuCarpani)));
+
+    const tipler = ['yurur'];
+    if (dalga >= ZOMBI.kosucuDalga) tipler.push('kosucu');
+    if (dalga >= ZOMBI.iriDalga) tipler.push('iri');
+    const toplamOran = tipler.reduce((t, id) => t + ZOMBI_TIPLERI[id].oran, 0);
+
+    const kuyruk = [];
+    for (const id of tipler) {
+      const n = Math.round(adet * (ZOMBI_TIPLERI[id].oran / toplamOran));
+      for (let i = 0; i < n; i++) kuyruk.push(id);
+    }
+    while (kuyruk.length < adet) kuyruk.push('yurur');
+    kuyruk.length = adet;
+    // Karıştır: hep aynı sırayla gelmesinler.
+    for (let i = kuyruk.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = kuyruk[i]; kuyruk[i] = kuyruk[j]; kuyruk[j] = t;
+    }
+    return kuyruk;
+  }
+
+  // Havuzdaki boş (ölü) bir yuvayı bu tipte zombi olarak sahaya sürer.
+  zombiCikar(tip) {
+    const z = this.zombi;
+    let yuva = null;
+    for (const p of this.players.values()) {
+      if (p.zombi && !p.alive && p.zombiTip === tip) { yuva = p; break; }
+    }
+    if (!yuva) return false;
+
+    const t = ZOMBI_TIPLERI[tip] || ZOMBI_TIPLERI.yurur;
+    const canK = 1 + (z.dalga - 1) * ZOMBI.canCarpaniDalga;
+
+    yuva.maxHp = Math.round(t.can * canK);
+    yuva.hp = yuva.maxHp;
+    // Hız dalgadan bağımsız: insan hızının sabit bir katı (bkz. zombiHizi).
+    yuva.speed = zombiHizi(t.id);
+    yuva.meleeDmg = t.dmg;
+
+    const nokta = this.zombiDogusNoktasi();
+    yuva.x = nokta.x; yuva.y = nokta.y;
+    yuva.alive = true;
+    yuva.deadUntil = 0;
+    yuva.ammo = 1;
+    yuva.reloadUntil = 0;
+    yuva.nextFireAt = this.time;
+    // Zombide doğuş koruması YOK: zaten uzakta doğuyor, korumalı zombi
+    // oyuncunun mermisini yutardı.
+    yuva.protectUntil = 0;
+    yuva.inputQueue.length = 0;
+    yuva.hurtBy?.clear();
+    resetBot(yuva);
+    this.globalEvents.push({ e: 'spawn', i: yuva.id });
+    return true;
+  }
+
+  // Zombiler oyuncunun GÖZÜ ÖNÜNDE doğmaz: en yakın oyuncuya yeterince uzak
+  // doğuş noktaları arasından rastgele seçilir.
+  zombiDogusNoktasi() {
+    const hedefler = this.savasanlar().filter((p) => p.alive);
+    const havuz = this.spawns.all;
+    const uygun = [];
+    let enIyi = havuz[0], enIyiD = -1;
+    for (const nokta of havuz) {
+      let d = Infinity;
+      for (const h of hedefler) {
+        const dd = Math.hypot(h.x - nokta.x, h.y - nokta.y);
+        if (dd < d) d = dd;
+      }
+      if (d === Infinity) d = 1e6;
+      if (d > enIyiD) { enIyiD = d; enIyi = nokta; }
+      if (d >= ZOMBI.enYakinDogusUzakligi) uygun.push(nokta);
+    }
+    if (uygun.length) return uygun[Math.floor(Math.random() * uygun.length)];
+    return enIyi || { x: this.map.w / 2, y: this.map.h / 2 };
   }
 
   // --- Bayrak Çalma (CTF) -------------------------------------------------
@@ -200,8 +402,20 @@ export class Game {
       privEvents: [],
       brain: info.bot ? {} : null,
     };
+    // Zombi yuvası: maç boyunca kadroda durur ama dalga sırası gelene kadar
+    // ÖLÜ bekler (ölüler durum paketine hiç girmez, yani istemciye görünmez).
+    if (info.zombi) {
+      p.zombi = true;
+      p.zombiTip = info.zombiTip || 'yurur';
+      p.meleeDmg = (ZOMBI_TIPLERI[p.zombiTip] || ZOMBI_TIPLERI.yurur).dmg;
+    }
     this.players.set(p.id, p);
     this.respawn(p, true);
+    if (p.zombi) {
+      p.alive = false;
+      p.hp = 0;
+      p.deadUntil = Number.MAX_SAFE_INTEGER;
+    }
     // Maç başladıktan sonra katılan oyuncuyu diğer istemcilerin listesine ekle
     if (this.time > 0) {
       this.globalEvents.push({
@@ -427,7 +641,46 @@ export class Game {
     return son;
   }
 
+  // Yakın dövüş (pençe): mermi üretmez. Nişan yönündeki dar koni içinde,
+  // menzilde ve DUVARIN ARDINDA OLMAYAN en yakın düşmana anında hasar verir.
+  // Mermiyle yapılmamasının sebebi: 56 pikselde uçan mermi, dibine girmiş
+  // hedefi (mermi namlu ucundan, yani gövdenin ilerisinden doğduğu için)
+  // ıskalıyordu — zombi sarılıyor ama vuramıyordu.
+  meleeSwing(p, wep) {
+    p.nextFireAt = this.time + wep.fireMs;
+    p.muzzle = this.time;
+
+    const menzil = wep.range + PLAYER_RADIUS;
+    const yariKoni = (wep.koni || 1) / 2;
+    let hedef = null, enYakin = Infinity;
+    for (const e of this.players.values()) {
+      if (!e.alive || e.id === p.id) continue;
+      if (this.mode.teams && e.team === p.team) continue;
+      if (e.protectUntil > this.time) continue;
+      const dx = e.x - p.x, dy = e.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > menzil || d >= enYakin) continue;
+      let fark = Math.atan2(dy, dx) - p.aim;
+      while (fark > Math.PI) fark -= Math.PI * 2;
+      while (fark < -Math.PI) fark += Math.PI * 2;
+      if (Math.abs(fark) > yariKoni) continue;
+      if (lineBlocked(p.x, p.y, e.x, e.y, this.idx)) continue;
+      enYakin = d; hedef = e;
+    }
+
+    // Savurma ıskalasa da duyulur/görünür: oyuncu saldırıyı fark etsin.
+    this.globalEvents.push({
+      e: 'shot', i: p.id, x: Math.round(p.x), y: Math.round(p.y),
+      a: +p.aim.toFixed(2), w: wep.id,
+    });
+    if (hedef) {
+      this.damage(hedef, p.meleeDmg || wep.dmg, p, DEATH_BULLET, wep.id);
+      this.globalEvents.push({ e: 'imp', x: Math.round(hedef.x), y: Math.round(hedef.y), t: 1 });
+    }
+  }
+
   fire(p, wep, menzil = 0) {
+    if (wep.melee) { this.meleeSwing(p, wep); return; }
     p.ammo--;
     p.nextFireAt = this.time + wep.fireMs;
     p.muzzle = this.time;
@@ -502,7 +755,8 @@ export class Game {
     this.updateHidden();
 
     for (const p of this.players.values()) {
-      if (p.bot) botThink(p, this, dtMs);
+      if (p.zombi) zombiThink(p, this, dtMs);
+      else if (p.bot) botThink(p, this, dtMs);
       this.drainInputs(p, dtMs);
 
       if (!p.alive && this.mode.respawn && this.time >= p.deadUntil) this.respawn(p);
@@ -515,7 +769,7 @@ export class Game {
       // tetiği önler; elle (R) dolumla çakışmaz.
       if (p.alive) {
         const wp = WEAPONS[p.weapon];
-        if (!wp.throwable && p.ammo <= 0 && p.reserve > 0 && !p.reloadUntil) {
+        if (!wp.throwable && !wp.melee && p.ammo <= 0 && p.reserve > 0 && !p.reloadUntil) {
           p.reloadUntil = this.time + wp.reloadMs;
         }
       }
@@ -531,6 +785,7 @@ export class Game {
     this.stepPickups();
     if (this.zone) this.stepZone(dtMs, dtSec);
     if (this.flag) this.stepCtf();
+    if (this.zombi && !this.over) this.stepZombi(dtMs);
     this.checkEnd();
   }
 
@@ -687,7 +942,10 @@ export class Game {
     if (attacker && attacker !== victim) {
       attacker.kills++;
       // CTF'de skor öldürmeyle DEĞİL, bayrak kapmayla artar; burada dokunma.
-      if (this.mode.teams && !this.mode.ctf) this.teamScore[attacker.team] = (this.teamScore[attacker.team] || 0) + 1;
+      // CTF'de skor bayrakla, Zombi Kuşatması'nda dalgayla ilerler.
+      if (this.mode.teams && !this.mode.ctf && !this.mode.zombi) {
+        this.teamScore[attacker.team] = (this.teamScore[attacker.team] || 0) + 1;
+      }
 
       // ÖLDÜRME ÖDÜLÜ: öldüren oyuncu KILL_HEAL kadar can kazanır.
       // TAVAN ÖNEMLİ: canı taşırmıyoruz — 90 canlıyken öldüren 140 değil,
@@ -713,7 +971,9 @@ export class Game {
       }
     }
 
-    if (!this.mode.respawn) {
+    // Zombi Kuşatması'nda "kaçıncı oldun" diye bir sıra yok: ya birlikte
+    // kazanılır ya birlikte kaybedilir.
+    if (!this.mode.respawn && !this.mode.zombi) {
       victim.place = this.countAlive() + 1;
     }
 
@@ -863,7 +1123,7 @@ export class Game {
   }
 
   scoreboard() {
-    const rows = [...this.players.values()].map((p) => ({
+    const rows = [...this.players.values()].filter((p) => !p.zombi).map((p) => ({
       id: p.id, name: p.name, bot: p.bot, team: p.team, cls: p.cls,
       kills: p.kills, deaths: p.deaths, assists: p.assists || 0, damage: Math.round(p.damage),
       place: p.place || (p.alive ? 1 : 0),
@@ -876,7 +1136,10 @@ export class Game {
     return {
       mode: this.mode.id,
       rows,
-      teamScore: this.mode.teams ? this.teamScore : null,
+      // Zombi modunda "Kırmızı x - Mavi y" satırı anlamsız (karşı taraf
+      // oynanan bir takım değil), o yüzden gönderilmiyor.
+      teamScore: this.mode.teams && !this.mode.zombi ? this.teamScore : null,
+      dalga: this.zombi ? this.zombi.dalga : undefined,
       winner: this.winner,
       reason: this.endReason,
     };
@@ -904,13 +1167,17 @@ export class Game {
     if (this.tickCount % 10 === 0) {
       // Tam skor listesi saniyede iki kez gider.
       const sp = [];
+      let canli = 0, toplam = 0;
       for (const p of this.players.values()) {
+        if (p.zombi) continue;             // zombiler skor tablosunda yok
+        toplam++;
+        if (p.alive) canli++;
         sp.push(p.id, p.kills, p.deaths, Math.round(p.damage), p.alive ? 1 : 0, p.assists);
       }
       base.sc = {
-        team: this.mode.teams ? this.teamScore : null,
-        alive: this.countAlive(),
-        total: this.players.size,
+        team: this.mode.teams && !this.mode.zombi ? this.teamScore : null,
+        alive: canli,
+        total: toplam,
         ps: sp,
         left: this.mode.timeLimitMs ? Math.max(0, Math.round((this.mode.timeLimitMs - this.time) / 1000)) : 0,
       };
@@ -964,6 +1231,11 @@ export class Game {
 
     const ps = [];
     for (const o of this.players.values()) {
+      // Dalga sırasını bekleyen ÖLÜ zombiler kimseye gönderilmez. Canlı
+      // oyuncular zaten ölüleri görmüyor; ama elenmiş oyuncu (izleyici) her
+      // şeyi görüyor ve havuzdaki 26 ölü zombi hem bant israfı hem de
+      // 'nereden çıkacaklar' bilgisinin sızması olurdu.
+      if (o.zombi && !o.alive) continue;
       let include = seeAll || this.canSee(viewer, o);
       if (include && o !== viewer) viewer.seen.set(o.id, now);
       else if (!include && now - (viewer.seen.get(o.id) || -1e9) < VIS_GRACE_MS) include = true;

@@ -299,6 +299,10 @@ button.ghost.tiny { padding: 3px 8px; font-size: 11px; }
 .mode-card.sel { border-color: var(--accent); background: #241a12; box-shadow: 0 0 0 1px var(--accent) inset; }
 .mode-card .mc-name { font-weight: 700; font-size: 14px; }
 .mode-card .mc-desc { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+/* Sunucunun tanımadığı mod: seçilebilir görünmesin, sebebi yazsın. */
+.mode-card.yok { opacity: .45; cursor: not-allowed; }
+.mode-card.yok:hover { border-color: var(--line); transform: none; }
+.mode-card .mc-yok { font-size: 11px; color: #ffb26b; margin-top: 6px; font-weight: 600; }
 /* .compact artık kullanılmıyor: mod açıklamaları lobide de görünüyor.
    Kural duruyor ki ileride dar bir yerde tekrar gerekirse hazır olsun. */
 .mode-picker.compact .mc-desc { display: none; }
@@ -540,6 +544,14 @@ body.touch #canvas { cursor: none; }
 }
 .match-info .mi-time-only.urgent { color: #ff6b6b; animation: pulseTime 1s ease-in-out infinite; }
 @keyframes pulseTime { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+/* Zombi Kuşatması: süre yerine dalga bilgisi */
+.match-info .mi-wave {
+  font-size: 26px; font-weight: 800; letter-spacing: .05em; color: #9ede6a;
+  font-variant-numeric: tabular-nums;
+}
+.match-info .mi-wave.urgent { color: #ffd24a; animation: pulseTime 1s ease-in-out infinite; }
+.match-info .mi-wsub { font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+
 .match-info .mi-score { font-size: 24px; font-weight: 700; }
 .match-info .mi-score.t1 { color: var(--red); }
 .match-info .mi-score.t2 { color: var(--blue); }
@@ -997,6 +1009,7 @@ body:not(.touch) .touch-ui { display: none !important; }
     radial-gradient(48vw 48vw at 84% 78%, rgba(63,155,255,.12), transparent 62%),
     radial-gradient(38vw 38vw at 60% 25%, rgba(126,231,135,.07), transparent 60%);
   animation: bgDrift 26s ease-in-out infinite alternate;
+  will-change: transform;      /* kendi katmanına alınsın: gradyan bir kez rasterize edilir */
 }
 @keyframes bgDrift {
   from { transform: translate3d(-2%, -1%, 0) scale(1); }
@@ -1068,16 +1081,21 @@ button.primary {
 button.primary::after {           /* üstünden geçen parıltı */
   content: '';
   pointer-events: none;
-  position: absolute; top: 0; bottom: 0; left: -60%;
+  position: absolute; top: 0; bottom: 0; left: 0;
   width: 40%;
   background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
-  transform: skewX(-18deg);
+  will-change: transform;
   animation: shine 3.6s ease-in-out infinite;
 }
+/* NEDEN transform: eskiden `left` animasyonluydu. `left` bir DÜZEN özelliği;
+   her karede yeniden yerleşim ve boyama gerektirir ve bu animasyon sonsuz
+   döner — ekranda kaç tane turuncu düğme varsa o kadar. Orta seviye
+   telefonlarda (lobide 3-4 düğme) tek başına gözle görülür kasma yapıyordu.
+   `transform` derleyici katmanında çalışır: düzen de boyama da yok. */
 @keyframes shine {
-  0%, 62% { left: -60%; }
-  86%     { left: 130%; }
-  100%    { left: 130%; }
+  0%, 62% { transform: translateX(-160%) skewX(-18deg); }
+  86%     { transform: translateX(325%) skewX(-18deg); }
+  100%    { transform: translateX(325%) skewX(-18deg); }
 }
 button.primary:hover { filter: brightness(1.12); transform: translateY(-1px); }
 button.primary:active { transform: translateY(1px); filter: brightness(.96); }
@@ -1092,6 +1110,28 @@ button.ghost:active { transform: translateY(1px); }
   transition: border-color .15s, background .15s, transform .12s, box-shadow .15s;
 }
 .mode-card:hover, .class-card:hover, .char-card:hover { transform: translateY(-2px); }
+
+/* PARMAK GERİ BİLDİRİMİ — telefonda "bastım ama bir şey olmadı" hissinin sebebi.
+ *
+ * body'de `-webkit-tap-highlight-color: transparent` var: Android'in kendi
+ * dokunma parıltısı kapalı. Düğmelerin çoğunda bunun yerine `:active` stili
+ * konmuş, ama lobide en çok basılan şeyler olan MOD / SINIF / KARAKTER
+ * kartlarında yoktu. `:hover` de dokunmatikte çalışmaz. Sonuç: parmağını
+ * bastığın an ekranda HİÇBİR ŞEY olmuyor; seçimin görünmesi için mesajın
+ * sunucuya gidip lobinin yeniden çizilmesini beklemek gerekiyordu.
+ *
+ * Bu stil hiçbir şey beklemez: parmak değdiği anda tarayıcı çizer. */
+.mode-card:active, .class-card:active, .char-card:active,
+.lobby-item:active, .team-btn:active, .roster-item .r-kick:active {
+  transform: scale(.97);
+  filter: brightness(1.18);
+  border-color: var(--accent);
+}
+/* Basılı geri bildirimi ani olsun: kartların 0.14s geçişi buraya uygulanmasın. */
+.mode-card:active, .class-card:active, .char-card:active,
+.lobby-item:active, .team-btn:active {
+  transition: none;
+}
 .mode-card.sel, .class-card.sel {
   box-shadow: 0 0 0 1px var(--accent) inset, 0 0 22px rgba(255,138,61,.22);
 }
@@ -1114,6 +1154,37 @@ button.ghost:active { transform: translateY(1px); }
 @keyframes hpAlarm {
   0%, 100% { filter: brightness(1); }
   50%      { filter: brightness(1.55); }
+}
+
+/* TELEFON/TABLET (dokunmatik) — sürekli dönen pahalı efektler kapalı.
+ *
+ * Buradaki hiçbir efekt oyunun kendisiyle ilgili değil; hepsi süs. Ama
+ * hepsi de SONSUZ döndüğü için telefonun ekranı hiç dinlenmiyor:
+ *   • ekranın arkasındaki üç büyük radyal gradyan sürekli ölçekleniyor
+ *     (ölçek değişince gradyanın yeniden rasterize edilmesi gerekiyor),
+ *   • başlıkta `filter: drop-shadow` animasyonu var — filtre animasyonu
+ *     derleyici katmanında çalışmaz, her karede bulanıklık yeniden hesaplanır,
+ *   • `backdrop-filter: blur()` panellerin ARKASINI bulanıklaştırır; mobil
+ *     GPU'da en pahalı efektlerden biridir ve lobide birden fazla panel var.
+ *
+ * Masaüstünde görünüş aynen duruyor.
+ */
+@media (hover: none) and (pointer: coarse) {
+  #screenMenu::before, #screenLobby::before,
+  .brand h1, button.primary::after {
+    animation: none !important;
+  }
+  .brand h1 { filter: none; }
+  /* Arka plan kütlesi kalsın ama sabit dursun (görünüş bozulmasın). */
+  #screenMenu::before, #screenLobby::before { will-change: auto; }
+  /* Arka bulanıklığı yerine biraz daha koyu düz zemin: aynı okunaklılık,
+     GPU maliyeti sıfır. */
+  .panel, .match-info, .scoreboard,
+  .countdown-overlay, .update-overlay, .settings-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .panel { background: linear-gradient(180deg, var(--panel) 0%, var(--bg2) 100%); }
 }
 
 /* Hareket duyarlılığı: kullanıcı animasyon istemiyorsa hepsi kapansın. */

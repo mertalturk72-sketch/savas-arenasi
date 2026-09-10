@@ -108,6 +108,25 @@ export const MODES = {
     map: 'ctf',
     ctf: true,
   },
+  // Zombi Kuşatması — takımlı ama rekabetçi DEĞİL: oyuncular (takım 1) dalga
+  // dalga gelen zombilere (takım 2) karşı birlikte hayatta kalır. Takım
+  // altyapısını olduğu gibi kullanıyoruz (dost ateşi kapalı, takım arkadaşı
+  // hep görünür), tek fark karşı tarafın oynanmayan bir taraf olması.
+  zombi: {
+    id: 'zombi',
+    name: 'Zombi Kuşatması',
+    short: 'ZOMBİ',
+    desc: 'Dalga dalga gelen zombilere karşı hayatta kal. Ölen dostun sonraki dalgada geri döner.',
+    teams: true,
+    coop: true,        // takım seçimi yok: herkes aynı taraftadır
+    solo: true,        // tek kişi de başlatabilir (rakip zaten oyunun kendisi)
+    respawn: false,    // ölünce beklersin; dalga başında dirilirsin
+    scoreLimit: 0,
+    timeLimitMs: 0,    // süre sınırı yok — dalgalar bitince maç biter
+    shrinkingZone: false,
+    map: 'arena',
+    zombi: true,
+  },
 };
 
 // Bayrak Çalma ayarları — tek yerde.
@@ -123,6 +142,43 @@ export const CTF = {
                         // (yoksa "bırak" anında geri alınır; takıldığında da
                         //  elden çıkarabilmek için bu pencere lazım)
 };
+// Zombi Kuşatması ayarları — tek yerde.
+export const ZOMBI = {
+  dalgaSayisi: 10,          // bu kadar dalga temizlenince ZAFER
+  ilkHazirlikMs: 7000,      // maç başındaki hazırlık
+  hazirlikMs: 12000,        // dalgalar arası hazırlık (can/mermi dolar)
+  // Bir dalgadaki zombi sayısı: (taban + dalga*artış) × savaşçı sayısı ölçeği.
+  taban: 4,
+  dalgaBasi: 2,
+  oyuncuCarpani: 0.55,      // her EK savaşçı zombi sayısını bu oranda artırır
+  ayniAndaEnFazla: 12,      // aynı anda haritada en fazla bu kadar zombi olur
+  dogusAraligiMs: 700,      // zombiler topluca değil, tek tek gelir
+  enYakinDogusUzakligi: 620,// en yakın oyuncuya bu kadar uzakta doğarlar
+  havuz: 26,                // maç başında hazırlanan zombi yuvası (yeniden kullanılır)
+  canCarpaniDalga: 0.12,    // her dalgada can +%12
+  // Hız dalgayla ARTMIYOR — bilerek. Zombiler zaten oyuncudan hızlı
+  // (bkz. ZOMBI_TIPLERI.hizCarpani); üstüne her dalgada bir de hızlansalardı
+  // son dalgalarda oyuncunun hiçbir manevrası kalmazdı. Dalga zorluğu can
+  // ve sayı üzerinden artıyor.
+  kosucuDalga: 3,           // koşucular bu dalgadan itibaren çıkar
+  iriDalga: 5,              // iriler bu dalgadan itibaren çıkar
+};
+
+// Zombi çeşitleri. Her çeşidin KENDİ GÖRÜNÜŞÜ var (char) — oyuncu uzaktan
+// bakınca ne geldiğini anlasın diye. Oran: dalga kadrosundaki payı.
+//
+// hizCarpani: İNSAN HIZININ KATI (px/s değil). İstek: sıradan zombi insan
+// hızının %115'i olsun (Koşucu üstünde, İri altında — tip karakteri korunsun
+// diye aralarındaki oran aynı bırakıldı). Sabit bir px/s yazmak yerine kat olarak
+// yazıyoruz ki sınıf hızları bir gün değişirse zombiler kendiliğinden uysun —
+// aksi hâlde iki sayı birbirinden habersiz kayar. Karşılığı için zombiHizi().
+export const ZOMBI_TIPLERI = {
+  yurur:  { id: 'yurur',  ad: 'Yürüyen', char: 'zombi_yurur',  can: 70,  hizCarpani: 1.15, dmg: 14, oran: 0.62 },
+  kosucu: { id: 'kosucu', ad: 'Koşucu',  char: 'zombi_kosucu', can: 44,  hizCarpani: 1.30, dmg: 10, oran: 0.26 },
+  iri:    { id: 'iri',    ad: 'İri',     char: 'zombi_iri',    can: 260, hizCarpani: 0.92, dmg: 30, oran: 0.12 },
+};
+export const ZOMBI_TIP_IDS = Object.keys(ZOMBI_TIPLERI);
+
 export const MODE_IDS = Object.keys(MODES);
 export const DEFAULT_MODE = 'ffa';
 
@@ -198,7 +254,7 @@ export const CLASSES = {
     id: 'komando',
     name: 'Komando',
     desc: 'Dengeli. Otomatik tüfek. Her duruma uyar.',
-    speed: 164,
+    speed: 180,
     hp: 100,
     weapon: 'rifle',
     color: '#7ee787',
@@ -207,7 +263,7 @@ export const CLASSES = {
     id: 'akinci',
     name: 'Akıncı',
     desc: 'Çok hızlı. Pompalı ile yakın dövüş.',
-    speed: 212,
+    speed: 233,
     hp: 100,
     weapon: 'shotgun',
     color: '#ffd479',
@@ -216,7 +272,7 @@ export const CLASSES = {
     id: 'nisanci',
     name: 'Keskin Nişancı',
     desc: 'Yavaş ama tek atışta yıkıcı. Uzun menzil.',
-    speed: 132,
+    speed: 145,
     hp: 100,
     weapon: 'sniper',
     color: '#c39bff',
@@ -225,14 +281,44 @@ export const CLASSES = {
     id: 'bombaci',
     name: 'Bombacı',
     desc: 'Bomba atar. Basılı tut, menzili ayarla, bırak.',
-    speed: 152,
+    speed: 167,
     hp: 100,
     weapon: 'bomba',
     color: '#ff9f5a',
   },
+  // Zombinin kendisi. Lobide SEÇİLEMEZ (gizli): yalnız Zombi Kuşatması
+  // modunda, sunucunun ürettiği zombi yuvalarında kullanılır. Can ve hız
+  // burada yazan değil, dalgaya göre hesaplanan değerdir (bkz. ZOMBI_TIPLERI).
+  //
+  // DİKKAT: sınıf indeksi ikili durum paketinde 3 BİTE sığıyor (bkz.
+  // shared/binary.js) — en fazla 8 sınıf olabilir.
+  zombi: {
+    id: 'zombi',
+    name: 'Zombi',
+    desc: 'Silahı yok, pençesi var.',
+    speed: 96,
+    hp: 70,
+    weapon: 'pence',
+    color: '#8fbf6a',
+    gizli: true,
+  },
 };
 export const CLASS_IDS = Object.keys(CLASSES);
 export const DEFAULT_CLASS = 'komando';
+
+// Oynanabilir sınıfların ortalama hızı. Zombi hızları bunun katı olarak
+// hesaplanıyor (bkz. ZOMBI_TIPLERI.hizCarpani), yani bir sınıfın hızını
+// değiştirmek zombileri de kendiliğinden dengeler.
+export const INSAN_HIZI = (() => {
+  const hizlar = Object.values(CLASSES).filter((c) => !c.gizli).map((c) => c.speed);
+  return hizlar.reduce((t, v) => t + v, 0) / hizlar.length;
+})();
+
+/** Bir zombi tipinin px/s cinsinden hızı. */
+export function zombiHizi(tipId) {
+  const t = ZOMBI_TIPLERI[tipId] || ZOMBI_TIPLERI.yurur;
+  return Math.round(INSAN_HIZI * t.hizCarpani);
+}
 
 // --- Bot zorluğu ----------------------------------------------------------
 // Botların "yeteneği" tek bir sayı (0..1) ve şu üç şeyi birden belirliyor:
@@ -289,6 +375,12 @@ export const CHARACTERS = {
   gumus:     { id: 'gumus',     name: 'Gümüş',      style: 'kisa',    hair: '#c9c6bd', skin: '#eec9a6', jacket: '#33383f', accent: '#d9d3c0', eye: '#a8c8e0', walk: { leg: 0.95, arm: 1.1, lift: 0.9, bob: 0.9, sway: 1.6, cad: 0.9  } },
   mavipercem:{ id: 'mavipercem',name: 'Mavi Perçem',style: 'kisa',    hair: '#5f7fc4', skin: '#f2d2b2', jacket: '#242a38', accent: '#b8cbe8', eye: '#7fc8e8', walk: { leg: 1.0,  arm: 1.2, lift: 1.5, bob: 1.3, sway: 1.1, cad: 1.25 } },
   esmer:     { id: 'esmer',     name: 'Esmer',      style: 'kabarik', hair: '#402e20', skin: '#8a5a3a', jacket: '#2c3630', accent: '#e0bb55', eye: '#d8b98f', walk: { leg: 1.3,  arm: 1.1, lift: 1.2, bob: 1.4, sway: 0.7, cad: 0.8  } },
+  // --- Zombiler ---
+  // Lobide SEÇİLEMEZ (gizli). Üç zombi tipinin üç ayrı görünüşü: oyuncu
+  // uzaktan silüete bakınca yavaş mı, koşucu mu, iri mi olduğunu anlasın.
+  zombi_yurur:  { id: 'zombi_yurur',  name: 'Yürüyen Zombi', style: 'uzun',    hair: '#3f4a35', skin: '#8fae6d', jacket: '#414a38', accent: '#66753f', eye: '#e2f06a', gizli: true, walk: { leg: 0.7, arm: 0.45, lift: 0.4, bob: 0.5, sway: 1.8, cad: 0.7  } },
+  zombi_kosucu: { id: 'zombi_kosucu', name: 'Koşucu Zombi',  style: 'dikenli', hair: '#5a3a2e', skin: '#b8c48a', jacket: '#5a4630', accent: '#8a9a52', eye: '#ff7a4a', gizli: true, walk: { leg: 1.5, arm: 1.7, lift: 1.5, bob: 1.6, sway: 0.9, cad: 1.55 } },
+  zombi_iri:    { id: 'zombi_iri',    name: 'İri Zombi',     style: 'kabarik', hair: '#2b3326', skin: '#6f8a52', jacket: '#2f3a2a', accent: '#4e5c33', eye: '#d8f06a', gizli: true, walk: { leg: 1.1, arm: 0.6, lift: 0.6, bob: 1.8, sway: 1.3, cad: 0.5  } },
 };
 export const DEFAULT_WALK = { leg: 1, arm: 1, lift: 1, bob: 1, sway: 1, cad: 1 };
 export const CHAR_IDS = Object.keys(CHARACTERS);
@@ -348,6 +440,16 @@ export const WEAPONS = {
     blastR: 100,          // patlama yarıçapı (125'ten %20 küçültüldü)
     blastDmg: 56,         // merkezdeki hasar (kenarda %25'e iner)
   },
+  // Pençe — YAKIN DÖVÜŞ. Mermi üretmez: ateşleyince önündeki dar koni
+  // içindeki ilk düşmana anında hasar verir (bkz. Game.meleeSwing).
+  // Mermi harcamaz, şarjörü bitmez; bu yüzden mag 1 / reserve 0 yeterli.
+  pence: {
+    id: 'pence', name: 'Pençe',
+    dmg: 14, fireMs: 780, speed: 1, spread: 0, pellets: 1,
+    mag: 1, reserve: 0, reloadMs: 0, range: 56, bulletR: 0, auto: true,
+    melee: true,
+    koni: 1.1,        // pençenin taradığı yay (radyan, toplam açı)
+  },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);
 
@@ -368,6 +470,8 @@ export const WEAPON_VIEW = {
   sniper:  { tut: 4, boy: 34 },
   // Bombacının elinde namlu YOK, bomba var: mermi doğrudan elden çıkar.
   bomba:   { tut: 4, boy: 3 },
+  // Pençede namlu yok: "namlu ucu" avucun biraz ilerisi.
+  pence:   { tut: 2, boy: 8 },
 };
 // Ellerin gövde merkezine göre yüksekliği (yukarısı eksi) ve yana kaçıklığı.
 export const HAND_Y = -PLAYER_RADIUS * 1.15;
@@ -410,6 +514,10 @@ export const IN_DROP = 1 << 6;   // CTF: taşınan bayrağı elden bırak
 // --- Ölüm sebepleri -------------------------------------------------------
 export const DEATH_BULLET = 0;
 export const DEATH_ZONE = 1;
+
+// Zombilerin skor akışında görünen adları. Tip adı + numara ("Yürüyen 3")
+// olarak üretilir; havuzdaki her yuvaya maç başında bir kez verilir.
+export const ZOMBI_ADLARI = ['Yürüyen', 'Koşucu', 'İri'];
 
 export const BOT_NAMES = [
   'Bozkurt', 'Kartal', 'Şahin', 'Yıldırım', 'Fırtına', 'Tunç', 'Demir', 'Alp',

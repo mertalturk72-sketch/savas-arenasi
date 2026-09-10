@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oyun İçi Silah Testi</title>
+<style>
+  html,body{margin:0;background:#3a4a2e;color:#e8eef6;font-family:system-ui,sans-serif}
+  h1{font-size:16px;text-align:center;padding:10px 0 2px;margin:0}
+  .sub{text-align:center;color:#cde;font-size:12px;margin-bottom:8px}
+  .grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;padding:10px}
+  .cell{background:#2c3a22;border:1px solid #44562e;border-radius:10px;padding:6px;text-align:center}
+  canvas{image-rendering:pixelated;background:#42552f;border-radius:6px}
+  .cap{font-size:11px;color:#bcd}
+  #err{color:#ff8a8a;text-align:center;font-size:12px}
+</style>
+</head>
+<body>
+<h1>Oyun İçi Silah Testi — nişana dönen silah + bağlı kollar</h1>
+<div class="sub">4 yön × birkaç nişan açısı · oyun içiyle aynı çizim (drawHoldArms + drawGun)</div>
+<div id="err"></div>
+<div class="grid" id="grid"></div>
+
+<script type="module">
+import { getCharacterSprites, dirFromAngle, getHeldWeapon, preloadSprites } from './js/sprites.js';
+import { CHARACTERS, CLASSES, WEAPONS, PLAYER_RADIUS, WEAPON_VIEW, HAND_Y, HAND_SIDE } from '/shared/constants.js';
+
+const err = document.getElementById('err');
+const grid = document.getElementById('grid');
+
+// oyun içi drawPlayer/drawWeapon'ın sadeleştirilmiş kopyası (görsel doğrulama)
+function drawScene(ctx, cx, cy, ch, wep, aim) {
+  const set = getCharacterSprites({jacket:ch.jacket,hair:ch.hair,skin:ch.skin,accent:ch.accent,eye:ch.eye,style:ch.style});
+  const dir = dirFromAngle(aim);
+  const frame = set[dir].stand;
+  const scale = 1.30;
+  const w = frame.width*scale, h = frame.height*scale;
+  const px = cx, py = cy;
+  ctx.imageSmoothingEnabled = false;
+  const left = px - w/2, top = py + PLAYER_RADIUS*0.55 - h + h*0.05;
+  ctx.drawImage(frame, left, top, w, h);
+  // silah (oyun içiyle aynı transform)
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(px, py + HAND_Y);
+  ctx.rotate(aim);
+  ctx.scale(1.30, 1.30);
+  const held = getHeldWeapon(wep.id, ch);
+  ctx.drawImage(held.canvas, -held.ax, -held.ay);
+  ctx.restore();
+}
+
+function drawBig(ctx, cx, cy, ch, wep, aim, Z) {
+  const set = getCharacterSprites({jacket:ch.jacket,hair:ch.hair,skin:ch.skin,accent:ch.accent,eye:ch.eye,style:ch.style});
+  const dir = dirFromAngle(aim);
+  const frame = set[dir].stand;
+  const scale = 1.30*Z;
+  const w = frame.width*scale, h = frame.height*scale;
+  ctx.imageSmoothingEnabled=false;
+  const left = cx - w/2, top = cy + PLAYER_RADIUS*0.55*Z - h + h*0.05;
+  ctx.drawImage(frame, left, top, w, h);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(cx, cy + HAND_Y*Z); ctx.rotate(aim); ctx.scale(1.30*Z, 1.30*Z);
+  const held = getHeldWeapon(wep.id, ch);
+  ctx.drawImage(held.canvas, -held.ax, -held.ay);
+  ctx.restore();
+}
+
+(async () => {
+  await preloadSprites();
+  const chars = Object.values(CHARACTERS);
+  const clsList = Object.values(CLASSES);
+  // BÜYÜK yakın render (kol-silah kavrayışı)
+  {
+    const row = document.createElement('div'); row.className='grid';
+    for (const [nm, aim] of [['sağ',0],['çapraz',-Math.PI/4],['sol',Math.PI]]) {
+      const cell=document.createElement('div'); cell.className='cell';
+      const cv=document.createElement('canvas'); cv.width=260; cv.height=260;
+      drawBig(cv.getContext('2d'), 130, 150, CHARACTERS.kivircik, WEAPONS.rifle, aim, 3.2);
+      const cap=document.createElement('div'); cap.className='cap'; cap.textContent='YAKIN · Kıvırcık · '+nm;
+      cell.appendChild(cv); cell.appendChild(cap); row.appendChild(cell);
+    }
+    grid.appendChild(row);
+  }
+  const aims = [
+    ['sağ', 0], ['aşağı', Math.PI/2], ['sol', Math.PI], ['yukarı', -Math.PI/2], ['çapraz', -Math.PI/4],
+  ];
+  chars.slice(0,4).forEach((ch, i) => {
+    const wep = WEAPONS[clsList[i % clsList.length].weapon];
+    aims.forEach(([label, aim]) => {
+      const cell = document.createElement('div'); cell.className='cell';
+      const cv = document.createElement('canvas'); cv.width=120; cv.height=120;
+      const ctx = cv.getContext('2d');
+      drawScene(ctx, 60, 66, ch, wep, aim);
+      const cap = document.createElement('div'); cap.className='cap'; cap.textContent = ch.name+' · '+label;
+      cell.appendChild(cv); cell.appendChild(cap); grid.appendChild(cell);
+    });
+  });
+})().catch(e => err.textContent = 'HATA: '+(e&&e.stack||e));
+</script>
+</body>
+</html>

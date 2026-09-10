@@ -261,6 +261,94 @@ export function botThink(p, game, dtMs) {
   p.inputQueue.push({ s: b.seq, d: dtMs, k: keys, a: Math.round(b.aim * 1000) / 1000 });
 }
 
+// =========================================================================
+// ZOMBİ BEYNİ
+// =========================================================================
+// Ayrı bir işlev, çünkü zombinin istediği şey savaşçı botunkinin tam tersi:
+// mesafe korumaz, siper almaz, cephane aramaz, geri çekilmez. Tek işi en
+// yakın insana yürüyüp pençelemek. Savaşçı bot mantığını "zombi ise şunu
+// yapma" diye delik deşik etmek yerine bu kısa işlevi yazdık.
+//
+// Zombi KOKU ALIR: hedefi duvarın ardında da bilir (görüş hattı şartı yok).
+// Ama duvarı delip geçemez — yolunu aşağıdaki bıyık ışınlarıyla bulur.
+export function zombiThink(p, game, dtMs) {
+  if (!p.brain) resetBot(p);
+  const b = p.brain;
+  b.seq++;
+
+  if (!p.alive) {
+    p.inputQueue.push({ s: b.seq, d: dtMs, k: 0, a: p.aim });
+    return;
+  }
+
+  const wep = WEAPONS[p.weapon];
+  const now = game.time;
+  let keys = 0;
+
+  // --- En yakın insanı seç -----------------------------------------------
+  let hedef = null, enYakin = Infinity;
+  for (const o of game.players.values()) {
+    if (!o.alive || o.zombi || o.id === p.id) continue;
+    if (game.mode.teams && o.team === p.team) continue;
+    if (o.protectUntil > now) continue;
+    const d = Math.hypot(o.x - p.x, o.y - p.y);
+    if (d < enYakin) { enYakin = d; hedef = o; }
+  }
+
+  // Kimse kalmadıysa (hepsi ölü) olduğu yerde bekler.
+  if (!hedef) {
+    p.inputQueue.push({ s: b.seq, d: dtMs, k: 0, a: p.aim });
+    return;
+  }
+
+  // --- Yön: hedefe doğru, engelin etrafından ------------------------------
+  let dx = hedef.x - p.x, dy = hedef.y - p.y;
+  const dLen = Math.hypot(dx, dy) || 1;
+  dx /= dLen; dy /= dLen;
+
+  const probe = 78;
+  const onKapali = lineBlocked(p.x, p.y, p.x + dx * probe, p.y + dy * probe, game.idx);
+  if (onKapali || now < b.detourUntil) {
+    if (now >= b.detourUntil) {
+      const lx = -dy, ly = dx;
+      const solKapali = lineBlocked(p.x, p.y, p.x + lx * probe * 1.3, p.y + ly * probe * 1.3, game.idx);
+      const sagKapali = lineBlocked(p.x, p.y, p.x - lx * probe * 1.3, p.y - ly * probe * 1.3, game.idx);
+      b.detourDir = solKapali && !sagKapali ? -1 : (sagKapali && !solKapali ? 1 : (Math.random() < 0.5 ? 1 : -1));
+      b.detourUntil = now + 420 + Math.random() * 380;
+    }
+    const lx = -dy * b.detourDir, ly = dx * b.detourDir;
+    dx = dx * 0.25 + lx; dy = dy * 0.25 + ly;
+  }
+
+  // Takılma tespiti: bir süre ilerleme yoksa ters yöne dolan.
+  if (now - b.progressAt > 900) {
+    b.progressAt = now;
+    if (Math.hypot(p.x - b.lastX, p.y - b.lastY) < 24) {
+      b.detourDir = -b.detourDir;
+      b.detourUntil = now + 620;
+    }
+    b.lastX = p.x; b.lastY = p.y;
+  }
+
+  // Dibine girdiyse ittirmeye devam etmesin; yerinde dönüp pençelesin.
+  if (enYakin > PLAYER_RADIUS * 1.7) keys |= keysFromDir(dx, dy);
+
+  // --- Nişan: gövdeye doğru dön ------------------------------------------
+  const istenen = Math.atan2(hedef.y - p.y, hedef.x - p.x);
+  const donus = 4.2 * (dtMs / 1000);
+  b.aim += clamp(angDiff(b.aim, istenen), -donus, donus);
+
+  // --- Pençele ------------------------------------------------------------
+  // Menzil ve açı tutuyorsa saldır. Silah 'auto' olduğu için tuşu basılı
+  // tutmak yeterli; atış hızını sunucu (nextFireAt) sınırlıyor.
+  if (enYakin < wep.range + PLAYER_RADIUS
+      && Math.abs(angDiff(b.aim, istenen)) < (wep.koni || 1) / 2) {
+    keys |= IN_FIRE;
+  }
+
+  p.inputQueue.push({ s: b.seq, d: dtMs, k: keys, a: Math.round(b.aim * 1000) / 1000 });
+}
+
 // Hedeflerin hız tahminini güncelle (nişan öngörüsü için).
 export function updateVelocityEstimates(game, dtMs) {
   const dt = dtMs / 1000;

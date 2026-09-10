@@ -29,7 +29,8 @@ const HAS_EV = 1, HAS_ZN = 2, HAS_SC = 4, HAS_PE = 8, HAS_TEAM = 16;
 
 // Olay tipleri — sıralama ASLA değişmemeli (istemciyle ortak sözlük).
 // YENİ TİP SONA EKLENİR — sıra değişirse eski istemciler yanlış çözer.
-const EV_IDS = ['join', 'spawn', 'shot', 'imp', 'kill', 'pk', 'zone', 'boom'];
+const EV_IDS = ['join', 'spawn', 'shot', 'imp', 'kill', 'pk', 'zone', 'boom', 'zwave', 'zclear',
+  'ctfinit', 'flag', 'grab', 'cap'];
 const PE_IDS = ['dry', 'hit', 'hurt', 'pick'];
 
 // kill.w alanı silah adı ya da 'zone' olabilir; 'zone' için ayrı numara.
@@ -323,6 +324,27 @@ function olayYaz(w, e) {
     case 'boom':
       w.i16(e.x); w.i16(e.y); w.i16(e.r);
       break;
+    // Zombi Kuşatması: dalga durumu ve dalga temizlendi bildirimi.
+    case 'zwave':
+      w.u8(e.w); w.u8(e.tw); w.u8(e.st); w.vu(e.ms); w.u16(e.k);
+      break;
+    case 'zclear':
+      w.u8(e.w);
+      break;
+    // Bayrak Çalma. Bu dört olay eskiden burada yoktu: CTF maçlarındaki her
+    // durum paketi kodlanamayıp JSON'a düşüyordu (bant kazancı sıfır).
+    case 'ctfinit':
+      w.i16(e.b1x); w.i16(e.b1y); w.i16(e.b2x); w.i16(e.b2y); w.i16(e.hx); w.i16(e.hy);
+      break;
+    case 'flag':
+      w.u8(e.st); w.i16(e.x); w.i16(e.y); w.vu(e.c);
+      break;
+    case 'grab':
+      w.vu(e.i); w.u8(e.t);
+      break;
+    case 'cap':
+      w.u8(e.t); w.vu(e.i);
+      break;
     default:
       throw new Error(`ikili: olay yazılamadı: ${e.e}`);
   }
@@ -486,6 +508,14 @@ function olayOku(r) {
     case 'pk': return { e: 'pk', i: r.vu(), a: r.u8() };
     case 'zone': return { e: 'zone', p: r.u8(), x: r.i16(), y: r.i16(), r: r.i16() };
     case 'boom': return { e: 'boom', x: r.i16(), y: r.i16(), r: r.i16() };
+    case 'zwave': return { e: 'zwave', w: r.u8(), tw: r.u8(), st: r.u8(), ms: r.vu(), k: r.u16() };
+    case 'zclear': return { e: 'zclear', w: r.u8() };
+    case 'ctfinit': return {
+      e: 'ctfinit', b1x: r.i16(), b1y: r.i16(), b2x: r.i16(), b2y: r.i16(), hx: r.i16(), hy: r.i16(),
+    };
+    case 'flag': return { e: 'flag', st: r.u8(), x: r.i16(), y: r.i16(), c: r.vu() };
+    case 'grab': return { e: 'grab', i: r.vu(), t: r.u8() };
+    case 'cap': return { e: 'cap', t: r.u8(), i: r.vu() };
     default: throw new Error('ikili: tanınmayan olay numarası');
   }
 }

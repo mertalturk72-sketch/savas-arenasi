@@ -5,7 +5,7 @@ import {
   WEAPON_VIEW, HAND_Y, HAND_SIDE, muzzleWorld,
 } from '/shared/constants.js';
 import { lineBlocked, rayHitDistance } from '/shared/physics.js';
-import { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H, WALK_FRAMES } from './sprites.js';
+import { getCharacterSprites, dirFromAngle, SPRITE_W, SPRITE_H, WALK_FRAMES, getHeldWeapon } from './sprites.js';
 import { CHARACTERS, DEFAULT_CHAR } from '/shared/constants.js';
 
 // GÜN DÖNGÜSÜ VE GÖLGELER KALDIRILDI.
@@ -1106,8 +1106,10 @@ export class Renderer {
     const chr = CHARACTERS[p.char] || CHARACTERS[DEFAULT_CHAR];
     const cls = CLASSES[p.cls] || CLASSES.komando;
 
-    // Takım modunda üniforma takım rengini alır; serbest modda karakterin kendi rengi.
-    const jacket = g.teams ? (TEAMS[p.team]?.color || chr.jacket) : chr.jacket;
+    // Takım modunda üniforma takım rengini alır; serbest modda karakterin kendi
+    // rengi. GİZLİ karakterler (zombiler) istisna: onların rengi kimliğinin
+    // kendisi — mavi üniformalı zombi zombiye benzemiyor.
+    const jacket = (g.teams && !chr.gizli) ? (TEAMS[p.team]?.color || chr.jacket) : chr.jacket;
     const set = getCharacterSprites({
       jacket, hair: chr.hair, skin: chr.skin, accent: chr.accent,
       eye: chr.eye, style: chr.style, walk: chr.walk,
@@ -1116,8 +1118,9 @@ export class Renderer {
 
     const dir = dirFromAngle(p.aim);
     const frames = set[dir];
-    // Dururken nötr duruş (0. kare), yürürken 8 kareli döngü.
-    const frame = p.moving ? frames[p.walkFrame % WALK_FRAMES] : frames[0];
+    // Dururken nötr duruş (LPC'de .stand = 0. sütun; prosedürelde 0. kare),
+    // yürürken 8 kareli döngü.
+    const frame = p.moving ? frames[p.walkFrame % WALK_FRAMES] : (frames.stand || frames[0]);
 
     // --- yumuşak geçiş -------------------------------------------------------
     // Kareler ayrık, ama gövdenin inip kalkması ve hafif yana salınımı SÜREKLİ:
@@ -1136,11 +1139,14 @@ export class Renderer {
     const bob = Math.sin(ph * Math.PI / 2) * 2.2 * gait * (wk.bob ?? 1);
     const sway = Math.sin(ph * Math.PI / 4) * 0.9 * gait * (wk.sway ?? 1);
 
-    const scale = 1.75;
-    const w = SPRITE_W * scale, h = SPRITE_H * scale;
+    // LPC kareleri 64×64; prosedürel yedek 32×36. Ölçeği kareden türet ki
+    // ikisi de ekranda benzer boyda çıksın.
+    const isLpc = frame.width >= 64;
+    const scale = isLpc ? 1.30 : 1.75;
+    const w = frame.width * scale, h = frame.height * scale;
     // Ayaklar oyuncunun konumunda dursun, gövde yukarı doğru uzasın.
     const left = p.x - w / 2 + sway;
-    const top = p.y + PLAYER_RADIUS * 0.55 - h - Math.abs(bob);
+    const top = p.y + PLAYER_RADIUS * 0.55 - h - Math.abs(bob) + (isLpc ? h * 0.05 : 0);
 
     // --- zemin izi -----------------------------------------------------------
     // Güneş ve gölgeler kaldırıldı. Karakterin zeminden kopuk durmaması için
@@ -1211,32 +1217,18 @@ export class Renderer {
   // nokta da oradan hesaplanıyor. İkisi tek kaynaktan beslenmezse mermi yine
   // silahın ucundan değil, başka bir yerden çıkıyormuş gibi görünür.
   drawWeapon(ctx, p, wep, chr) {
-    const handY = p.y + HAND_Y;                    // ellerin yüksekliği
+    // Silah artık PIXEL-ART sprite: karakterlerle aynı iri, keskin pikseller.
+    // Silah + iki kol + eller tek parça; nişan açısına göre döndürülür.
+    // Namlu ucu ~muzzleWorld ile hizalı (sprite ölçüleri WEAPON_VIEW'a göre
+    // ayarlandı), böylece mermi silahtan çıkıyor görünür.
+    const S = 1.30;                                 // karakter ölçeğiyle aynı
     ctx.save();
-    ctx.translate(p.x, handY);
+    ctx.imageSmoothingEnabled = false;             // nearest-neighbor → çentikli
+    ctx.translate(p.x, p.y + HAND_Y);
     ctx.rotate(p.aim);
-
-    const oy = HAND_SIDE;
-    const gorunum = WEAPON_VIEW[wep.id] || WEAPON_VIEW.rifle;
-    const len = gorunum.boy;
-    const gx = gorunum.tut;
-
-    // BOMBACI: elinde tüfek değil BOMBA var. Ateşli silah çizmiyoruz.
-    if (wep.throwable) {
-      this.drawBombInHand(ctx, p, gx, oy, chr);
-      ctx.restore();
-      return;
-    }
-
-    // Her silahın KENDİNE ÖZGÜ görünümü. Namlu ucu HER ZAMAN (gx+len, oy)'de
-    // biter — muzzleWorld ile birebir aynı nokta; yoksa mermi/alev silahtan
-    // kayar. Alt çizim yordamları bu kurala uyar.
-    // (Namlu alevi üçgeni istek üzerine kaldırıldı; ateş efekti artık yalnızca
-    //  dünyadaki parçacık patlaması — game.js 'shot' olayı.)
-    if (wep.id === 'shotgun') this.drawShotgun(ctx, gx, oy, len, chr);
-    else if (wep.id === 'sniper') this.drawSniper(ctx, gx, oy, len, chr);
-    else this.drawRifle(ctx, gx, oy, len, chr);
-
+    ctx.scale(S, S);
+    const held = getHeldWeapon(wep.id, chr);
+    ctx.drawImage(held.canvas, -held.ax, -held.ay);
     ctx.restore();
   }
 

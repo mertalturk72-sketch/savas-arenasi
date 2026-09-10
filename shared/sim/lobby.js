@@ -7,6 +7,7 @@ import {
   POST_MATCH_MS, SNAPSHOT_MS, MIN_PLAYERS_TO_START, MIN_FIGHTERS, BOT_NAMES, CLASS_IDS,
   MAX_LOBBY_NAME_LEN, MAX_CHAT_LEN,
   BOT_LEVELS, DEFAULT_BOT_LEVEL,
+  ZOMBI, ZOMBI_TIPLERI,
 } from '../constants.js';
 import { S } from '../protocol.js';
 import { Game } from './game.js';
@@ -30,10 +31,21 @@ function sanitize(str, max) {
 // Yeni gelen oyuncuya lobide kullanılmayan bir karakter ver (herkes aynı
 // görünmesin); hepsi doluysa rastgele seç.
 function pickFreeChar(lobby) {
+  // Gizli karakterler (zombiler) oyunculara verilmez.
+  const secilebilir = CHAR_IDS.filter((id) => !CHARACTERS[id].gizli);
   const used = new Set([...lobby.members.values()].map((m) => m.char));
-  const free = CHAR_IDS.filter((id) => !used.has(id));
+  const free = secilebilir.filter((id) => !used.has(id));
   if (free.length) return free[0];
-  return CHAR_IDS[Math.floor(Math.random() * CHAR_IDS.length)] || DEFAULT_CHAR;
+  return secilebilir[Math.floor(Math.random() * secilebilir.length)] || DEFAULT_CHAR;
+}
+
+// Oyuncuya verilecek takım. İşbirliği (coop) modlarında karşı taraf oynanan
+// bir takım değil (zombiler), o yüzden herkes 1. takımdadır.
+function takimAta(lobby) {
+  const mode = MODES[lobby.modeId];
+  if (!mode?.teams) return 0;
+  if (mode.coop) return 1;
+  return lobby.pickBalancedTeam();
 }
 
 let lobbySeq = 0;
@@ -75,7 +87,7 @@ export class Lobby {
       ready: false,
       cls: DEFAULT_CLASS,
       char: pickFreeChar(this),
-      team: MODES[this.modeId]?.teams ? this.pickBalancedTeam() : 0,
+      team: takimAta(this),
       spectating: false,
     };
     this.members.set(client.id, member);
@@ -140,7 +152,10 @@ export class Lobby {
     if (s.mode && MODES[s.mode] && s.mode !== this.modeId) {
       this.modeId = s.mode;
       // Takım moduna geçişte takımları dengele
-      if (MODES[this.modeId].teams) {
+      if (MODES[this.modeId].coop) {
+        // İşbirliği modu: herkes aynı tarafta.
+        for (const m of this.members.values()) m.team = 1;
+      } else if (MODES[this.modeId].teams) {
         let i = 0;
         for (const m of this.members.values()) m.team = (i++ % 2) + 1;
       } else {
@@ -182,7 +197,7 @@ export class Lobby {
 
   setClass(clientId, cls) {
     const m = this.members.get(clientId);
-    if (!m || !CLASSES[cls]) return;
+    if (!m || !CLASSES[cls] || CLASSES[cls].gizli) return;
     m.cls = cls;
     // Maç sırasında sınıf değişimi bir sonraki doğuşta geçerli olur.
     if (this.game) {
@@ -194,7 +209,7 @@ export class Lobby {
 
   setChar(clientId, char) {
     const m = this.members.get(clientId);
-    if (!m || !CHARACTERS[char]) return;
+    if (!m || !CHARACTERS[char] || CHARACTERS[char].gizli) return;
     m.char = char;
     // Maç sürüyorsa görünüş hemen değişsin
     const p = this.game?.players.get(clientId);
@@ -204,7 +219,7 @@ export class Lobby {
 
   setTeam(clientId, team) {
     const m = this.members.get(clientId);
-    if (!m || !MODES[this.modeId].teams) return;
+    if (!m || !MODES[this.modeId].teams || MODES[this.modeId].coop) return;
     const t = team === 2 ? 2 : 1;
     let count = 0;
     for (const o of this.members.values()) if (o.team === t) count++;
@@ -260,7 +275,10 @@ export class Lobby {
   // başına maç başlıyordu — kimse yok, skor tablosu anlamsız.
   startBlockReason() {
     if (this.members.size < MIN_PLAYERS_TO_START) return 'Lobide oyuncu yok.';
-    if (this.savascilar() < MIN_FIGHTERS) {
+    // Bazı modlarda rakip oyunun kendisidir (Zombi Kuşatması) — orada tek
+    // kişi de başlatabilir. Diğerlerinde bomboş bir haritada tek başına maç
+    // başlatmanın anlamı yok.
+    if (!MODES[this.modeId]?.solo && this.savascilar() < MIN_FIGHTERS) {
       return 'Tek başına maç başlatılamaz. Bot ekle ya da bir arkadaşını çağır.';
     }
     // Bazı modlar (ör. Takımlı Son Hayatta Kalan) 2'ye 2 için en az minStart
@@ -329,14 +347,16 @@ export class Lobby {
     let botIdx = 0;
     const usedNames = new Set(roster.map((r) => r.name));
     // Sınıflar dengeli dağılsın (hepsi keskin nişancı olmasın)
-    const clsPool = CLASS_IDS.slice().sort(() => Math.random() - 0.5);
+    const clsPool = CLASS_IDS.filter((id) => !CLASSES[id].gizli).sort(() => Math.random() - 0.5);
     while (roster.length < slots) {
       let name = BOT_NAMES[botIdx % BOT_NAMES.length];
       if (usedNames.has(name)) name = `${name}${Math.floor(botIdx / BOT_NAMES.length) + 2}`;
       usedNames.add(name);
       botIdx++;
       let team = 0;
-      if (mode.teams) {
+      if (mode.coop) {
+        team = 1;                      // yardımcı botlar bizim taraftadır
+      } else if (mode.teams) {
         let t1 = 0, t2 = 0;
         for (const r of roster) { if (r.team === 1) t1++; else if (r.team === 2) t2++; }
         team = t1 <= t2 ? 1 : 2;
@@ -351,6 +371,12 @@ export class Lobby {
       });
     }
 
+    // Zombi Kuşatması: karşı tarafı (2. takım) kadroya ŞİMDİ ekliyoruz.
+    // Hepsi ölü başlar, dalga sırası gelince Game diriltir (bkz.
+    // Game.zombiCikar). Havuz sabit olduğu için maç ortasında kadro
+    // değişmiyor — ağ tarafında hiçbir şey ekstra iş yapmıyor.
+    if (mode.zombi) roster.push(...this.zombiHavuzu());
+
     this.game = new Game({ modeId: this.modeId, players: roster });
     this.state = 'playing';
     this.snapAccum = 0;
@@ -364,6 +390,34 @@ export class Lobby {
     this.hub.broadcastLobbyList();
   }
 
+
+  // Zombi havuzu: her tipten oranına göre yuva. Havuz yeniden kullanılır
+  // (ölen zombi sonraki dalgada aynı yuvadan geri gelir), bu yüzden dalga
+  // toplamından küçük olması sorun değil — aynı ANDA sahada olabilecek sayı
+  // ZOMBI.ayniAndaEnFazla ile sınırlı.
+  zombiHavuzu() {
+    const out = [];
+    const tipler = Object.keys(ZOMBI_TIPLERI);
+    const toplamOran = tipler.reduce((t, id) => t + ZOMBI_TIPLERI[id].oran, 0);
+    for (const id of tipler) {
+      const t = ZOMBI_TIPLERI[id];
+      const adet = Math.max(2, Math.round(ZOMBI.havuz * (t.oran / toplamOran)));
+      for (let i = 0; i < adet; i++) {
+        out.push({
+          id: this.hub.nextBotId(),
+          name: `${t.ad} ${i + 1}`,
+          bot: true,
+          zombi: true,
+          zombiTip: id,
+          team: 2,
+          cls: 'zombi',
+          char: t.char,
+          conn: null,
+        });
+      }
+    }
+    return out;
+  }
 
   // --- Tick ---------------------------------------------------------------
   tick(dtMs) {

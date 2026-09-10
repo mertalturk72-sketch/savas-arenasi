@@ -59,6 +59,8 @@ export function sfxShot(weapon, pan = 0, dist = 0) {
     sniper: { dur: 0.34, f0: 1400, f1: 90, gain: 1.0, lp: 3400 },
     // Bomba fırlatma: kısa, boğuk bir savurma sesi (patlama ayrı → sfxBoom).
     bomba: { dur: 0.16, f0: 420, f1: 70, gain: 0.4, lp: 900 },
+    // Pençe savurması: silah değil, boğuk ve kısa bir hışırtı.
+    pence: { dur: 0.11, f0: 260, f1: 90, gain: 0.30, lp: 700 },
   }[weapon] || { dur: 0.13, f0: 900, f1: 120, gain: 0.55, lp: 2600 };
 
   const src = c.createBufferSource();

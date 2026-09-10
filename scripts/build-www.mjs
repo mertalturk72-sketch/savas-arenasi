@@ -18,7 +18,7 @@ const WWW = path.join(ROOT, 'www');
 
 // Tek dosyalık sürüm sadece indirilmek için public/ altında duruyor.
 // Uygulamanın (APK) içine girmesinin anlamı yok — 235 KB'lık kopyayı atla.
-const SKIP = new Set(['savas-arenasi.html']);
+const SKIP = new Set(['savas-arenasi.html', 'karakter-lpc.html', 'karakter-lobitest.html', 'karakter-ingame-test.html', 'ciz.html']);
 
 function copyDir(src, dest, root = true) {
   fs.mkdirSync(dest, { recursive: true });

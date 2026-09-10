@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LPC Karakter Testi — Savaş Arenası</title>
+<style>
+  html,body{margin:0;background:#12161d;color:#e8eef6;font-family:system-ui,Segoe UI,Arial,sans-serif}
+  h1{font-size:20px;text-align:center;padding:14px 0 2px;margin:0}
+  .sub{text-align:center;color:#8fa0b4;font-size:13px;margin-bottom:10px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;padding:12px;max-width:1100px;margin:0 auto}
+  .card{background:#1b212b;border:1px solid #2b3442;border-radius:12px;padding:10px;text-align:center}
+  .name{font-weight:700;font-size:15px;margin-top:4px}
+  .row{display:flex;justify-content:center;align-items:flex-end;gap:8px;margin-top:6px}
+  canvas{image-rendering:pixelated;background:#0e1218;border-radius:8px}
+  .cap{color:#7c8ba0;font-size:11px;margin-top:3px}
+  #err{color:#ff8a8a;text-align:center;white-space:pre-wrap;font-size:12px}
+</style>
+</head>
+<body>
+<h1>LPC Karakter Testi — modern renk + silah</h1>
+<div class="sub">büyük öne bakış · sol · yürüyüş(animasyon) · sağ · (silah bindirmeli)</div>
+<div id="err"></div>
+<div class="grid" id="grid"></div>
+
+<script type="module">
+const LP = './textures/lpc/_raw/';
+const FR = 64;                          // LPC kare boyutu
+const ROW = { up:8, left:9, down:10, right:11 };   // yürüyüş satırları
+const NF = 8;                            // kullanılacak yürüyüş karesi (sütun 1..8)
+
+// Oyunun paleti (constants.js ile aynı) + LPC eşlemesi
+const CH = [
+  { id:'kivircik',  name:'Kıvırcık',    hair:'#8a6a3f', skin:'light',   jacket:'#2f3a4a', accent:'#e8c15a', eye:'blue',  lpcHair:'hair_messy1' },
+  { id:'diken',     name:'Diken',       hair:'#4e8f6d', skin:'light',   jacket:'#23262e', accent:'#9fd8b4', eye:'green', lpcHair:'hair_mohawk' },
+  { id:'uzunsac',   name:'Yele',        hair:'#7a5a3a', skin:'light',   jacket:'#2b3550', accent:'#cfd8e8', eye:'blue',  lpcHair:'hair_long' },
+  { id:'kasketli',  name:'Kasketli',    hair:'#3b3f5c', skin:'light',   jacket:'#20242c', accent:'#c8b26a', eye:'gray',  cap:true },
+  { id:'karasac',   name:'Karasaç',     hair:'#2a2730', skin:'tanned2', jacket:'#26282f', accent:'#d8b552', eye:'brown', lpcHair:'hair_long' },
+  { id:'gumus',     name:'Gümüş',       hair:'#c9c6bd', skin:'light',   jacket:'#33383f', accent:'#d9d3c0', eye:'gray',  lpcHair:'hair_parted' },
+  { id:'mavipercem',name:'Mavi Perçem', hair:'#5f7fc4', skin:'light',   jacket:'#242a38', accent:'#b8cbe8', eye:'blue',  lpcHair:'hair_plain' },
+  { id:'esmer',     name:'Esmer',       hair:'#402e20', skin:'dark',    jacket:'#2c3630', accent:'#e0bb55', eye:'brown', lpcHair:'hair_jewfro' },
+];
+
+const err = document.getElementById('err');
+function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('yüklenemedi: '+src)); i.src=src; }); }
+
+// Bir katman sayfasını hedef renge boya (gölgeyi korur: multiply + alfa maskesi)
+function tintSheet(img, color){
+  const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
+  const x=c.getContext('2d'); x.imageSmoothingEnabled=false;
+  x.drawImage(img,0,0);
+  x.globalCompositeOperation='multiply'; x.fillStyle=color; x.fillRect(0,0,c.width,c.height);
+  x.globalCompositeOperation='destination-in'; x.drawImage(img,0,0);
+  return c;
+}
+
+async function build(){
+  let imgs;
+  try{
+    const need = { body_light:1, body_tanned2:1, body_dark:1, eyes_blue:1, eyes_brown:1, eyes_green:1, eyes_gray:1,
+      pants_white:1, shirt_white:1, cap_leather:1, hair_messy1:1, hair_mohawk:1, hair_long:1, hair_plain:1, hair_jewfro:1, hair_parted:1 };
+    imgs={};
+    await Promise.all(Object.keys(need).map(async k=> imgs[k]=await load(LP+k+'.png')));
+  }catch(e){ err.textContent='HATA: '+e.message; return; }
+
+  const grid=document.getElementById('grid');
+  const anims=[];
+
+  for(const o of CH){
+    // katmanları hazırla (gövde+göz boyanmaz; pantolon koyu, ceket=jacket, saç=hair)
+    const body = imgs['body_'+o.skin];
+    const eyes = imgs['eyes_'+o.eye];
+    const pants = tintSheet(imgs.pants_white, '#2b2f36');       // koyu asker pantolonu
+    const shirt = tintSheet(imgs.shirt_white, o.jacket);        // ceket = karakter rengi
+    const hair  = o.cap ? tintSheet(imgs.cap_leather, '#20242c') : tintSheet(imgs[o.lpcHair], o.hair);
+
+    // bir kareyi (dir,frame) birleştir → 64×64 canvas
+    function frame(dir, col){
+      const c=document.createElement('canvas'); c.width=FR; c.height=FR;
+      const x=c.getContext('2d'); x.imageSmoothingEnabled=false;
+      const sx=col*FR, sy=ROW[dir]*FR;
+      x.drawImage(body, sx,sy,FR,FR, 0,0,FR,FR);
+      x.drawImage(eyes, sx,sy,FR,FR, 0,0,FR,FR);
+      x.drawImage(pants, sx,sy,FR,FR, 0,0,FR,FR);
+      x.drawImage(shirt, sx,sy,FR,FR, 0,0,FR,FR);
+      x.drawImage(hair, sx,sy,FR,FR, 0,0,FR,FR);
+      return c;
+    }
+    const set={};
+    for(const dir of ['down','up','left','right']){ set[dir]=[]; for(let f=1;f<=NF;f++) set[dir].push(frame(dir,f)); }
+
+    // kart
+    const card=document.createElement('div'); card.className='card';
+    const big=document.createElement('canvas'); big.width=FR*3; big.height=FR*3;
+    { const g=big.getContext('2d'); g.imageSmoothingEnabled=false; g.drawImage(frame('down',0),0,0,FR,FR,0,0,FR*3,FR*3); }
+    const name=document.createElement('div'); name.className='name'; name.textContent=o.name;
+    const row=document.createElement('div'); row.className='row';
+    const L=document.createElement('canvas'),W=document.createElement('canvas'),R=document.createElement('canvas');
+    for(const cv of [L,W,R]){cv.width=FR*1.6;cv.height=FR*1.6;}
+    { const g=L.getContext('2d'); g.imageSmoothingEnabled=false; g.drawImage(set.left[1],0,0,FR,FR,0,0,FR*1.6,FR*1.6); }
+    { const g=R.getContext('2d'); g.imageSmoothingEnabled=false; g.drawImage(set.right[1],0,0,FR,FR,0,0,FR*1.6,FR*1.6); }
+    row.appendChild(L); row.appendChild(W); row.appendChild(R);
+    const cap=document.createElement('div'); cap.className='cap'; cap.textContent='sol · yürüyüş · sağ';
+    card.appendChild(big); card.appendChild(name); card.appendChild(row); card.appendChild(cap);
+    grid.appendChild(card);
+
+    anims.push({ ctx:W.getContext('2d'), frames:set.down });
+  }
+
+  let f=0;
+  setInterval(()=>{ f=(f+1)%NF; for(const a of anims){ a.ctx.imageSmoothingEnabled=false; a.ctx.clearRect(0,0,FR*1.6,FR*1.6); a.ctx.drawImage(a.frames[f],0,0,FR,FR,0,0,FR*1.6,FR*1.6); } }, 110);
+}
+build();
+</script>
+</body>
+</html>

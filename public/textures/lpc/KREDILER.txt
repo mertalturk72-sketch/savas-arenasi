@@ -1,0 +1,23 @@
+Savaş Arenası — Karakter Sprite Kredileri (LPC)
+================================================
+
+Oyundaki karakterler "Liberated Pixel Cup" (LPC) sprite katmanlarından
+üretilmiştir. Katmanlar oyunun paletine göre renklendirilip birleştirilir.
+
+Kaynak: Universal LPC Spritesheet
+  https://github.com/jrconway3/Universal-LPC-spritesheet
+  (ve https://opengameart.org/content/lpc-collection)
+
+Lisans: CC-BY-SA 3.0  ve  GNU GPL 3.0 (çift lisans)
+  https://creativecommons.org/licenses/by-sa/3.0/
+  https://www.gnu.org/licenses/gpl-3.0.html
+
+Kullanılan katmanlar (gövde/göz/pantolon/gömlek/saç/kasket) LPC katkıda
+bulunanlarının eseridir. Öne çıkan katkıcılar (LPC topluluğu):
+  Stephen Challener (Redshrike), Johannes Sjölund (wulax),
+  Marcel van de Steeg (Benjamin K. Smith), Matthew Krohn, Daniel Eddeland,
+  Manuel Riecke (MrBeast), Joe White, ve diğerleri.
+
+CC-BY-SA gereği: bu sanat eseri değiştirilmiş (renklendirilmiş/birleştirilmiş)
+olup aynı lisansla (CC-BY-SA 3.0) paylaşılmaktadır. Ticari/dağıtım halinde bu
+atıf korunmalıdır.

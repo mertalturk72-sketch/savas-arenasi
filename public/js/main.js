@@ -4,7 +4,7 @@ import {
   MODES, CLASSES, TEAMS, MAX_PLAYERS, WEAPONS, MAX_NAME_LEN, CHARACTERS,
   UPDATE_SERVER, BOT_LEVELS, DEFAULT_BOT_LEVEL, COUNTDOWN_GO_MS,
 } from '/shared/constants.js';
-import { getCharacterSprites, drawWeaponOnPreview } from './sprites.js';
+import { getCharacterSprites, drawWeaponOnPreview, preloadSprites, spritesReady } from './sprites.js';
 import * as spritesModule from './sprites.js';
 import { C, S } from '/shared/protocol.js';
 import { Net } from './net.js';
@@ -21,6 +21,9 @@ const RANDOM_NAMES = [
 ];
 
 const state = {
+  // Bağlandığımız sunucunun bildiği mod listesi (WELCOME ile geliyor).
+  // Uygulama güncel ama SUNUCU eskiyse aradaki fark burada görünür.
+  serverModes: null,
   screen: 'menu',
   me: { id: 0, name: '' },
   lobby: null,
@@ -177,14 +180,35 @@ function randomName() {
 }
 
 // ============================================================ menü kurulumu
+
+// Seçimi PARMAK DEĞDİĞİ AN göstermek için: aynı kaptaki 'sel' işaretini
+// tıklanan öğeye taşı. Sunucu onayı geldiğinde renderLobby zaten aynı sonucu
+// yazacak; bu sadece bekleme hissini kaldırıyor. Sunucu isteği reddederse
+// (ör. ayarı yalnız lobi sahibi değiştirebilir) bir sonraki lobi durumu
+// işareti doğru yere geri koyar.
+function secimiHemenGoster(container, secilen, sinif) {
+  for (const el of container.children) el.classList.toggle('sel', el === secilen);
+  void sinif;
+}
+
 function buildModePicker(container, selected, onPick) {
   container.innerHTML = '';
   for (const id of Object.keys(MODES)) {
     const m = MODES[id];
+    const destekli = !state.serverModes || state.serverModes.includes(id);
     const btn = document.createElement('button');
-    btn.className = 'mode-card' + (id === selected ? ' sel' : '');
-    btn.innerHTML = `<div class="mc-name">${esc(m.name)}</div><div class="mc-desc">${esc(m.desc)}</div>`;
-    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    btn.className = 'mode-card' + (id === selected ? ' sel' : '') + (destekli ? '' : ' yok');
+    btn.innerHTML = `<div class="mc-name">${esc(m.name)}</div><div class="mc-desc">${esc(m.desc)}</div>`
+      + (destekli ? '' : '<div class="mc-yok">Bu sunucuda yok — sunucu eski sürümde</div>');
+    if (!destekli) {
+      // Tıklanabilir bırakmak en kötüsü olurdu: basarsın, hiçbir şey olmaz,
+      // sebebini de anlamazsın.
+      btn.disabled = true;
+      btn.onclick = () => toast(`"${m.name}" bu sunucuda yok. Sunucuyu güncelle ya da Çevrimdışı oyna.`);
+      container.appendChild(btn);
+      continue;
+    }
+    btn.onclick = () => { sfx.sfxUi(); secimiHemenGoster(container, btn); onPick(id); };
     container.appendChild(btn);
   }
 }
@@ -198,7 +222,7 @@ function buildLevelPicker(container, selected, onPick) {
     btn.className = 'level-btn lv-' + id + (id === selected ? ' sel' : '');
     btn.type = 'button';
     btn.innerHTML = `<span class="lv-name">${esc(lv.name)}</span><span class="lv-desc">${esc(lv.desc)}</span>`;
-    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    btn.onclick = () => { sfx.sfxUi(); secimiHemenGoster(container, btn); onPick(id); };
     container.appendChild(btn);
   }
 }
@@ -207,6 +231,7 @@ function buildClassPicker(container, selected, onPick) {
   container.innerHTML = '';
   for (const id of Object.keys(CLASSES)) {
     const c = CLASSES[id];
+    if (c.gizli) continue;      // zombi sınıfı lobide seçilemez
     const w = WEAPONS[c.weapon];
     const btn = document.createElement('button');
     btn.className = 'class-card' + (id === selected ? ' sel' : '');
@@ -214,7 +239,7 @@ function buildClassPicker(container, selected, onPick) {
       <div class="cc-name" style="color:${c.color}">${esc(c.name)}</div>
       <div class="cc-desc">${esc(c.desc)}</div>
       <div class="cc-stats">${c.hp} can · ${w.name} · ${Math.round(c.speed)} hız</div>`;
-    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    btn.onclick = () => { sfx.sfxUi(); secimiHemenGoster(container, btn); onPick(id); };
     container.appendChild(btn);
   }
 }
@@ -224,6 +249,7 @@ function buildCharPicker(container, selected, teamColor, weaponId, onPick) {
   container.innerHTML = '';
   for (const id of Object.keys(CHARACTERS)) {
     const ch = CHARACTERS[id];
+    if (ch.gizli) continue;     // zombi görünüşleri lobide seçilemez
     const btn = document.createElement('button');
     btn.className = 'char-card' + (id === selected ? ' sel' : '');
     btn.title = ch.name;
@@ -232,15 +258,21 @@ function buildCharPicker(container, selected, teamColor, weaponId, onPick) {
     cv.width = 64; cv.height = 72;
     const cx = cv.getContext('2d');
     cx.imageSmoothingEnabled = false;
-    const set = getCharacterSprites({
-      jacket: teamColor || ch.jacket, hair: ch.hair, skin: ch.skin,
-      accent: ch.accent, eye: ch.eye, style: ch.style,
-    });
-    // YAN profil (sağa bakan): bacaklar neredeyse düz (frame 0 → en az açık
-    // adım, iki ayak da yerde) — "iki bacak eşit" isteği. Silahı omuz hizasında
-    // iki eliyle tutup nişan alıyor gibi görünür.
-    cx.drawImage(set.right[0], 0, 0, 64, 72);
-    drawWeaponOnPreview(cx, 0, 0, 2, weaponId, ch.skin);
+    // YAN profil (sağa bakan): duruş karesi (iki ayak da yerde). Silahı omuz
+    // hizasında iki eliyle tutup nişan alıyor gibi görünür.
+    const drawCard = () => {
+      cx.clearRect(0, 0, 64, 72);
+      const set = getCharacterSprites({
+        jacket: teamColor || ch.jacket, hair: ch.hair, skin: ch.skin,
+        accent: ch.accent, eye: ch.eye, style: ch.style,
+      });
+      // ÖNDEN duran karakter (iki göz görünür); silah göğüs önünde çapraz.
+      cx.drawImage(set.down.stand || set.down[0], 0, 0, 64, 72);
+      drawWeaponOnPreview(cx, 0, 0, 2, weaponId, ch.skin, teamColor || ch.jacket);
+    };
+    drawCard();
+    // LPC katmanları henüz yüklenmediyse, hazır olunca kartı yeniden çiz.
+    if (!spritesReady()) preloadSprites().then(drawCard);
 
     const label = document.createElement('span');
     label.className = 'cc-label';
@@ -248,7 +280,7 @@ function buildCharPicker(container, selected, teamColor, weaponId, onPick) {
 
     btn.appendChild(cv);
     btn.appendChild(label);
-    btn.onclick = () => { sfx.sfxUi(); onPick(id); };
+    btn.onclick = () => { sfx.sfxUi(); secimiHemenGoster(container, btn); onPick(id); };
     container.appendChild(btn);
   }
 }
@@ -305,7 +337,8 @@ function renderLobby() {
     inviteRow.classList.add('hidden');
   }
   $('lobbyModeLabel').textContent = mode.name;
-  $('lobbyCountLabel').textContent = `${l.members.length}/${l.maxPlayers} oyuncu` + (l.botCount ? ` + ${l.botCount} bot` : '');
+  $('lobbyCountLabel').textContent = `${l.members.length}/${l.maxPlayers} oyuncu`
+    + (l.botCount ? ` + ${l.botCount} ${mode.coop ? 'yardımcı bot' : 'bot'}` : '');
 
   // Host kontrolleri
   $('hostControls').classList.toggle('hidden', !isHost);
@@ -325,7 +358,9 @@ function renderLobby() {
   }
 
   // Takım seçimi
-  $('teamPicker').classList.toggle('hidden', !mode.teams);
+  // İşbirliği modunda (Zombi Kuşatması) karşı taraf oynanan bir takım
+  // değil: takım seçimi gösterilmiyor.
+  $('teamPicker').classList.toggle('hidden', !mode.teams || !!mode.coop);
 
   // Oyuncu listesi
   const roster = $('roster');
@@ -508,6 +543,9 @@ function scoreboardHtml(sb, title) {
 // Maçı BEN mi kazandım? Takım modunda takımım, diğerlerinde birinci sıra.
 function didIWin(sb) {
   if (!sb || !sb.rows || !sb.rows.length) return false;
+  // İşbirliği modu (Zombi Kuşatması): ya hep birlikte kazanılır ya birlikte
+  // kaybedilir — sıralamaya bakmanın anlamı yok, sunucu açıkça söylüyor.
+  if (sb.winner && sb.winner.coop) return !!sb.winner.kazandi;
   const ben = sb.rows.find((r) => r.id === state.me.id);
   if (!ben) return false;
   // Takım BR: kazanan açıkça takım olarak gelir (skor değil, son ayakta kalan).
@@ -626,6 +664,11 @@ function hideWinScreen() {
 
 function winnerText(sb) {
   if (!sb) return 'Maç bitti';
+  if (sb.winner && sb.winner.coop) {
+    return sb.winner.kazandi
+      ? `Bütün dalgalar temizlendi — hayatta kaldınız!`
+      : `Dalga ${sb.winner.dalga || 1}'de düştünüz`;
+  }
   if (sb.teamScore) {
     const t1 = sb.teamScore[1] || 0, t2 = sb.teamScore[2] || 0;
     if (t1 === t2) return 'Berabere!';
@@ -753,6 +796,12 @@ net.on('_retry', (d) => {
 net.on(S.WELCOME, (m) => {
   state.me.id = m.id;
   state.me.name = m.name;
+  // Sunucu kendi mod listesini gönderiyor. Uygulamadaki liste daha yeni
+  // olabilir (yeni sürüm kuruldu ama bulut sunucusu eski kaldı); o durumda
+  // desteklenmeyen modu seçmek SESSİZCE hiçbir şey yapmıyordu — sunucu
+  // tanımadığı modu yok sayıyor. Artık farkı ekranda gösteriyoruz.
+  state.serverModes = m.config && m.config.modes ? Object.keys(m.config.modes) : null;
+  if (state.lobby) renderLobby();
   $('nameInput').value = m.name;
   saveName(m.name);
 
@@ -1525,6 +1574,7 @@ window.__input = input;   // testler tetik durumunu okuyabilsin
 initUi();
 initSettings();
 initPwa();
+preloadSprites();          // LPC karakter katmanlarını arka planda yükle
 show('menu');
 startup();
 preferOnlineIfChosen();

@@ -150,6 +150,9 @@ export class ClientGame {
     this.zone = null;
     this.zoneWarnPhase = -1;
     this.ctf = null;    // Bayrak Çalma: üs konumları (yalnız CTF modunda dolar)
+    // Zombi Kuşatması: dalga durumu. Sunucu yalnız DEĞİŞİNCE bildiriyor,
+    // hazırlık sayacını istemci kendi saatiyle işletiyor (bkz. updateHud).
+    this.zombiDurum = null;
     this.flag = null;   // Bayrağın son bilinen durumu
     this.hudTimer = 0;
     this.meRender = { x: 0, y: 0 };
@@ -293,10 +296,18 @@ export class ClientGame {
             const pan = Math.max(-1, Math.min(1, (ev.x - this.me.x) / 700));
             sfx.sfxShot(ev.w, pan, d);
           }
-          this.fx.spawn(ev.x, ev.y, {
-            count: 4, angle: ev.a, spread: 0.5, speed: 260, life: 0.12, size: 3,
-            color: '#ffd28a', glow: true,
-          });
+          // Pençe bir silah değil: namlu alevi yerine kısa, soluk bir savurma izi.
+          if (ev.w === 'pence') {
+            this.fx.spawn(ev.x, ev.y, {
+              count: 5, angle: ev.a, spread: 0.9, speed: 150, life: 0.16, size: 2.4,
+              color: 'rgba(190,205,160,0.8)',
+            });
+          } else {
+            this.fx.spawn(ev.x, ev.y, {
+              count: 4, angle: ev.a, spread: 0.5, speed: 260, life: 0.12, size: 3,
+              color: '#ffd28a', glow: true,
+            });
+          }
           break;
         }
         case 'imp': {
@@ -359,6 +370,24 @@ export class ClientGame {
           const mine = ev.t === this.myTeam;
           this.setCenterMsg(mine ? '🚩 Bayrağı takımın kaptı!' : '🚩 Bayrağı düşman kaptı!',
             1500, mine ? '#ffd24a' : '#ff7a7a');
+          break;
+        }
+        // --- Zombi Kuşatması ---
+        case 'zwave': {
+          const oncekiDalga = this.zombiDurum?.w;
+          const oncekiDurum = this.zombiDurum?.st;
+          this.zombiDurum = { w: ev.w, tw: ev.tw, st: ev.st, k: ev.k, ms: ev.ms, at: performance.now() };
+          if (ev.st === 1 && ev.w !== oncekiDalga) {
+            this.setCenterMsg(`DALGA ${ev.w} / ${ev.tw}`, 2400, '#9ede6a');
+            sfx.sfxAlarm?.();
+          } else if (ev.st === 0 && oncekiDurum === 1) {
+            this.setCenterMsg('HAZIRLAN — canın ve cephanen doldu', 2200, '#ffd24a');
+          }
+          break;
+        }
+        case 'zclear': {
+          this.setCenterMsg(`DALGA ${ev.w} TEMİZLENDİ`, 2200, '#ffd24a');
+          sfx.sfxUi?.();
           break;
         }
         case 'cap': {
@@ -815,15 +844,32 @@ export class ClientGame {
         <div class="rm-killer">${this.deathKiller ? esc(this.deathKiller) + ' seni indirdi' : ''}</div>
         <div class="rm-sub">${canRespawn
           ? `Yeniden doğuş: ${(you.rs / 1000).toFixed(1)} sn`
-          : `${you.pl ? `Sıralaman: #${you.pl}` : 'Elendin'}${this.spectateName ? ` · İzliyorsun: ${esc(this.spectateName)}` : ''}`}</div>
+          : this.mode.zombi
+            ? `Sonraki dalgada geri geleceksin${this.spectateName ? ` · İzliyorsun: ${esc(this.spectateName)}` : ''}`
+            : `${you.pl ? `Sıralaman: #${you.pl}` : 'Elendin'}${this.spectateName ? ` · İzliyorsun: ${esc(this.spectateName)}` : ''}`}</div>
         ${canRespawn ? '' : '<div class="rm-killer">Başkasını izlemek için tıkla</div>'}`;
     } else {
       this.el.respawn.classList.add('hidden');
     }
 
-    // Üst bilgi: sadece kalan süre
+    // Üst bilgi. Zombi Kuşatması'nda süre sınırı yok: onun yerine hangi
+    // dalgadayız ve kaç zombi kaldı yazıyor. Hazırlık sayacı istemcide
+    // işliyor (sunucu her saniye paket göndermesin diye).
     const sc = this.scores;
-    if (sc) {
+    if (this.mode?.zombi && this.zombiDurum) {
+      const z = this.zombiDurum;
+      if (z.st === 0) {
+        const kalanMs = Math.max(0, z.ms - (performance.now() - z.at));
+        const sn = Math.ceil(kalanMs / 1000);
+        this.el.matchInfo.innerHTML =
+          `<div class="mi-wave${sn <= 3 ? ' urgent' : ''}">HAZIRLIK ${sn}</div>`
+          + `<div class="mi-wsub">Sonraki dalga: ${Math.min(z.w + 1, z.tw)} / ${z.tw}</div>`;
+      } else {
+        this.el.matchInfo.innerHTML =
+          `<div class="mi-wave">DALGA ${z.w} / ${z.tw}</div>`
+          + `<div class="mi-wsub">Kalan zombi: ${z.k}</div>`;
+      }
+    } else if (sc) {
       const left = Math.max(0, sc.left | 0);
       const mm = Math.floor(left / 60);
       const ss = String(left % 60).padStart(2, '0');

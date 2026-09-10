@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Silah Çizim Stüdyosu — Savaş Arenası</title>
+<style>
+  :root{--bg:#12161d;--pan:#1b212b;--bd:#2b3442;--tx:#e8eef6;--mut:#8fa0b4;--acc:#e8c15a}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,Segoe UI,Arial,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+  h1{font-size:18px;text-align:center;margin:8px 0 2px}
+  .sub{text-align:center;color:var(--mut);font-size:12px;margin-bottom:8px}
+  .wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px}
+  .bar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;max-width:760px}
+  .sw{width:30px;height:30px;border-radius:6px;border:2px solid #0006;cursor:pointer}
+  .sw.sel{outline:3px solid var(--acc);outline-offset:1px}
+  .btn{background:var(--pan);border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer}
+  .btn.acc{background:var(--acc);color:#111;font-weight:700;border:none}
+  .btn.on{outline:2px solid var(--acc)}
+  canvas{image-rendering:pixelated;background:#0e1218;border-radius:10px;border:1px solid var(--bd);touch-action:none}
+  select{background:var(--pan);border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:7px 10px;font-size:14px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+  .hint{color:var(--mut);font-size:12px;text-align:center;max-width:720px}
+  #msg{color:#4fd18b;font-size:13px;height:16px;text-align:center}
+</style>
+</head>
+<body>
+<h1>🎨 Silah Çizim Stüdyosu</h1>
+<div class="sub">Izgaraya piksel piksel çiz · yeşil = el/kabza · turuncu = namlu ucu · karakter arkada referans</div>
+
+<div class="wrap">
+  <div class="row">
+    <label>Karakter: <select id="charSel"></select></label>
+    <button class="btn" id="charBtn">Karakteri göster</button>
+    <button class="btn" id="refBtn">Tüfek referansı</button>
+    <button class="btn" id="eraseBtn">🧽 Sil</button>
+    <button class="btn" id="undoBtn">↶ Geri</button>
+    <button class="btn" id="clearBtn">Temizle</button>
+    <button class="btn acc" id="copyBtn">📋 Kodu Kopyala</button>
+  </div>
+  <textarea id="code" readonly style="width:100%;max-width:704px;height:52px;background:#0e1218;color:#9fb0c4;border:1px solid var(--bd);border-radius:8px;font-size:11px;display:none"></textarea>
+
+  <div class="bar" id="palette"></div>
+
+  <canvas id="cv" width="704" height="416"></canvas>
+  <div id="msg"></div>
+  <div class="hint">Bilgisayarda: fareyle bas-sürükle çiz. Telefonda: parmakla çiz. Silahı çizince bana “<b>aldım/bitti</b>” de — ben çizimini alıp oyuna koyayım. Kollar otomatik eklenir.</div>
+</div>
+
+<script type="module">
+import { getCharacterSprites, preloadSprites, getHeldWeapon } from './js/sprites.js';
+import { CHARACTERS } from '/shared/constants.js';
+
+const GW = 44, GH = 26, CELL = 16;      // ızgara: 44×26 piksel, hücre 16px
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// silah hattı ve işaretler (buildHeldWeapon ile uyumlu: ax≈14, gy≈17)
+const GY = 13;             // silah hattı satırı (ızgaranın dikey ortası)
+const GRIP = { x: 10, y: GY };     // el/kabza — çift, ızgara ortasına simetrik
+const MUZZLE = { x: 34, y: GY };   // namlu ucu (orta nokta = 22 = ızgara ortası)
+
+const PALETTE = [
+  '#11151b','#272d35','#3a434e','#2c343d','#41505d', // metal
+  '#0e1216','#000000','#cfd6de','#ffffff',            // koyu / beyaz
+  '#3a2b1e','#5a4026','#6e4f30',                       // ahşap
+  '#3f4a2a','#55643a',                                 // bomba yeşili
+  '#8fc4ec','#e8c15a',                                 // cam/altın
+  '#c96b3a','#7a4a2a',                                 // pas/deri
+];
+
+let color = PALETTE[1];
+let erasing = false;
+let showRef = false;      // referans tüfek kapalı (temiz alan)
+let showChar = false;     // karakter referansı kapalı
+const cells = new Map();      // "x,y" -> color
+const undo = [];
+
+// --- palet
+const pal = document.getElementById('palette');
+PALETTE.forEach((c, i) => {
+  const b = document.createElement('div'); b.className = 'sw' + (i === 1 ? ' sel' : '');
+  b.style.background = c; b.title = c;
+  b.onclick = () => { color = c; erasing = false; document.getElementById('eraseBtn').classList.remove('on'); [...pal.children].forEach(x => x.classList.remove('sel')); b.classList.add('sel'); };
+  pal.appendChild(b);
+});
+
+// --- karakter seçimi
+const charSel = document.getElementById('charSel');
+Object.values(CHARACTERS).forEach(ch => { const o = document.createElement('option'); o.value = ch.id; o.textContent = ch.name; charSel.appendChild(o); });
+let curChar = Object.values(CHARACTERS)[0];
+charSel.onchange = () => { curChar = CHARACTERS[charSel.value]; draw(); };
+
+document.getElementById('charBtn').onclick = (e) => { showChar = !showChar; e.target.classList.toggle('on', showChar); draw(); };
+document.getElementById('refBtn').onclick = (e) => { showRef = !showRef; e.target.classList.toggle('on', showRef); draw(); };
+document.getElementById('eraseBtn').onclick = (e) => { erasing = !erasing; e.target.classList.toggle('on', erasing); };
+document.getElementById('undoBtn').onclick = () => { const last = undo.pop(); if (!last) return; if (last.prev === undefined) cells.delete(last.key); else cells.set(last.key, last.prev); draw(); };
+document.getElementById('clearBtn').onclick = () => { undo.push({ bulk: new Map(cells) }); cells.clear(); draw(); save(); };
+
+// --- çizim girişi
+let painting = false;
+function cellFromEvent(e) {
+  const r = cv.getBoundingClientRect();
+  const sx = (e.clientX - r.left) * (cv.width / r.width);
+  const sy = (e.clientY - r.top) * (cv.height / r.height);
+  return { x: Math.floor(sx / CELL), y: Math.floor(sy / CELL) };
+}
+function paint(e) {
+  const { x, y } = cellFromEvent(e);
+  if (x < 0 || y < 0 || x >= GW || y >= GH) return;
+  const key = x + ',' + y;
+  const prev = cells.get(key);
+  if (erasing) { if (prev === undefined) return; undo.push({ key, prev }); cells.delete(key); }
+  else { if (prev === color) return; undo.push({ key, prev }); cells.set(key, color); }
+  draw(); save();
+}
+cv.addEventListener('pointerdown', (e) => { painting = true; cv.setPointerCapture(e.pointerId); paint(e); });
+cv.addEventListener('pointermove', (e) => { if (painting) paint(e); });
+cv.addEventListener('pointerup', () => { painting = false; });
+cv.addEventListener('pointercancel', () => { painting = false; });
+
+// --- render
+let refCanvasSprite = null;
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  // arka plan
+  ctx.fillStyle = '#0e1218'; ctx.fillRect(0, 0, cv.width, cv.height);
+
+  // karakter referansı (solda, soluk) — "içine karakter"
+  if (showChar && curChar) {
+    const set = getCharacterSprites({ jacket: curChar.jacket, hair: curChar.hair, skin: curChar.skin, accent: curChar.accent, eye: curChar.eye, style: curChar.style });
+    const f = set.down.stand || set.down[0];
+    ctx.globalAlpha = 0.5;
+    // karakteri silah hattına denk gelecek şekilde yerleştir (göğüs ~ GY)
+    const cw = f.width, chh = f.height;
+    const scale = (18 * CELL) / chh;   // ~18 hücre boyunda
+    const dw = cw * scale, dh = chh * scale;
+    const dx = (GRIP.x - 6) * CELL - dw / 2 + CELL;    // kabzanın biraz solunda gövde
+    const dy = (GY) * CELL - dh * 0.42;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(f, dx, dy, dw, dh);
+    ctx.globalAlpha = 1;
+  }
+
+  // mevcut tüfek referansı (soluk) — izini sürüp geliştirebilsin
+  if (showRef) {
+    const held = getHeldWeapon('rifle', curChar || { skin: '#e8b98f', jacket: '#2b3550' });
+    ctx.globalAlpha = 0.28;
+    // held.ax,ay pivotu; kabza ~ ax+3. Izgarada GRIP'e hizala.
+    const s = CELL;
+    ctx.save();
+    ctx.translate((GRIP.x * CELL) - (held.ax + 3) * s, (GY * CELL) - held.ay * s);
+    ctx.scale(s, s);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(held.canvas, 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // ızgara çizgileri
+  ctx.strokeStyle = '#1e2732'; ctx.lineWidth = 1;
+  for (let x = 0; x <= GW; x++) { ctx.beginPath(); ctx.moveTo(x * CELL + 0.5, 0); ctx.lineTo(x * CELL + 0.5, GH * CELL); ctx.stroke(); }
+  for (let y = 0; y <= GH; y++) { ctx.beginPath(); ctx.moveTo(0, y * CELL + 0.5); ctx.lineTo(GW * CELL, y * CELL + 0.5); ctx.stroke(); }
+
+  // silah hattı
+  ctx.fillStyle = 'rgba(232,193,90,0.10)'; ctx.fillRect(0, GY * CELL, GW * CELL, CELL);
+
+  // işaretler
+  ctx.fillStyle = 'rgba(79,209,139,0.30)'; ctx.fillRect((GRIP.x - 1) * CELL, (GY - 2) * CELL, 3 * CELL, 5 * CELL);
+  ctx.fillStyle = 'rgba(255,138,90,0.30)'; ctx.fillRect((MUZZLE.x - 1) * CELL, (GY - 2) * CELL, 2 * CELL, 5 * CELL);
+  ctx.fillStyle = '#4fd18b'; ctx.font = '11px system-ui'; ctx.fillText('EL', (GRIP.x - 1) * CELL + 2, (GY - 2) * CELL - 2);
+  ctx.fillStyle = '#ff8a5a'; ctx.fillText('NAMLU', (MUZZLE.x - 3) * CELL, (GY - 2) * CELL - 2);
+
+  // çizilen pikseller
+  for (const [key, col] of cells) {
+    const [x, y] = key.split(',').map(Number);
+    ctx.fillStyle = col; ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+  }
+}
+
+function save() {
+  const data = { w: GW, h: GH, gy: GY, grip: GRIP, muzzle: MUZZLE, cells: [...cells].map(([k, c]) => { const [x, y] = k.split(',').map(Number); return { x, y, c }; }) };
+  window.__silahCizim = data;
+  try { localStorage.setItem('sa_silah_cizim', JSON.stringify(data)); } catch {}
+  document.getElementById('msg').textContent = data.cells.length + ' piksel çizildi — hazır olunca "aldım" de';
+}
+
+// kayıtlıysa geri yükle
+try { const s = JSON.parse(localStorage.getItem('sa_silah_cizim') || 'null'); if (s && s.cells) s.cells.forEach(p => cells.set(p.x + ',' + p.y, p.c)); } catch {}
+
+// dışarıdan okunabilsin (Claude tarayıcıdan alır)
+window.__getSilahCizim = () => window.__silahCizim || { w: GW, h: GH, cells: [...cells].map(([k, c]) => { const [x, y] = k.split(',').map(Number); return { x, y, c }; }) };
+
+// kompakt kod (kendi tarayıcında çizip sohbete yapıştırman için)
+function encode() {
+  const parts = [...cells].map(([k, c]) => { const [x, y] = k.split(','); return x + '.' + y + '.' + Math.max(0, PALETTE.indexOf(c)); });
+  return `SA1;${GW}x${GH};g${GRIP.x},${GRIP.y};m${MUZZLE.x},${MUZZLE.y};` + parts.join('-');
+}
+document.getElementById('copyBtn').onclick = async () => {
+  const code = encode();
+  const ta = document.getElementById('code');
+  ta.style.display = 'block'; ta.value = code; ta.focus(); ta.select();
+  let ok = false;
+  try { await navigator.clipboard.writeText(code); ok = true; } catch { try { ok = document.execCommand('copy'); } catch {} }
+  document.getElementById('msg').textContent = (ok ? '✓ Kod kopyalandı — ' : 'Kodu seç-kopyala — ') + 'sohbete yapıştır (' + cells.size + ' piksel)';
+};
+
+await preloadSprites();
+draw(); save();
+</script>
+</body>
+</html>
